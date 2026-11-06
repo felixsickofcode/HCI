@@ -23,3 +23,6 @@ class UserNotFoundError(NotFoundError):
 
 class EmailAlreadyExistsError(ConflictError):
     message = "Email already registered"
+
+class DisplaySettingsNotFoundError(NotFoundError):
+    message = "Display settings not saved yet"
