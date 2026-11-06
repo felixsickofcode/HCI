@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.user import User
+from app.repositories.display_settings_repository import DisplaySettingsRepository
 from app.repositories.user_repository import UserRepository
+from app.services.display_settings_service import DisplaySettingsService
 from app.services.user_service import UserService
 
 DbSession = Annotated[Session, Depends(get_db)]
@@ -21,6 +23,15 @@ def get_user_service(db: DbSession) -> UserService:
 
 
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
+
+
+def get_display_settings_service(db: DbSession) -> DisplaySettingsService:
+    return DisplaySettingsService(DisplaySettingsRepository(db))
+
+
+DisplaySettingsServiceDep = Annotated[
+    DisplaySettingsService, Depends(get_display_settings_service)
+]
 
 
 def get_current_user(
