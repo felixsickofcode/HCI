@@ -5,9 +5,9 @@ const TOKEN_KEY = "token";
 export interface AuthUser {
   id: number;
   email: string;
-  full_name: string;
-  is_active: boolean;
-  created_at: string;
+  fullName: string;
+  isActive: boolean;
+  createdAt: string;
 }
 
 export interface TokenResponse {
