@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
+from app.schemas.base import CamelModel
 
 if TYPE_CHECKING:
     from app.models.display_settings import UserDisplaySettings
@@ -11,10 +12,10 @@ if TYPE_CHECKING:
 DISPLAY_SETTINGS_VERSION = 1
 
 
-class CamelModel(BaseModel):
-    """JSON gửi/nhận dùng camelCase (fontSize) để khớp với frontend."""
-
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+# class CamelModel(BaseModel):
+#     """JSON gửi/nhận dùng camelCase (fontSize) để khớp với frontend."""
+#
+#     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class FocusSettings(CamelModel):
