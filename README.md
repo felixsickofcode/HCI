@@ -5,7 +5,7 @@ Backend (FastAPI + PostgreSQL) của bài tập lớn môn **Tương tác ngư�
 
 Ứng dụng web giúp đọc văn bản tiếng Việt dễ chịu hơn: chuyển bài viết thành giao diện đọc tập trung, hỗ trợ nhiều hồ sơ đọc (đọc nhẹ nhàng, học tiếng Việt, đọc nhanh, chữ lớn), tùy chỉnh hiển thị, đọc to và tra từ ngay tại chỗ. Đây là công cụ hỗ trợ đọc theo triết lý thiết kế phổ quát, **không có chức năng chẩn đoán hay can thiệp y khoa**.
 
-> Repo này hiện chứa **phần backend**. Frontend (React + TailwindCSS) chưa nằm trong repo.
+> Repo này hiện chứa **phần backend**. Frontend (React + TailwindCSS) đã nằm trong repo.
 
 ## Mục lục
 
