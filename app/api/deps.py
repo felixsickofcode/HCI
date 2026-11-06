@@ -1,15 +1,21 @@
 from typing import Annotated
 
-from fastapi import Depends, Header
+import jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core.security import decode_token
 from app.db.session import get_db
+from app.models.user import User
 from app.repositories.display_settings_repository import DisplaySettingsRepository
 from app.repositories.user_repository import UserRepository
 from app.services.display_settings_service import DisplaySettingsService
 from app.services.user_service import UserService
 
 DbSession = Annotated[Session, Depends(get_db)]
+
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def get_user_service(db: DbSession) -> UserService:
@@ -28,16 +34,31 @@ DisplaySettingsServiceDep = Annotated[
 ]
 
 
-# TẠM THỜI (chờ FR-01): đọc id người dùng từ header X-User-Id.
-# Không an toàn, chỉ dùng khi phát triển. Khi FR-01 xong thì viết lại hàm này
-# để đọc id từ token đăng nhập.
-def get_current_user_id(
-    user_service: UserServiceDep,
-    x_user_id: Annotated[
-        int, Header(description="TẠM THỜI: id người dùng, sẽ thay bằng token (FR-01)")
-    ],
-) -> int:
-    return user_service.get_user(x_user_id).id  # không tồn tại -> 404
+def get_current_user(
+    db: DbSession,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+) -> User:
+    unauthorized = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    if credentials is None:
+        raise unauthorized
+
+    try:
+        user_id = decode_token(credentials.credentials)
+    except (jwt.InvalidTokenError, KeyError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user = UserRepository(db).get_by_id(user_id)
+    if not user or not user.is_active:
+        raise unauthorized
+    return user
 
 
-CurrentUserIdDep = Annotated[int, Depends(get_current_user_id)]
+CurrentUser = Annotated[User, Depends(get_current_user)]
