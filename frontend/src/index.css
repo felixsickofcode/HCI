@@ -1,0 +1,49 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Noto+Serif:ital,wght@0,400;0,600;1,400&family=Public+Sans:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    min-width: 320px;
+    background-color: #faf7f2;
+    color: #1b1c1d;
+    font-family: "Inter", sans-serif;
+  }
+
+  body {
+    overscroll-behavior: none;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background-color: #f9e37a;
+    color: #211b00;
+  }
+}
+
+.bg-paper-texture {
+  background-color: #faf7f2;
+  background-image: radial-gradient(rgba(115, 119, 132, 0.12) 0.8px, transparent 0.8px);
+  background-size: 24px 24px;
+}
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  display: inline-block;
+  line-height: 1;
+  text-transform: none;
+  letter-spacing: normal;
+  word-wrap: normal;
+  white-space: nowrap;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}

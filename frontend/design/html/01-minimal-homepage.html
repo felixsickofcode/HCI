@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+
+<html lang="vi"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_standard" name="shell-type"/><title>LexiEase — Nền tảng Đọc Thư Thái &amp; Dễ Tiếp Cận</title><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;family=Noto+Serif:ital,wght@0,400;0,600;1,400&amp;family=Public+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}.bg-paper-texture{background-color:#FAF7F2;background-image:radial-gradient(rgba(115,119,132,0.12) 0.8px,transparent 0.8px);background-size:24px 24px;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={"darkMode":"class","theme":{"extend":{"colors":{"surface-container-highest":"#e3e2e3","on-background":"#1b1c1d","inverse-primary":"#b1c5ff","on-tertiary-fixed":"#211b00","primary-fixed":"#d9e2ff","surface-tint":"#2259bf","on-surface":"#1b1c1d","surface-bright":"#faf9fa","secondary":"#5a5f63","primary-fixed-dim":"#b1c5ff","on-primary-container":"#e7ebff","tertiary-container":"#bfab49","on-secondary-fixed-variant":"#42474b","secondary-fixed":"#dfe3e8","outline-variant":"#c3c6d5","inverse-surface":"#303031","on-surface-variant":"#434653","on-error-container":"#93000a","on-secondary-fixed":"#171c20","tertiary":"#6d5e00","on-tertiary-fixed-variant":"#524600","on-tertiary":"#ffffff","surface-variant":"#e3e2e3","on-primary-fixed":"#001946","on-primary":"#ffffff","on-primary-fixed-variant":"#00419d","primary-container":"#3366cc","error-container":"#ffdad6","surface-dim":"#dbdadb","secondary-fixed-dim":"#c2c7cc","on-tertiary-container":"#4a3f00","surface-container-low":"#f5f3f4","surface":"#faf9fa","inverse-on-surface":"#f2f0f1","tertiary-fixed":"#f9e37a","error":"#ba1a1a","outline":"#737784","on-error":"#ffffff","on-secondary":"#ffffff","surface-container":"#efedee","tertiary-fixed-dim":"#dcc661","on-secondary-container":"#606569","surface-container-high":"#e9e8e9","background":"#faf9fa","surface-container-lowest":"#ffffff","secondary-container":"#dfe3e8","primary":"#094cb2"},"borderRadius":{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},"spacing":{},"fontFamily":{"headline":["Noto Serif"],"display":["Noto Serif"],"body":["Inter"],"label":["Public Sans"]},"fontSize":{}}}}</script></head><body class="bg-paper-texture font-body text-on-surface antialiased selection:bg-tertiary-fixed selection:text-on-tertiary-fixed"><header class="fixed top-0 w-full z-50 bg-[#FAF7F2]/85 backdrop-blur-xl shadow-[0_1px_12px_rgba(27,28,29,0.03)] transition-all duration-300"><div class="h-20 max-w-7xl mx-auto px-6 lg:px-12 flex items-center justify-between"><div class="flex items-center gap-12"><a class="group flex items-center gap-2" data-path="trang-chu" href="#"><span class="font-headline text-2xl tracking-normal text-on-surface font-semibold group-hover:text-primary transition-colors">LexiEase</span><span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span></a><nav class="hidden md:flex items-center gap-1" data-active-classes="text-on-surface font-semibold bg-surface-container/60 rounded-xl"><a aria-current="page" class="px-4 py-2 transition-all text-on-surface font-semibold bg-surface-container/60 rounded-xl" data-path="trang-chu" href="#">Trang chủ</a><a class="px-4 py-2 text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container/40 rounded-xl transition-all" data-path="thu-vien" href="#">Thư viện</a><a class="px-4 py-2 text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container/40 rounded-xl transition-all" data-path="kham-pha" href="#">Khám phá</a></nav></div><div class="flex items-center gap-4"><a class="hidden sm:inline-flex items-center justify-center px-4 py-2 text-sm font-label font-medium rounded-xl text-primary hover:bg-primary/5 transition-all" data-path="doc-sach-tap-trung" href="#">Đọc tiếp</a><a class="block transition-transform hover:scale-105" data-path="ho-so-ca-nhan" href="#"><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></a></div></div></header><main class="w-full pt-20"><div class="flex flex-col w-full">
+<!-- Hero Section -->
+<section class="relative w-full overflow-hidden px-6 lg:px-12 py-16 lg:py-24">
+<!-- Ambient backdrops inside section -->
+<div class="absolute top-12 left-1/2 -translate-x-1/2 w-[700px] h-[340px] bg-tertiary-fixed/20 rounded-full blur-[110px] pointer-events-none -z-10"></div>
+<div class="absolute top-44 right-10 w-[380px] h-[280px] bg-primary-fixed/25 rounded-full blur-[90px] pointer-events-none -z-10"></div>
+<div class="max-w-5xl mx-auto flex flex-col items-center text-center">
+<!-- Minimal tag marker -->
+<div class="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-surface-container-low shadow-sm">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+<span class="text-xs font-label uppercase tracking-widest text-on-surface-variant font-medium">Ấn bản kỹ thuật số thuần khiết</span>
+</div>
+<!-- Main Headline with scholarly serif -->
+<h1 class="mt-8 font-headline text-4xl sm:text-5xl lg:text-6xl text-on-surface tracking-tight leading-[1.18] font-normal max-w-3xl">
+        Trải nghiệm đọc êm dịu, <br class="hidden sm:inline"/>
+<span class="italic font-normal text-primary">không rào cản</span>
+</h1>
+<p class="mt-6 text-base sm:text-lg text-on-surface-variant font-body max-w-2xl font-light leading-relaxed">
+        Không gian văn bản giải phóng áp lực thị giác. Tự động hóa sự thấu hiểu cho mọi nhịp độ tiếp nhận thông tin, mang trả lại niềm hân hoan thuần tuý khi lật từng trang chữ.
+      </p>
+<!-- Soft Paper Drop Zone (Layered Sheet Effect) -->
+<div class="relative w-full max-w-2xl mt-12 group">
+<!-- Underlaid paper sheet 2 -->
+<div class="absolute inset-x-5 -bottom-3 h-20 bg-surface-container rounded-full opacity-60 transition-transform duration-500 group-hover:translate-y-1"></div>
+<!-- Underlaid paper sheet 1 -->
+<div class="absolute inset-x-2 -bottom-1.5 h-20 bg-surface-container-low rounded-full opacity-80 transition-transform duration-300 group-hover:translate-y-0.5"></div>
+<!-- Main Input Card -->
+<div class="relative bg-surface-container-lowest rounded-full p-2.5 sm:p-3 shadow-[0_20px_40px_-15px_rgba(27,28,29,0.06)] flex flex-col sm:flex-row items-center gap-3">
+<div class="flex items-center gap-3.5 pl-4 sm:pl-5 flex-1 w-full text-left">
+<span class="material-symbols-outlined text-outline text-[22px]">auto_stories</span>
+<input class="w-full bg-transparent text-sm sm:text-base text-on-surface placeholder:text-outline/70 focus:outline-none font-body" placeholder="Dán liên kết bài viết, văn bản hoặc kéo thả tập tin..." type="text"/>
+</div>
+<div class="flex items-center gap-2 w-full sm:w-auto justify-end pr-1 pb-1 sm:pb-0">
+<button class="px-4 py-2.5 text-xs font-label text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1.5 rounded-full hover:bg-surface-container-low">
+<span class="material-symbols-outlined text-[18px]">upload_file</span>
+<span>Tải file</span>
+</button>
+<button class="px-6 py-2.5 bg-gradient-to-r from-primary to-primary-container text-on-primary font-label text-xs sm:text-sm font-medium rounded-full shadow-sm hover:shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-2 whitespace-nowrap">
+<span>Đọc ngay</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+</div>
+<div class="mt-4 flex items-center justify-center gap-6 text-xs text-outline font-label">
+<span class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[15px] text-tertiary">verified_user</span> Định dạng hỗ trợ: EPUB, PDF, Web
+          </span>
+<span class="w-1 h-1 rounded-full bg-surface-container-highest"></span>
+<span>Bảo mật tuyệt đối trên thiết bị</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Editorial Philosophy & Visual Showcase -->
+<section class="max-w-7xl mx-auto px-6 lg:px-12 py-12 w-full">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-surface-container-low rounded-full p-8 lg:p-14 relative overflow-hidden">
+<div class="lg:col-span-6 flex flex-col gap-5 z-10">
+<span class="text-xs font-label uppercase tracking-widest text-tertiary font-semibold">Tuyên ngôn thiết kế</span>
+<h2 class="font-headline text-3xl sm:text-4xl text-on-surface font-normal leading-snug">
+          Khi con chữ tìm thấy <br/><em class="font-serif">nhịp điệu thanh thản</em>
+</h2>
+<p class="text-sm sm:text-base text-on-surface-variant font-body leading-relaxed font-light">
+          Người đọc hiện đại bị quá tải bởi ánh sáng xanh gay gắt, mật độ chữ ngột ngạt và bố cục phân mảnh. LexiEase định hình lại trải nghiệm đọc như một nghi thức chậm rãi: mặt phẳng quang học làm dịu đồng tử, nhịp ngắt dòng khoa học và chữ nghĩa thở trong không gian thoáng đạt.
+        </p>
+<div class="pt-4 flex items-center gap-8">
+<div>
+<p class="font-headline text-3xl text-on-surface font-semibold">84%</p>
+<p class="text-xs text-on-surface-variant font-label mt-1">Giảm căng thẳng quang học</p>
+</div>
+<div class="w-px h-8 bg-surface-container-highest"></div>
+<div>
+<p class="font-headline text-3xl text-on-surface font-semibold">2.4x</p>
+<p class="text-xs text-on-surface-variant font-label mt-1">Khả năng neo giữ tiêu điểm</p>
+</div>
+</div>
+</div>
+<div class="lg:col-span-6 relative flex justify-center z-10">
+<div class="relative w-full max-w-md bg-surface-container-lowest rounded-full p-7 shadow-[0_25px_50px_-20px_rgba(27,28,29,0.08)]">
+<!-- Paper layout mockup -->
+<div class="flex items-center justify-between pb-5">
+<div class="flex items-center gap-2">
+<span class="w-2.5 h-2.5 rounded-full bg-tertiary/40"></span>
+<span class="text-xs font-label text-outline uppercase tracking-wider">Trang 04 / Tiểu luận</span>
+</div>
+<span class="text-xs text-outline font-label">Nắng chiều êm</span>
+</div>
+<div class="space-y-4 font-headline text-on-surface text-base sm:text-lg leading-relaxed pt-2">
+<p class="first-letter:text-4xl first-letter:font-normal first-letter:text-tertiary first-letter:float-left first-letter:mr-3 first-letter:leading-none">
+              Ánh sáng xuyên qua khung cửa sổ gỗ, rọi lên mặt giấy màu ngà mịn màng. Không còn những thông báo quấy rầy, chỉ có sự lắng đọng sâu thẳm giữa tâm trí và trang sách.
+            </p>
+<p class="text-on-surface-variant/90 text-sm font-body leading-loose">
+              Từng khoảng cách giữa các từ được căn chỉnh vi mô nhằm ngăn hiện tượng nhòe dòng hoặc đảo chữ vô thức. Mắt lướt nhẹ nhàng, tư duy mở rộng.
+            </p>
+</div>
+<div class="mt-6 pt-4 flex items-center justify-between text-xs text-outline font-label">
+<span class="italic font-serif text-on-surface-variant">Thư viện Alexandria Số</span>
+<span>4 phút đọc</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Core Pillars: 3 Foundations of Accessible Reading -->
+<section class="max-w-7xl mx-auto px-6 lg:px-12 py-20 w-full">
+<div class="text-center max-w-2xl mx-auto mb-16">
+<span class="text-xs font-label uppercase tracking-widest text-tertiary font-semibold">Giá trị cốt lõi</span>
+<h2 class="mt-3 font-headline text-3xl sm:text-4xl text-on-surface font-normal">
+        Ba trụ cột nuôi dưỡng tâm trí
+      </h2>
+<p class="mt-4 text-sm sm:text-base text-on-surface-variant font-body font-light">
+        Sự kết hợp hài hòa giữa nhãn khoa nhận thức, nghệ thuật xếp chữ truyền thống và công nghệ hỗ trợ nhân văn.
+      </p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+<!-- Pillar 1 -->
+<div class="bg-surface-container-lowest rounded-full p-8 sm:p-10 shadow-[0_12px_32px_-12px_rgba(27,28,29,0.04)] hover:shadow-[0_20px_40px_-15px_rgba(27,28,29,0.08)] transition-all duration-300 flex flex-col justify-between">
+<div>
+<div class="w-12 h-12 rounded-full bg-surface-container-low flex items-center justify-center text-primary mb-6">
+<span class="material-symbols-outlined text-[26px]">format_shapes</span>
+</div>
+<h3 class="font-headline text-xl text-on-surface font-semibold mb-3">Kiến trúc ký tự định vị</h3>
+<p class="text-sm text-on-surface-variant font-body leading-relaxed font-light">
+            Các nét chữ sở hữu trọng tâm chân đế dày dặn, loại bỏ hiện tượng nhầm lẫn đối xứng thường gặp ở những chữ cái tương đồng như b/d, p/q.
+          </p>
+</div>
+<div class="mt-8 pt-6 bg-surface-container-low/60 rounded-full p-4">
+<div class="flex items-center justify-between text-xs font-label text-outline mb-2">
+<span>Độ phân giải nhận diện</span>
+<span class="text-on-surface font-medium">99.2%</span>
+</div>
+<div class="w-full bg-surface-container h-1.5 rounded-full overflow-hidden">
+<div class="bg-primary h-full w-[94%] rounded-full"></div>
+</div>
+</div>
+</div>
+<!-- Pillar 2 -->
+<div class="bg-surface-container-lowest rounded-full p-8 sm:p-10 shadow-[0_12px_32px_-12px_rgba(27,28,29,0.04)] hover:shadow-[0_20px_40px_-15px_rgba(27,28,29,0.08)] transition-all duration-300 flex flex-col justify-between">
+<div>
+<div class="w-12 h-12 rounded-full bg-surface-container-low flex items-center justify-center text-tertiary mb-6">
+<span class="material-symbols-outlined text-[26px]">visibility</span>
+</div>
+<h3 class="font-headline text-xl text-on-surface font-semibold mb-3">Dẫn nhịp quang học tự nhiên</h3>
+<p class="text-sm text-on-surface-variant font-body leading-relaxed font-light">
+            Lớp phủ gradient sắc độ tối giản giúp mắt chuyển hàng mượt mà, ngăn hiện tượng lặp dòng mà không gây ngắt quãng dòng suy tưởng.
+          </p>
+</div>
+<div class="mt-8 pt-6 bg-surface-container-low/60 rounded-full p-4">
+<div class="flex items-center justify-between text-xs font-label text-outline mb-2">
+<span>Ổn định tiêu cự mắt</span>
+<span class="text-on-surface font-medium">Êm dịu</span>
+</div>
+<div class="w-full bg-surface-container h-1.5 rounded-full overflow-hidden">
+<div class="bg-tertiary h-full w-[88%] rounded-full"></div>
+</div>
+</div>
+</div>
+<!-- Pillar 3 -->
+<div class="bg-surface-container-lowest rounded-full p-8 sm:p-10 shadow-[0_12px_32px_-12px_rgba(27,28,29,0.04)] hover:shadow-[0_20px_40px_-15px_rgba(27,28,29,0.08)] transition-all duration-300 flex flex-col justify-between">
+<div>
+<div class="w-12 h-12 rounded-full bg-surface-container-low flex items-center justify-center text-on-surface mb-6">
+<span class="material-symbols-outlined text-[26px]">graphic_eq</span>
+</div>
+<h3 class="font-headline text-xl text-on-surface font-semibold mb-3">Âm thanh đồng hành thinh lặng</h3>
+<p class="text-sm text-on-surface-variant font-body leading-relaxed font-light">
+            Giọng đọc AI ngữ điệu tự nhiên, ấm áp như người bạn đồng hành. Có thể chuyển đổi tức thì sang chế độ đọc bằng tai khi đôi mắt cần nghỉ ngơi.
+          </p>
+</div>
+<div class="mt-8 pt-6 bg-surface-container-low/60 rounded-full p-4">
+<div class="flex items-center justify-between text-xs font-label text-outline mb-2">
+<span>Ngữ điệu truyền cảm</span>
+<span class="text-on-surface font-medium">Tự nhiên</span>
+</div>
+<div class="w-full bg-surface-container h-1.5 rounded-full overflow-hidden">
+<div class="bg-on-surface h-full w-[96%] rounded-full"></div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Curated Readings Section (Tuyển tập tuyển chọn) -->
+<section class="max-w-7xl mx-auto px-6 lg:px-12 py-16 w-full">
+<div class="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
+<div>
+<span class="text-xs font-label uppercase tracking-widest text-tertiary font-semibold">Tủ sách tuyển chọn</span>
+<h2 class="mt-3 font-headline text-3xl text-on-surface font-normal">
+          Những áng văn xoa dịu tâm trí
+        </h2>
+</div>
+<a class="inline-flex items-center gap-2 text-sm font-label text-primary hover:underline font-medium" data-path="thu-vien" href="#">
+<span>Xem toàn bộ thư viện</span>
+<span class="material-symbols-outlined text-[18px]">north_east</span>
+</a>
+</div>
+<!-- Cards Grid -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+<!-- Reading Card 1 -->
+<article class="group bg-surface-container-lowest rounded-full overflow-hidden shadow-[0_12px_30px_-15px_rgba(27,28,29,0.05)] hover:shadow-[0_24px_45px_-18px_rgba(27,28,29,0.1)] transition-all duration-300 flex flex-col">
+<div class="relative h-56 overflow-hidden">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="A serene minimalist still-life photograph featuring an open classical book resting beside dried wildflowers on warm ivory linen cloth, illuminated by soft golden morning window light with gentle shadows, fine art aesthetic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCRtYABG6jtVZEh3_4pysZhB4NZXmogBE95OR2w0NPzxsM3abf6TKcmKi3iIbtmRsT88KNtr-30L0GFu3Q1eTzeV26njAG_xsP81dteeW1JDIjw95aoyPYPmT3r6qUtza9dI5lcJikgTrTG6CP7fRGU-7xd-3iv694uvs2EmJqEk-LxhYoztLgLLvDqkcKbtFxuvCQcJI6APk8ZOUWjjURlTxfsqhajJvf9jzqRwYW-"/>
+<div class="absolute top-4 left-4">
+<span class="px-3 py-1 rounded-full text-xs font-label font-medium bg-surface-container-lowest/90 backdrop-blur-md text-on-surface shadow-sm">
+              Triết học &amp; Lối sống
+            </span>
+</div>
+</div>
+<div class="p-7 flex flex-col flex-1 justify-between">
+<div>
+<div class="flex items-center gap-3 text-xs text-outline font-label mb-2">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[15px]">schedule</span> 6 phút đọc
+              </span>
+<span class="w-1 h-1 rounded-full bg-surface-container-highest"></span>
+<span class="text-tertiary font-medium">Mức dịu mắt: 100%</span>
+</div>
+<h3 class="font-headline text-xl text-on-surface font-medium leading-snug group-hover:text-primary transition-colors">
+              Nghệ thuật thinh lặng: Tìm lại sự tập trung giữa thời đại náo nhiệt
+            </h3>
+<p class="mt-3 text-xs sm:text-sm text-on-surface-variant font-body leading-relaxed font-light line-clamp-3">
+              Những trích đoạn chiêm nghiệm sâu sắc của triết gia Marcus Aurelius về việc giữ gìn khoảng lặng bên trong nội tâm để thấu tỏ tri thức cuộc đời.
+            </p>
+</div>
+<div class="mt-6 pt-5 flex items-center justify-between">
+<span class="text-xs text-on-surface-variant font-label">Tác giả: H. Đặng dịch</span>
+<a class="w-8 h-8 rounded-full bg-surface-container-low flex items-center justify-center text-on-surface group-hover:bg-primary group-hover:text-on-primary transition-colors" data-path="doc-sach-tap-trung" href="#">
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</a>
+</div>
+</div>
+</article>
+<!-- Reading Card 2 -->
+<article class="group bg-surface-container-lowest rounded-full overflow-hidden shadow-[0_12px_30px_-15px_rgba(27,28,29,0.05)] hover:shadow-[0_24px_45px_-18px_rgba(27,28,29,0.1)] transition-all duration-300 flex flex-col">
+<div class="relative h-56 overflow-hidden">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="A tranquil architectural study of an ancient Japanese stone garden with subtle raked sand ripples and smooth mossy pebbles, cast in diffuse natural daylight, quiet and contemplative mood in earth tones" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB6qkob3qSd5ZhtggXaaZDL3RJevlEsNyHEf1jToLVUPB8F9P9QADwx5nu03g7N5W-G0mTuLFtyYY_JvWZLnxECDZJtU4eRsje4089f5DQU2GLrkP5eCs7g4PBE1hIOSen82PWkklxoW7_eU5Bf78gl-pIHOUUwWBrE-1Z36RGEAw7KVDA-pN5KZIZfzO47_6f6GxS0_uavocrYzFNzbdQo3bviTuCKAOE16uDC-7Wo"/>
+<div class="absolute top-4 left-4">
+<span class="px-3 py-1 rounded-full text-xs font-label font-medium bg-surface-container-lowest/90 backdrop-blur-md text-on-surface shadow-sm">
+              Khoa học Nhận thức
+            </span>
+</div>
+</div>
+<div class="p-7 flex flex-col flex-1 justify-between">
+<div>
+<div class="flex items-center gap-3 text-xs text-outline font-label mb-2">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[15px]">schedule</span> 9 phút đọc
+              </span>
+<span class="w-1 h-1 rounded-full bg-surface-container-highest"></span>
+<span class="text-tertiary font-medium">Mức dịu mắt: 98%</span>
+</div>
+<h3 class="font-headline text-xl text-on-surface font-medium leading-snug group-hover:text-primary transition-colors">
+              Nhịp điệu sinh học của đôi mắt và sự tiếp nhận ngôn từ
+            </h3>
+<p class="mt-3 text-xs sm:text-sm text-on-surface-variant font-body leading-relaxed font-light line-clamp-3">
+              Cách bộ não chúng ta giải mã các ký tự hình học trong vô thức và vì sao độ tương phản mềm mại lại giúp tăng khả năng ghi nhớ lâu dài.
+            </p>
+</div>
+<div class="mt-6 pt-5 flex items-center justify-between">
+<span class="text-xs text-on-surface-variant font-label">Tác giả: Viện Thị Giác</span>
+<a class="w-8 h-8 rounded-full bg-surface-container-low flex items-center justify-center text-on-surface group-hover:bg-primary group-hover:text-on-primary transition-colors" data-path="doc-sach-tap-trung" href="#">
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</a>
+</div>
+</div>
+</article>
+<!-- Reading Card 3 -->
+<article class="group bg-surface-container-lowest rounded-full overflow-hidden shadow-[0_12px_30px_-15px_rgba(27,28,29,0.05)] hover:shadow-[0_24px_45px_-18px_rgba(27,28,29,0.1)] transition-all duration-300 flex flex-col">
+<div class="relative h-56 overflow-hidden">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="An ethereal fine-art photograph of delicate ceramic tea bowl with fine craquelure glaze resting on raw unpolished wood in an airy contemporary tearoom with diffuse morning mist outside" src="https://lh3.googleusercontent.com/aida-public/AB6AXuASKHcC7zkcOEk77oNW1de67WePOKRawtcyPE6eWyFQK7GeUPjBe9hUuG7LeLVna_yAAVd-xtg907UfZZz3nwJ1qI_iPXhAf56GDCuV31LGv8O3bF2Kf4s_LljPfuLOSmZW6E33pKPh1FKxLxexpWZSEAg5NS-otqKnvJar2WFsvCUgTn8LiayahyYh3xvwoRQY0FDU6fDMLj767ud2aPDOHNHm3AHto4siq8izC1dx"/>
+<div class="absolute top-4 left-4">
+<span class="px-3 py-1 rounded-full text-xs font-label font-medium bg-surface-container-lowest/90 backdrop-blur-md text-on-surface shadow-sm">
+              Văn học &amp; Nghệ thuật
+            </span>
+</div>
+</div>
+<div class="p-7 flex flex-col flex-1 justify-between">
+<div>
+<div class="flex items-center gap-3 text-xs text-outline font-label mb-2">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[15px]">schedule</span> 5 phút đọc
+              </span>
+<span class="w-1 h-1 rounded-full bg-surface-container-highest"></span>
+<span class="text-tertiary font-medium">Mức dịu mắt: 100%</span>
+</div>
+<h3 class="font-headline text-xl text-on-surface font-medium leading-snug group-hover:text-primary transition-colors">
+              Mùi giấy cũ và hơi ấm của những thư viện cổ kính
+            </h3>
+<p class="mt-3 text-xs sm:text-sm text-on-surface-variant font-body leading-relaxed font-light line-clamp-3">
+              Tản văn hoài niệm về cảm giác ngắm nhìn những vết mực in thủ công trên nền giấy xơ gai dầu, nơi ký ức văn hóa được lưu giữ trọn vẹn.
+            </p>
+</div>
+<div class="mt-6 pt-5 flex items-center justify-between">
+<span class="text-xs text-on-surface-variant font-label">Tác giả: Thạch Lam tuyển</span>
+<a class="w-8 h-8 rounded-full bg-surface-container-low flex items-center justify-center text-on-surface group-hover:bg-primary group-hover:text-on-primary transition-colors" data-path="doc-sach-tap-trung" href="#">
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</a>
+</div>
+</div>
+</article>
+</div>
+</section>
+<!-- Gentle Call to Action: Focus Mode Invitation -->
+<section class="max-w-5xl mx-auto px-6 lg:px-12 py-16 w-full text-center">
+<div class="bg-surface-container rounded-full p-10 sm:p-14 relative overflow-hidden shadow-sm">
+<div class="max-w-xl mx-auto relative z-10 flex flex-col items-center">
+<span class="material-symbols-outlined text-tertiary text-3xl mb-4">spa</span>
+<h3 class="font-headline text-2xl sm:text-3xl text-on-surface font-normal">
+          Hãy để đôi mắt được nghỉ ngơi chiều nay
+        </h3>
+<p class="mt-3 text-sm text-on-surface-variant font-body font-light leading-relaxed">
+          Không cần cài đặt phức tạp. Chỉ cần mở một văn bản bạn yêu thích và bắt đầu bước vào không gian tĩnh tại được thiết kế riêng cho bạn.
+        </p>
+<div class="mt-8 flex flex-col sm:flex-row items-center gap-4">
+<a class="px-8 py-3 rounded-full bg-primary text-on-primary text-sm font-label font-medium shadow-sm hover:shadow transition-all hover:bg-primary-container" data-path="doc-sach-tap-trung" href="#">
+            Bắt đầu đọc thử
+          </a>
+<a class="px-6 py-3 rounded-full bg-surface-container-lowest text-on-surface text-sm font-label font-medium hover:bg-surface-bright transition-colors" data-path="kham-pha" href="#">
+            Khám phá phương pháp
+          </a>
+</div>
+</div>
+</div>
+</section>
+</div></main><footer class="w-full bg-[#FAF7F2]/90 backdrop-blur-md mt-24 py-16 shadow-[0_-2px_16px_rgba(27,28,29,0.02)]"><div class="max-w-7xl mx-auto px-6 lg:px-12 flex flex-col md:flex-row items-center justify-between gap-8"><div class="flex flex-col items-center md:items-start gap-2"><div class="flex items-center gap-2"><span class="font-headline text-lg font-semibold text-on-surface">LexiEase</span><span class="text-xs font-label text-tertiary uppercase tracking-wider px-2 py-0.5 rounded-lg bg-tertiary-fixed/30">Accessible Reading</span></div><p class="text-xs text-on-surface-variant text-center md:text-left font-body max-w-sm leading-relaxed">Không gian đọc dịu mắt, hỗ trợ toàn diện tư duy và sự tập trung với ngôn ngữ hình thức ấm áp.</p></div><nav class="flex items-center gap-6 text-xs text-on-surface-variant font-label" data-active-classes="text-on-surface font-medium"><a class="hover:text-on-surface transition-colors" data-path="nguyen-ly-thiet-ke" href="#">Nguyên lý đọc</a><a class="hover:text-on-surface transition-colors" data-path="tro-giup-va-ho-tro" href="#">Hỗ trợ</a><a class="hover:text-on-surface transition-colors" data-path="chinh-sach-rieng-tu" href="#">Quyền riêng tư</a></nav><div class="text-xs text-on-surface-variant/70 font-label tracking-wide">© 2025 LexiEase. Nuôi dưỡng từng con chữ.</div></div></footer></body></html>
