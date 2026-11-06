@@ -90,20 +90,23 @@ def client():
 
 @pytest.fixture
 def create_user(client):
-    """Trả về hàm tạo user qua API và cho biết id."""
+    """Tạo user qua API, đăng nhập lấy token. Trả về (user_id, headers)."""
     counter = {"n": 0}
 
-    def _create(email: str | None = None) -> int:
+    def _create(email: str | None = None) -> tuple[int, dict]:
         counter["n"] += 1
+        email = email or f"user{counter['n']}@example.com"
+        password = "password123"
         response = client.post(
             "/api/v1/users",
-            json={
-                "email": email or f"user{counter['n']}@example.com",
-                "full_name": "Test User",
-                "password": "password123",
-            },
+            json={"email": email, "full_name": "Test User", "password": password},
         )
         assert response.status_code == 201, response.text
-        return response.json()["id"]
+        user_id = response.json()["id"]
+
+        login = client.post("/api/v1/auth/login", json={"email": email, "password": password})
+        assert login.status_code == 200, login.text
+        token = login.json()["access_token"]
+        return user_id, {"Authorization": f"Bearer {token}"}
 
     return _create

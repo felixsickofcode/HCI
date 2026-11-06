@@ -106,10 +106,10 @@ export const Header: React.FC<HeaderProps> = ({ className = '' }) => {
                 className="flex items-center gap-2 rounded-full p-1 pr-1.5 transition-colors hover:bg-surface-container/70 sm:pr-2"
               >
                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-container text-xs font-label font-semibold text-on-primary shadow-sm">
-                  {getInitials(user.full_name, user.email)}
+                  {getInitials(user.fullName, user.email)}
                 </span>
                 <span className="hidden max-w-[130px] truncate text-sm font-medium text-on-surface sm:block">
-                  {user.full_name}
+                  {user.fullName}
                 </span>
                 <span className="material-symbols-outlined hidden text-[18px] text-outline sm:block">
                   expand_more
@@ -119,7 +119,7 @@ export const Header: React.FC<HeaderProps> = ({ className = '' }) => {
               {menuOpen && (
                 <div className="absolute right-0 mt-2 w-64 overflow-hidden rounded-2xl border border-surface-container bg-surface-container-lowest p-2 shadow-card-hover">
                   <div className="px-3 py-2">
-                    <p className="truncate text-sm font-semibold text-on-surface">{user.full_name}</p>
+                    <p className="truncate text-sm font-semibold text-on-surface">{user.fullName}</p>
                     <p className="truncate text-xs text-on-surface-variant">{user.email}</p>
                   </div>
                   <div className="my-1 h-px bg-surface-container" />
