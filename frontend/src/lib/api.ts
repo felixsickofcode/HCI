@@ -89,3 +89,36 @@ export const register = (email: string, full_name: string | null, password: stri
   });
 
 export const getMe = () => apiFetch<AuthUser>("/auth/me");
+
+export type FontFamily = "lexend" | "arial" | "verdana" | "opendyslexic";
+export type ThemeName = "cream" | "mint" | "blue" | "dark";
+
+export interface FocusSettings {
+  enabled: boolean;
+  dimOpacity: number;
+  followPointer: boolean;
+}
+
+export interface DisplaySettings {
+  fontFamily: FontFamily;
+  fontSize: number;
+  lineHeight: number;
+  letterSpacing: number;
+  theme: ThemeName;
+  columnWidth: number;
+  focus: FocusSettings;
+}
+
+export interface DisplaySettingsRead {
+  version: number;
+  updatedAt: string;
+  display: DisplaySettings;
+}
+
+export const getDisplaySettings = () => apiFetch<DisplaySettingsRead>("/me/display-settings");
+
+export const saveDisplaySettings = (display: DisplaySettings) =>
+  apiFetch<DisplaySettingsRead>("/me/display-settings", {
+    method: "PUT",
+    body: JSON.stringify({ display }),
+  });
