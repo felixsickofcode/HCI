@@ -32,3 +32,8 @@ pwdlib[argon2]
 email-validator
 PyJWT==2.15.1
 pydantic-settings==2.15.0
+pillow==11.3.0
+pypdf==5.9.0
+pypdfium2==4.30.0
+pytesseract==0.3.13
+python-multipart==0.0.20
