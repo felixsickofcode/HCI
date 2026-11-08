@@ -38,62 +38,90 @@ Backend (FastAPI + PostgreSQL) của bài tập lớn môn **Tương tác ngư�
 
 ## 2. Trạng thái chức năng
 
-Mã chức năng theo bảng yêu cầu của nhóm. Bảng dưới chỉ ghi các chức năng ưu tiên **M** (bắt buộc) và tình trạng **phía backend**. Mỗi người cập nhật cột trạng thái khi merge.
+---
 
-| Mã    | Chức năng                                              | Backend                                                                              |
-| ----- | ------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| FR-01 | Đăng nhập để đồng bộ (hoặc dùng ẩn danh, lưu trên máy) | Chưa làm (xem [mục 9](#9-việc-còn-tồn-đọng-và-điểm-cần-chốt)). Đã có CRUD người dùng |
-| FR-02 | Nhập văn bản: dán, PDF, ảnh (OCR tiếng Việt)           | Chưa làm                                                                             |
-| FR-03 | Tùy chỉnh hiển thị và chế độ tập trung tô sáng dòng    | Gần như thuần frontend, backend không cần                                            |
-| FR-04 | Đọc thành tiếng tiếng Việt, tô sáng theo lời đọc       | Chưa làm                                                                             |
-| FR-05 | Lưu hồ sơ cài đặt và áp dụng cho mọi tài liệu          | **Xong**: API `display-settings` (xem [mục 6](#6-api-hiện-có))                       |
+## 🚀 Tính Năng Cốt Lõi (MVP & Nhánh `feature/fr-03`)
 
-Các chức năng ưu tiên S và C (giải thích từ khó, thư viện tài liệu, tóm tắt, phản hồi giọng đọc, hỏi đáp, câu hỏi kiểm tra hiểu, theo dõi tiến độ) làm sau.
+1. **Quản lý Người dùng & Xác thực (`FR-01`):**
+   - Đăng ký, đăng nhập và quản lý phiên làm việc qua `AuthProvider`.
+   - Hỗ trợ đồng bộ hóa hồ sơ cài đặt cá nhân trên máy chủ hoặc sử dụng chế độ khách (lưu trữ tức thì trên `localStorage`).
+2. **Tùy chỉnh Hiển thị Chuyên biệt cho Dyslexia (`FR-03`):**
+   - **Phông chữ thân thiện:** Hỗ trợ chuyển đổi mượt mà giữa `OpenDyslexic`, `Lexend`, `Arial`, và `Verdana`.
+   - **Kiểm soát khoảng cách chống "Dính chữ" (Anti-Crowding):** Tùy chỉnh cỡ chữ (`16px – 36px`), độ giãn dòng (`1.2 – 3.0`), độ giãn chữ (`0.0em – 0.3em`) và giới hạn độ rộng cột đọc (`45ch – 75ch`, căn lề trái tuyệt đối).
+   - **Bảng màu chống chói (Anti-Irlen / Visual Stress):** Loại bỏ nền trắng thuần gây mỏi mắt, cung cấp các chủ đề màu pastel đạt độ tương phản chuẩn WCAG (Vàng kem `#FBF0D9`, Xanh dịu `#E8F5E9`, Xanh dương nhạt `#EBF8FF`, và Chế độ tối `#1A202C`).
+   - **Phản hồi tức thì (`NFR-03`):** Mọi thay đổi hiển thị có hiệu lực ngay lập tức trên giao diện đọc (`MinimalReadingView`) thông qua React Context & CSS Variables mà không cần tải lại trang.
+3. **Chế độ Tập trung – Thước Đọc Bám Dòng (`FR-03 Focus Mode`):**
+   - Tô sáng `100%` dòng văn bản đang đọc và làm mờ `70%` các dòng xung quanh để chống hiện tượng nhảy dòng (regression).
+   - Hỗ trợ di chuyển tiêu điểm dòng bằng con trỏ chuột hoặc phím điều hướng `↑` / `↓`.
+4. **Lưu & Đồng bộ Hồ sơ Cài đặt (`FR-05`):**
+   - RESTful API `/api/v1/me/display-settings` cho phép lưu trữ, truy xuất và tự động áp dụng cấu hình hiển thị yêu thích của từng người dùng cho mọi bài đọc tiếp theo.
+
+---
 
 ## 3. Cấu trúc thư mục
 
 ```
 HCI/
-├── app/                              # toàn bộ code backend
-│   ├── main.py                       # tạo ứng dụng FastAPI, gắn router, bắt lỗi chung, /health
+├── app/                                      # Toàn bộ mã nguồn Backend (Clean Layered Architecture)
+│   ├── main.py                               # Khởi tạo ứng dụng FastAPI, gắn router, xử lý lỗi chung, /health
 │   ├── api/
-│   │   ├── deps.py                   # lắp ráp: phiên DB -> repository -> service; xác định người dùng hiện tại
+│   │   ├── deps.py                           # Dependency Injection: DB session -> Repository -> Service -> Current User
 │   │   └── v1/
-│   │       ├── router.py             # gom các nhóm endpoint
+│   │       ├── router.py                     # Gom các nhóm endpoint v1
 │   │       └── endpoints/
-│   │           ├── users.py          # /users
-│   │           └── display_settings.py   # /me/display-settings
-│   ├── schemas/                      # khuôn dữ liệu vào/ra (Pydantic), kiểm tra dải giá trị
+│   │           ├── users.py                  # Quản lý người dùng (/users)
+│   │           └── display_settings.py       # Quản lý cấu hình hiển thị (/me/display-settings)
+│   ├── schemas/                              # Pydantic Schemas (kiểm tra kiểu và dải giá trị đầu vào/đầu ra)
 │   │   ├── user.py
 │   │   └── display_settings.py
-│   ├── services/                     # luật nghiệp vụ
+│   ├── services/                             # Tầng xử lý luật nghiệp vụ (Business Logic)
 │   │   ├── user_service.py
 │   │   └── display_settings_service.py
-│   ├── repositories/                 # truy cập database, không chứa luật nghiệp vụ
+│   ├── repositories/                         # Tầng truy xuất Database trực tiếp (Data Access Layer)
 │   │   ├── user_repository.py
 │   │   └── display_settings_repository.py
-│   ├── models/                       # định nghĩa bảng (SQLAlchemy)
+│   ├── models/                               # Định nghĩa bảng cơ sở dữ liệu (SQLAlchemy ORM)
 │   │   ├── user.py
 │   │   └── display_settings.py
 │   ├── db/
-│   │   ├── base.py                   # lớp cha Base của mọi model
-│   │   └── session.py                # kết nối PostgreSQL, hàm get_db (mỗi yêu cầu một phiên)
+│   │   ├── base.py                           # Lớp cha Base của toàn bộ SQLAlchemy models
+│   │   └── session.py                        # Khởi tạo kết nối PostgreSQL & dependency get_db
 │   └── core/
-│       ├── config.py                 # đọc cấu hình từ .env
-│       ├── exceptions.py             # lỗi ứng dụng kèm mã HTTP
-│       └── security.py               # băm và kiểm tra mật khẩu
-├── alembic/                          # quản lý thay đổi cấu trúc database
+│       ├── config.py                         # Đọc cấu hình hệ thống từ biến môi trường (.env)
+│       ├── exceptions.py                     # Định nghĩa ngoại lệ ứng dụng kèm mã HTTP chuẩn
+│       └── security.py                       # Băm mật khẩu và xác thực bảo mật
+├── alembic/                                  # Quản lý phiên bản và migration cho PostgreSQL
 │   ├── env.py
-│   ├── script.py.mako                # khuôn file migration mới
-│   └── versions/                     # mỗi file là một bước migration
-├── tests/
-│   ├── conftest.py                   # dùng database riêng *_test, dọn dữ liệu sau mỗi test
-│   └── test_display_settings.py
-├── alembic.ini
-├── pytest.ini
-├── requirements.txt
-├── .env.example                      # mẫu cấu hình (copy thành .env)
-└── test_main.http                    # file gọi thử cũ của PyCharm (đã lỗi thời)
+│   ├── script.py.mako
+│   └── versions/
+├── tests/                                    # Bộ kiểm thử tự động Backend
+│   ├── conftest.py                           # Cấu hình fixture DB *_test và dọn dữ liệu sau mỗi test
+│   └── test_display_settings.py              # Unit/Integration test cho API FR-03 Display Settings
+├── frontend/                                 # Toàn bộ mã nguồn Frontend (React + TypeScript)
+│   ├── design/                               # Bản thiết kế giao diện tĩnh (HTML, ảnh chụp màn hình & DESIGN.md)
+│   ├── public/                               # Tài nguyên tĩnh (favicon.svg, icons.svg)
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── common/                       # Các component dùng chung: AudioPlayerCapsule, Badge, Button, Card, Input
+│   │   │   └── layout/                       # Bố cục khung: Header, Footer
+│   │   ├── context/                          # Quản lý trạng thái toàn cục (AuthProvider, DisplaySettings...)
+│   │   ├── lib/
+│   │   │   └── api.ts                        # Cấu hình HTTP client kết nối Backend FastAPI
+│   │   ├── mocks/                            # Dữ liệu mẫu phục vụ phát triển (articles, navigation, pillars)
+│   │   ├── screens/
+│   │   │   ├── Auth/                         # Màn hình Đăng nhập / Đăng ký
+│   │   │   ├── MinimalHomepage/              # Trang chủ tối giản & danh mục bài đọc
+│   │   │   └── MinimalReadingView/           # Màn hình đọc văn bản chính tích hợp tùy chỉnh FR-03 & Focus Mode
+│   │   ├── App.tsx
+│   │   ├── index.css
+│   │   └── main.tsx
+│   ├── package.json
+│   ├── tailwind.config.js
+│   └── tsconfig.json
+├── .env.example                              # File mẫu cấu hình biến môi trường
+├── alembic.ini                               # Cấu hình công cụ migration Alembic
+├── pytest.ini                                # Cấu hình chạy kiểm thử Pytest
+└── requirements.txt                          # Danh sách thư viện Python cần thiết
 ```
 
 ### Kiến trúc 4 lớp
