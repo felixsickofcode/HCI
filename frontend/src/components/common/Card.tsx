@@ -158,7 +158,7 @@ export interface ManuscriptCardProps {
 export const ManuscriptCard: React.FC<ManuscriptCardProps> = ({ children, className = '' }) => {
   return (
     <article
-      className={`w-full max-w-[760px] bg-transparent-container-lowest rounded-xl shadow-manuscript transition-all duration-500 ease-out px-7 py-12 sm:px-14 sm:py-16 md:px-20 md:py-20 relative select-text ${className}`}
+      className={`w-full max-w-[1200px] bg-transparent rounded-xl shadow-manuscript transition-all duration-500 ease-out px-5 py-12 sm:px-8 sm:py-16 md:px-10 md:py-20 relative select-text ${className}`}
     >
       {children}
     </article>

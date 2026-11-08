@@ -90,8 +90,8 @@ export const register = (email: string, full_name: string | null, password: stri
 
 export const getMe = () => apiFetch<AuthUser>("/auth/me");
 
-export type FontFamily = "lexend" | "arial" | "verdana" | "opendyslexic";
-export type ThemeName = "cream" | "mint" | "blue" | "dark";
+export type FontFamily = "lexend" | "arial" | "verdana" | "opendyslexic" | "merriweather";
+export type ThemeName = "cream" | "mint" | "blue" | "dark" | "navy";
 
 export interface FocusSettings {
   enabled: boolean;
