@@ -5,7 +5,7 @@ Backend (FastAPI + PostgreSQL) của bài tập lớn môn **Tương tác ngư�
 
 Ứng dụng web giúp đọc văn bản tiếng Việt dễ chịu hơn: chuyển bài viết thành giao diện đọc tập trung, hỗ trợ nhiều hồ sơ đọc (đọc nhẹ nhàng, học tiếng Việt, đọc nhanh, chữ lớn), tùy chỉnh hiển thị, đọc to và tra từ ngay tại chỗ. Đây là công cụ hỗ trợ đọc theo triết lý thiết kế phổ quát, **không có chức năng chẩn đoán hay can thiệp y khoa**.
 
-> Repo này hiện chứa **phần backend**. Frontend (React + TailwindCSS) chưa nằm trong repo.
+> Repo này hiện chứa **phần backend**. Frontend (React + TailwindCSS) đã nằm trong repo.
 
 ## Mục lục
 
@@ -322,7 +322,7 @@ python -m pytest
 | 4   | ~~`requirements.txt` mã hóa UTF-16~~                                                                                           | ✅ Đã xong | File hiện là UTF-8 thường, gộp nhánh không còn bị coi là file nhị phân nữa                                                                      |
 | 5   | `requirements.txt` **thiếu** `pydantic-settings`, `pwdlib`, `pyjwt`, dù `app/core/config.py` và `app/core/security.py` đang import các thư viện này | ⬜ Chưa xong | Cài sẵn trên máy mỗi người nên chưa ai để ý; máy sạch (`pip install -r requirements.txt`) sẽ lỗi `ModuleNotFoundError`. Cần `pip install pydantic-settings "pwdlib[argon2]" pyjwt` rồi thêm đúng version vào file |
 | 6   | `test_main.http` **lỗi thời** (gọi `/` và `/hello/User`, hai route này không còn tồn tại; route hiện tại là `/health`)         | ⬜ Chưa xong | Cập nhật lại các request mẫu hoặc xóa file này                                                                                                 |
-| 7   | **Tên trường JSON chưa thống nhất**: `users` dùng snake_case (`full_name`), `display-settings` dùng camelCase (`fontSize`)    | ⬜ Chưa chốt | Nhóm chốt một quy ước chung cho các API sau này                                                                                                |
+| 7   | **Tên trường JSON chưa thống nhất**: `users` dùng snake_case (`full_name`), `display-settings` dùng camelCase (`fontSize`)    | ✅ Đã xong | Thống nhất dùng camelCase cho toàn bộ API qua CamelModel, ngoại trừ chuẩn OAuth2 (access_token) giữ nguyên                                        |
 | 8   | ~~Chưa có thư mục `frontend/`~~                                                                                                | ✅ Đã xong | FE (Vite + React + TailwindCSS) đã được gộp vào `frontend/` trong cùng repo, không còn tách repo riêng                                         |
 | 9   | **Chưa quyết định có lưu văn bản người dùng nhập trên máy chủ không** (liên quan FR-02, FR-07)                                 | ⬜ Chưa chốt | Đề xuất giai đoạn đầu **không lưu**: máy chủ chỉ trích xuất và trả về văn bản, không ghi vào DB và không ghi nội dung vào log                  |
 

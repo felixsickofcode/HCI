@@ -1,13 +1,46 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TagMarker, DropZoneInput } from '../../../components/common';
+import { useDocument } from '../../../context';
 
 export const HeroSection: React.FC = () => {
   const navigate = useNavigate();
+  const { submitPastedText, submitFile } = useDocument();
   const [inputValue, setInputValue] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const handleStartReading = () => {
-    navigate('/reading');
+    try {
+      submitPastedText(inputValue);
+      navigate('/reading');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Đã xảy ra lỗi. Vui lòng thử lại.');
+    }
+  };
+
+  const handleFileSelect = async (file: File) => {
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setError(null);
+    setFileName(file.name);
+    setIsLoading(true);
+    try {
+      await submitFile(file, controller.signal);
+      navigate('/reading');
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setError(err instanceof Error ? err.message : 'Đã xảy ra lỗi. Vui lòng thử lại.');
+    } finally {
+      abortRef.current = null;
+      setIsLoading(false);
+    }
+  };
+
+  const handleCancel = () => {
+    abortRef.current?.abort();
   };
 
   return (
@@ -34,9 +67,16 @@ export const HeroSection: React.FC = () => {
         <div className="mt-12 w-full flex justify-center">
           <DropZoneInput
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              setError(null);
+            }}
             onSubmit={handleStartReading}
-            onUploadClick={handleStartReading}
+            onFileSelect={handleFileSelect}
+            onCancel={handleCancel}
+            isLoading={isLoading}
+            error={error}
+            fileName={fileName}
           />
         </div>
 
@@ -46,10 +86,10 @@ export const HeroSection: React.FC = () => {
             <span className="material-symbols-outlined text-[15px] text-tertiary">
               verified_user
             </span>{' '}
-            Định dạng hỗ trợ: EPUB, PDF, Web
+            Định dạng hỗ trợ: PDF, PNG, JPEG, WebP hoặc văn bản dán
           </span>
           <span className="hidden sm:inline-block w-1 h-1 rounded-full bg-surface-container-highest" />
-          <span>Bảo mật tuyệt đối trên thiết bị</span>
+          <span>Tệp chỉ dùng để trích xuất chữ, không được lưu lại</span>
         </div>
       </div>
     </section>
