@@ -51,7 +51,8 @@ function errorMessage(detail: unknown, fallback: string): string {
 
 export async function apiFetch<T>(path: string, init?: RequestInit, prefix = true): Promise<T> {
   const headers = new Headers(init?.headers);
-  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
+  if (!isFormData && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
   const token = tokenStore.get();
   if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
@@ -89,3 +90,21 @@ export const register = (email: string, full_name: string | null, password: stri
   });
 
 export const getMe = () => apiFetch<AuthUser>("/auth/me");
+
+export interface ExtractedText {
+  text: string;
+  source: "pdf" | "image";
+  pageCount: number | null;
+  charCount: number;
+  ocrUsed: boolean;
+}
+
+export const extractText = (file: File, signal?: AbortSignal) => {
+  const body = new FormData();
+  body.append("file", file); 
+  return apiFetch<ExtractedText>("/documents/extract-text", {
+    method: "POST",
+    body,
+    signal, 
+  });
+};
