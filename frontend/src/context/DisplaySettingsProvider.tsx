@@ -35,6 +35,7 @@ export const THEMES: Record<ThemeName, { label: string; bg: string; fg: string }
   mint: { label: 'Bạc hà dịu', bg: '#E6F4EA', fg: '#1E2A22' },
   blue: { label: 'Xanh êm', bg: '#E6F3FC', fg: '#1B2A38' },
   dark: { label: 'Xám đêm', bg: '#1A1F2B', fg: '#E8EAF0' },
+  navy: { label: 'Xanh đêm', bg: '#0F1A2E', fg: '#E9EEF7' },
 };
 
 export const FONT_STACKS: Record<FontFamily, string> = {
@@ -42,6 +43,7 @@ export const FONT_STACKS: Record<FontFamily, string> = {
   opendyslexic: "'OpenDyslexic', 'Lexend', sans-serif",
   arial: 'Arial, sans-serif',
   verdana: 'Verdana, sans-serif',
+  merriweather: "'Merriweather', serif",
 };
 
 const clamp = (v: number, [min, max]: readonly [number, number]) =>
