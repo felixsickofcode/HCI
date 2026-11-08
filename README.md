@@ -5,7 +5,7 @@ Backend (FastAPI + PostgreSQL) của bài tập lớn môn **Tương tác ngư�
 
 Ứng dụng web giúp đọc văn bản tiếng Việt dễ chịu hơn: chuyển bài viết thành giao diện đọc tập trung, hỗ trợ nhiều hồ sơ đọc (đọc nhẹ nhàng, học tiếng Việt, đọc nhanh, chữ lớn), tùy chỉnh hiển thị, đọc to và tra từ ngay tại chỗ. Đây là công cụ hỗ trợ đọc theo triết lý thiết kế phổ quát, **không có chức năng chẩn đoán hay can thiệp y khoa**.
 
-> Repo này hiện chứa **phần backend**. Frontend (React + TailwindCSS) chưa nằm trong repo.
+> Repo này hiện chứa **phần backend**. Frontend (React + TailwindCSS) đã nằm trong repo.
 
 ## Mục lục
 
@@ -312,21 +312,7 @@ python -m pytest
 7. Đăng ký router trong `app/api/v1/router.py`
 8. `tests/test_<ten>.py`, chạy `python -m pytest`
 
-## 9. Việc còn tồn đọng và điểm cần chốt
-
-| #   | Vấn đề                                                                                                                       | Trạng thái | Ghi chú                                                                                                                                       |
-| --- | ------------------------------------------------------------------------------------------------------------------------------ | --- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | ~~Chưa có đăng nhập (FR-01)~~                                                                                                  | ✅ Đã xong | FR-01 đã merge vào `main`: đăng ký/đăng nhập bằng JWT thật (`/api/v1/auth/register`, `/api/v1/auth/login`). `display-settings` đã chuyển từ header tạm `X-User-Id` sang xác thực `Authorization: Bearer <token>`. |
-| 2   | **Cam kết quyền riêng tư.** Bản đề xuất cam kết cài đặt chỉ lưu trên trình duyệt. API `display-settings` lưu trên máy chủ      | ⬜ Chưa chốt | Chỉ dùng khi người dùng đăng nhập (tùy chọn); chế độ ẩn danh vẫn chỉ lưu trên máy (LocalStorage). Cần nhóm xác nhận và ghi lại trong báo cáo    |
-| 3   | ~~Chưa cấu hình CORS~~                                                                                                         | ✅ Đã xong | `app/main.py` đã thêm `CORSMiddleware`, danh sách nguồn lấy từ `BACKEND_CORS_ORIGINS` trong `.env` (mặc định đã cho phép `http://localhost:5173`) |
-| 4   | ~~`requirements.txt` mã hóa UTF-16~~                                                                                           | ✅ Đã xong | File hiện là UTF-8 thường, gộp nhánh không còn bị coi là file nhị phân nữa                                                                      |
-| 5   | `requirements.txt` **thiếu** `pydantic-settings`, `pwdlib`, `pyjwt`, dù `app/core/config.py` và `app/core/security.py` đang import các thư viện này | ⬜ Chưa xong | Cài sẵn trên máy mỗi người nên chưa ai để ý; máy sạch (`pip install -r requirements.txt`) sẽ lỗi `ModuleNotFoundError`. Cần `pip install pydantic-settings "pwdlib[argon2]" pyjwt` rồi thêm đúng version vào file |
-| 6   | `test_main.http` **lỗi thời** (gọi `/` và `/hello/User`, hai route này không còn tồn tại; route hiện tại là `/health`)         | ⬜ Chưa xong | Cập nhật lại các request mẫu hoặc xóa file này                                                                                                 |
-| 7   | **Tên trường JSON chưa thống nhất**: `users` dùng snake_case (`full_name`), `display-settings` dùng camelCase (`fontSize`)    | ⬜ Chưa chốt | Nhóm chốt một quy ước chung cho các API sau này                                                                                                |
-| 8   | ~~Chưa có thư mục `frontend/`~~                                                                                                | ✅ Đã xong | FE (Vite + React + TailwindCSS) đã được gộp vào `frontend/` trong cùng repo, không còn tách repo riêng                                         |
-| 9   | **Chưa quyết định có lưu văn bản người dùng nhập trên máy chủ không** (liên quan FR-02, FR-07)                                 | ⬜ Chưa chốt | Đề xuất giai đoạn đầu **không lưu**: máy chủ chỉ trích xuất và trả về văn bản, không ghi vào DB và không ghi nội dung vào log                  |
-
-## 10. Khắc phục sự cố
+## 9. Khắc phục sự cố
 
 | Thông báo | Nguyên nhân và cách sửa |
 |---|---|
