@@ -7,6 +7,7 @@ export interface AudioPlayerCapsuleProps {
   voices: SpeechSynthesisVoice[];
   selectedVoiceURI: string;
   hasVietnameseVoice: boolean;
+  voicesLoading?: boolean;
   rate: number;
   errorMessage?: string;
   progressLabel?: string;
@@ -36,6 +37,7 @@ export const AudioPlayerCapsule: React.FC<AudioPlayerCapsuleProps> = ({
   voices,
   selectedVoiceURI,
   hasVietnameseVoice,
+  voicesLoading = false,
   rate,
   errorMessage,
   progressLabel,
@@ -156,7 +158,9 @@ export const AudioPlayerCapsule: React.FC<AudioPlayerCapsuleProps> = ({
           className="flex-1 min-w-[180px] rounded bg-surface-container-highest/60 hover:bg-surface-container-highest text-[11px] font-label text-on-surface px-2 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {voices.length === 0 ? (
-            <option value="">Đang tải giọng đọc...</option>
+            <option value="">
+              {voicesLoading ? 'Đang tải giọng đọc...' : 'Không có giọng đọc khả dụng'}
+            </option>
           ) : (
             voices.map((voice) => (
               <option key={voice.voiceURI} value={voice.voiceURI}>
