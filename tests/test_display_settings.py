@@ -157,7 +157,7 @@ def test_settings_are_private_to_each_user(client, create_user):
 
     assert client.get(URL, headers=bob_headers).status_code == 404
 
-    client.put(URL, json={"display": {"theme": "softGray"}}, headers=bob_headers)
+    client.put(URL, json={"display": {"theme": "mint"}}, headers=bob_headers)
     assert client.get(URL, headers=alice_headers).json()["display"]["theme"] == "dark"
 
 
@@ -184,3 +184,39 @@ def test_deleting_a_user_deletes_their_settings(client, create_user):
 
     with engine.connect() as conn:
         assert conn.scalar(text("SELECT count(*) FROM display_settings")) == 0
+
+# --- Khớp với frontend (FR-03) ------------------------------------------------
+
+@pytest.mark.parametrize("font", ["lexend", "arial", "verdana", "opendyslexic", "merriweather"])
+def test_every_font_offered_by_frontend_is_accepted(client, create_user, font):
+    _, headers = create_user()
+    response = client.put(URL, json={"display": {"fontFamily": font}}, headers=headers)
+    assert response.status_code == 200
+    assert response.json()["display"]["fontFamily"] == font
+
+
+@pytest.mark.parametrize("theme", ["cream", "mint", "blue", "dark", "navy"])
+def test_every_theme_offered_by_frontend_is_accepted(client, create_user, theme):
+    _, headers = create_user()
+    response = client.put(URL, json={"display": {"theme": theme}}, headers=headers)
+    assert response.status_code == 200
+    assert response.json()["display"]["theme"] == theme
+
+
+def test_removed_theme_soft_gray_is_rejected(client, create_user):
+    _, headers = create_user()
+    response = client.put(URL, json={"display": {"theme": "softGray"}}, headers=headers)
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "extreme",
+    [
+        {"fontSize": 16, "lineHeight": 1.5, "letterSpacing": 0, "columnWidth": 45},
+        {"fontSize": 32, "lineHeight": 2.5, "letterSpacing": 0.2, "columnWidth": 75},
+    ],
+)
+def test_frontend_slider_extremes_never_cause_422(client, create_user, extreme):
+    _, headers = create_user()
+    response = client.put(URL, json={"display": extreme}, headers=headers)
+    assert response.status_code == 200

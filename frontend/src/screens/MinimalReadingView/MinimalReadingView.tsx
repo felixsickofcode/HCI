@@ -28,10 +28,10 @@ const SOURCE_LABEL: Record<DocumentSource, string> = {
 
 const FONT_LABELS: Record<FontFamily, string> = {
   lexend: 'Lexend',
-  opendyslexic: 'OpenDyslexic',
   arial: 'Arial',
   verdana: 'Verdana',
   merriweather: 'Merriweather',
+  opendyslexic: 'OpenDyslexic',
 };
 
 const SIDEBAR_ITEMS = [
@@ -209,7 +209,7 @@ export const MinimalReadingView: React.FC = () => {
                     }`}
                     style={{ fontFamily: FONT_STACKS[f] }}
                   >
-                    <span className="block text-[13px] leading-tight font-semibold text-on-surface break-words">
+                    <span className="block text-[12px] leading-tight font-semibold text-on-surface break-words">
                       {FONT_LABELS[f]}
                     </span>
                     {s.fontFamily === f && (
