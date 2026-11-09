@@ -57,7 +57,7 @@ export const AudioPlayerCapsule: React.FC<AudioPlayerCapsuleProps> = ({
 
   return (
     <div
-      className={`rounded-lg bg-surface-container-low p-2.5 sm:p-3 flex flex-col gap-2 text-on-surface select-none shadow-sm transition-all duration-300 hover:bg-surface-container ${className}`}
+      className={`rounded-2xl bg-white/80 backdrop-blur-sm border border-black/[0.06] p-3 sm:p-3.5 flex flex-col gap-3 text-on-surface select-none shadow-[0_10px_30px_rgba(27,28,29,0.06)] transition-all duration-300 hover:shadow-[0_14px_34px_rgba(27,28,29,0.09)] ${className}`}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
@@ -66,7 +66,7 @@ export const AudioPlayerCapsule: React.FC<AudioPlayerCapsuleProps> = ({
             aria-label={isSpeaking ? 'Tạm dừng đọc' : isPaused ? 'Tiếp tục đọc' : 'Nghe đọc bài viết'}
             onClick={isSpeaking ? onPause : isPaused ? onResume : onPlay}
             disabled={disabledControls}
-            className={`w-9 h-9 shrink-0 rounded-full bg-gradient-to-tr from-primary to-primary-container text-on-primary flex items-center justify-center shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+            className={`w-11 h-11 shrink-0 rounded-full bg-gradient-to-tr from-primary to-primary-container text-on-primary flex items-center justify-center shadow-[0_5px_14px_rgba(9,76,178,0.28)] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
               isSpeaking ? 'ring-2 ring-primary/20' : ''
             }`}
           >
@@ -79,7 +79,7 @@ export const AudioPlayerCapsule: React.FC<AudioPlayerCapsuleProps> = ({
             aria-label="Dừng đọc"
             onClick={onStop}
             disabled={disabledControls || (!isSpeaking && !isPaused)}
-            className="w-8 h-8 shrink-0 rounded-full bg-surface-container-highest/60 hover:bg-surface-container-highest flex items-center justify-center text-on-surface transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-9 h-9 shrink-0 rounded-full bg-surface-container-highest/60 hover:bg-surface-container-highest flex items-center justify-center text-on-surface transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span className="material-symbols-outlined text-[16px]">stop</span>
           </button>

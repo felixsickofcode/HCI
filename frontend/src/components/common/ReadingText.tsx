@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import type { ReadingSegment, SpeechBoundaryEvent } from '../../lib/speech';
 
 export interface StaticHighlight {
@@ -11,6 +11,8 @@ export interface ReadingTextProps {
   activeBoundary: SpeechBoundaryEvent | null;
   staticHighlights?: Record<string, StaticHighlight[]>;
   figureSlot?: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
 }
 
 interface Token {
@@ -60,16 +62,11 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
   activeBoundary,
   staticHighlights = {},
   figureSlot,
+  className = '',
+  style,
 }) => {
-  const activeRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!activeBoundary) return;
-    activeRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }, [activeBoundary]);
-
   return (
-    <div className="reading-body font-body text-[17.5px] sm:text-[19px] text-on-surface tracking-[0.035em] leading-[2.1] text-left">
+    <div className={`reading-body text-left ${className}`} style={style}>
       {segments.map((segment, segmentIndex) => {
         const tokens = tokenize(segment.text);
         const highlights = findHighlightRanges(segment.text, staticHighlights[segment.id]);
@@ -87,7 +84,6 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
                 return (
                   <span
                     key={tokenIndex}
-                    ref={activeRef}
                     aria-current="true"
                     className="bg-tertiary-fixed text-on-tertiary-fixed rounded-sm px-0.5 outline outline-1 outline-tertiary"
                   >
@@ -120,7 +116,10 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
           );
         }
         return (
-          <p key={segment.id} className="mb-8 indent-6 sm:indent-8 last:mb-4">
+          <p
+            key={segment.id}
+            className="mb-8 indent-6 sm:indent-8 last:mb-4"
+          >
             {body}
             {figureSlot && segment.id === 'third-paragraph' ? (
               <span className="block">{figureSlot}</span>
