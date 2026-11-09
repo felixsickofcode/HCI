@@ -26,3 +26,24 @@ class EmailAlreadyExistsError(ConflictError):
 
 class DisplaySettingsNotFoundError(NotFoundError):
     message = "Display settings not saved yet"
+
+
+
+class UnsupportedFileTypeError(AppError):
+    status_code = 415
+    message = "Unsupported file type. Only PDF, PNG, JPEG and WebP are accepted"
+
+
+class FileTooLargeError(AppError):
+    status_code = 413
+    message = "File is too large"
+
+
+class TextExtractionError(AppError):
+    status_code = 422
+    message = "Could not extract text from the file"
+
+
+class OcrUnavailableError(AppError):
+    status_code = 503
+    message = "OCR is not available on the server"

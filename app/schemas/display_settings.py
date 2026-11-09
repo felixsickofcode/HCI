@@ -27,11 +27,11 @@ class FocusSettings(CamelModel):
 class DisplaySettings(CamelModel):
     """Bộ cài đặt hiển thị. Trường thiếu sẽ lấy giá trị mặc định."""
 
-    font_family: Literal["lexend", "arial", "verdana", "opendyslexic"] = "lexend"
+    font_family: Literal["lexend", "arial", "verdana", "opendyslexic", "merriweather"] = "lexend"
     font_size: int = Field(default=20, ge=16, le=32)
     line_height: float = Field(default=1.8, ge=1.5, le=2.5)
     letter_spacing: float = Field(default=0.08, ge=0, le=0.2)
-    theme: Literal["cream", "softGray", "dark"] = "cream"
+    theme: Literal["cream", "mint", "blue", "dark", "navy"] = "cream"
     column_width: int = Field(default=60, ge=30, le=80)
     focus: FocusSettings = Field(default_factory=FocusSettings)
 

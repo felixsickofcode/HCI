@@ -5,6 +5,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.user import User
@@ -12,6 +13,7 @@ from app.repositories.display_settings_repository import DisplaySettingsReposito
 from app.repositories.user_repository import UserRepository
 from app.services.display_settings_service import DisplaySettingsService
 from app.services.user_service import UserService
+from app.services.text_extraction_service import TextExtractionService
 
 DbSession = Annotated[Session, Depends(get_db)]
 
@@ -33,6 +35,13 @@ DisplaySettingsServiceDep = Annotated[
     DisplaySettingsService, Depends(get_display_settings_service)
 ]
 
+def get_text_extraction_service() -> TextExtractionService:
+    return TextExtractionService(settings)
+
+
+TextExtractionServiceDep = Annotated[
+    TextExtractionService, Depends(get_text_extraction_service)
+]
 
 def get_current_user(
     db: DbSession,

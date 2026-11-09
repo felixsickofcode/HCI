@@ -51,7 +51,8 @@ function errorMessage(detail: unknown, fallback: string): string {
 
 export async function apiFetch<T>(path: string, init?: RequestInit, prefix = true): Promise<T> {
   const headers = new Headers(init?.headers);
-  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
+  if (!isFormData && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
   const token = tokenStore.get();
   if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
@@ -89,3 +90,54 @@ export const register = (email: string, full_name: string | null, password: stri
   });
 
 export const getMe = () => apiFetch<AuthUser>("/auth/me");
+
+export type FontFamily = "lexend" | "arial" | "verdana" | "opendyslexic" | "merriweather";
+export type ThemeName = "cream" | "mint" | "blue" | "dark" | "navy";
+
+export interface FocusSettings {
+  enabled: boolean;
+  dimOpacity: number;
+  followPointer: boolean;
+}
+
+export interface DisplaySettings {
+  fontFamily: FontFamily;
+  fontSize: number;
+  lineHeight: number;
+  letterSpacing: number;
+  theme: ThemeName;
+  columnWidth: number;
+  focus: FocusSettings;
+}
+
+export interface DisplaySettingsRead {
+  version: number;
+  updatedAt: string;
+  display: DisplaySettings;
+}
+
+export const getDisplaySettings = () => apiFetch<DisplaySettingsRead>("/me/display-settings");
+
+export const saveDisplaySettings = (display: DisplaySettings) =>
+  apiFetch<DisplaySettingsRead>("/me/display-settings", {
+    method: "PUT",
+    body: JSON.stringify({ display }),
+  });
+
+export interface ExtractedText {
+  text: string;
+  source: "pdf" | "image";
+  pageCount: number | null;
+  charCount: number;
+  ocrUsed: boolean;
+}
+
+export const extractText = (file: File, signal?: AbortSignal) => {
+  const body = new FormData();
+  body.append("file", file);
+  return apiFetch<ExtractedText>("/documents/extract-text", {
+    method: "POST",
+    body,
+    signal,
+  });
+};
