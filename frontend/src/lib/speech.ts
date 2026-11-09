@@ -81,18 +81,40 @@ export class SpeechController {
   private reliableBoundarySeen = false;
   private fallbackTimer: ReturnType<typeof setTimeout> | null = null;
   private voicesHandler: (() => void) | null = null;
+  private voicesRetryTimer: ReturnType<typeof setInterval> | null = null;
 
   attachCallbacks(callbacks: SpeechCallbacks) {
     this.callbacks = { ...this.callbacks, ...callbacks };
     if (isSpeechSupported()) {
+      const publishVoices = () => {
+        const voices = getSpeechVoices();
+        this.callbacks.onVoicesChange?.(voices);
+        return voices;
+      };
+
+      // Some browsers populate voices before firing `voiceschanged`.
+      // Publish the current list immediately, then retry briefly while the
+      // browser finishes loading its speech services.
+      const initialVoices = publishVoices();
+      if (initialVoices.length === 0) {
+        let attempts = 0;
+        this.voicesRetryTimer = setInterval(() => {
+          attempts += 1;
+          const voices = publishVoices();
+          if (voices.length > 0 || attempts >= 20) {
+            this.clearVoicesRetryTimer();
+          }
+        }, 250);
+      }
       this.voicesHandler = () => {
-        this.callbacks.onVoicesChange?.(getSpeechVoices());
+        publishVoices();
       };
       window.speechSynthesis.addEventListener('voiceschanged', this.voicesHandler);
     }
   }
 
   detachCallbacks() {
+    this.clearVoicesRetryTimer();
     if (this.voicesHandler && isSpeechSupported()) {
       window.speechSynthesis.removeEventListener('voiceschanged', this.voicesHandler);
     }
@@ -334,6 +356,13 @@ export class SpeechController {
     if (this.fallbackTimer) {
       clearTimeout(this.fallbackTimer);
       this.fallbackTimer = null;
+    }
+  }
+
+  private clearVoicesRetryTimer() {
+    if (this.voicesRetryTimer) {
+      clearInterval(this.voicesRetryTimer);
+      this.voicesRetryTimer = null;
     }
   }
 

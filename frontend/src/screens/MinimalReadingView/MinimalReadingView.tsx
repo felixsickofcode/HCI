@@ -84,6 +84,7 @@ export const MinimalReadingView: React.FC = () => {
   const [activeBoundary, setActiveBoundary] = useState<SpeechBoundaryEvent | null>(null);
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(() => getSpeechVoices());
+  const [voicesLoading, setVoicesLoading] = useState(() => isSpeechSupported() && getSpeechVoices().length === 0);
   const [selectedVoiceURI, setSelectedVoiceURI] = useState(() => pickPreferredVoice(getSpeechVoices())?.voiceURI || '');
   const [rate, setRate] = useState<number>(1);
   const [speechError, setSpeechError] = useState('');
@@ -105,6 +106,7 @@ export const MinimalReadingView: React.FC = () => {
       },
       onVoicesChange: (nextVoices) => {
         setVoices(nextVoices);
+        setVoicesLoading(false);
         setSelectedVoiceURI((current) => current || pickPreferredVoice(nextVoices)?.voiceURI || '');
       },
       onBoundaryReliabilityChange: (nextReliability) => {
@@ -112,7 +114,9 @@ export const MinimalReadingView: React.FC = () => {
         if (nextReliability === 'unreliable') setActiveBoundary(null);
       },
     });
+    const voicesLoadingTimeout = window.setTimeout(() => setVoicesLoading(false), 5000);
     return () => {
+      window.clearTimeout(voicesLoadingTimeout);
       controller.detachCallbacks();
       controller.destroy();
       speechRef.current = null;
@@ -460,6 +464,7 @@ export const MinimalReadingView: React.FC = () => {
                     voices={voices}
                     selectedVoiceURI={selectedVoiceURI}
                     hasVietnameseVoice={hasVietnameseVoice(voices)}
+                    voicesLoading={voicesLoading}
                     rate={rate}
                     errorMessage={speechError}
                     progressLabel={speechStatus === 'speaking' || speechStatus === 'paused'
