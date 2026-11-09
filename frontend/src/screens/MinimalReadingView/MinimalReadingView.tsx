@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, Navigate } from 'react-router-dom';
-import { ManuscriptCard } from '../../components/common';
+import { AudioPlayerCapsule, ManuscriptCard, ReadingText } from '../../components/common';
 import { useDocument } from '../../context';
 import {
   useDisplaySettings, THEMES, FONT_STACKS, LIMITS,
@@ -10,6 +10,15 @@ import { countWords, readingMinutes, toParagraphs } from '../../lib/document';
 import type { DocumentSource } from '../../lib/document';
 import type { FontFamily, ThemeName } from '../../lib/api';
 import booksIllustration from '../../assets/book_illustration.jpg';
+import {
+  getSpeechVoices,
+  hasVietnameseVoice,
+  isSpeechSupported,
+  pickPreferredVoice,
+  SPEECH_SPEEDS,
+  SpeechController,
+} from '../../lib/speech';
+import type { BoundaryReliability, ReadingSegment, SpeechBoundaryEvent, SpeechStatus } from '../../lib/speech';
 
 const SOURCE_LABEL: Record<DocumentSource, string> = {
   paste: 'Văn bản dán',
@@ -62,6 +71,71 @@ export const MinimalReadingView: React.FC = () => {
   const [panelOpen, setPanelOpen] = useState(() => window.innerWidth >= 1024);
   const [tab, setTab] = useState<Tab>('Giao diện');
   const theme = THEMES[s.theme];
+
+  const paragraphs = doc ? toParagraphs(doc.text) : [];
+  const segments: ReadingSegment[] = paragraphs.map((text, index) => ({
+    id: `paragraph-${index}`,
+    text,
+    kind: 'paragraph',
+  }));
+  const speechRef = useRef<SpeechController | null>(null);
+  const [speechStatus, setSpeechStatus] = useState<SpeechStatus>(() => isSpeechSupported() ? 'idle' : 'unsupported');
+  const [boundaryReliability, setBoundaryReliability] = useState<BoundaryReliability>('unknown');
+  const [activeBoundary, setActiveBoundary] = useState<SpeechBoundaryEvent | null>(null);
+  const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(() => getSpeechVoices());
+  const [voicesLoading, setVoicesLoading] = useState(() => isSpeechSupported() && getSpeechVoices().length === 0);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState(() => pickPreferredVoice(getSpeechVoices())?.voiceURI || '');
+  const [rate, setRate] = useState<number>(1);
+  const [speechError, setSpeechError] = useState('');
+
+  useEffect(() => {
+    const controller = new SpeechController();
+    speechRef.current = controller;
+    controller.attachCallbacks({
+      onStatusChange: (nextStatus, message) => {
+        setSpeechStatus(nextStatus);
+        setSpeechError(message ?? '');
+        if (nextStatus === 'ended' || nextStatus === 'stopped' || nextStatus === 'error') {
+          setActiveBoundary(null);
+        }
+      },
+      onBoundary: (boundary) => {
+        setActiveBoundary(boundary);
+        setCurrentSegmentIndex(boundary.segmentIndex);
+      },
+      onVoicesChange: (nextVoices) => {
+        setVoices(nextVoices);
+        setVoicesLoading(false);
+        setSelectedVoiceURI((current) => current || pickPreferredVoice(nextVoices)?.voiceURI || '');
+      },
+      onBoundaryReliabilityChange: (nextReliability) => {
+        setBoundaryReliability(nextReliability);
+        if (nextReliability === 'unreliable') setActiveBoundary(null);
+      },
+    });
+    const voicesLoadingTimeout = window.setTimeout(() => setVoicesLoading(false), 5000);
+    return () => {
+      window.clearTimeout(voicesLoadingTimeout);
+      controller.detachCallbacks();
+      controller.destroy();
+      speechRef.current = null;
+    };
+  }, [doc?.id]);
+
+  const selectedVoice = voices.find((voice) => voice.voiceURI === selectedVoiceURI) ?? pickPreferredVoice(voices);
+  const startReading = () => {
+    setSpeechError('');
+    setCurrentSegmentIndex(0);
+    speechRef.current?.speak({ segments, rate, voice: selectedVoice });
+  };
+  const cycleRate = () => {
+    const nextRate = SPEECH_SPEEDS[(SPEECH_SPEEDS.indexOf(rate as typeof SPEECH_SPEEDS[number]) + 1) % SPEECH_SPEEDS.length];
+    setRate(nextRate);
+    if (speechStatus === 'speaking' || speechStatus === 'paused') {
+      speechRef.current?.restartFromLastPosition(nextRate, selectedVoice);
+    }
+  };
 
   // ----- Thước đọc bám dòng -----
   const mainRef = useRef<HTMLElement>(null);
@@ -234,7 +308,6 @@ export const MinimalReadingView: React.FC = () => {
   // Phải đặt SAU toàn bộ hook
   if (!doc) return <Navigate to="/" replace />;
 
-  const paragraphs = toParagraphs(doc.text);
   const words = countWords(doc.text);
 
   return (
@@ -384,6 +457,34 @@ export const MinimalReadingView: React.FC = () => {
                   </p>
                 )}
 
+                <div className="mb-10 rounded-2xl bg-[#F3F5FA]/80 p-2 sm:p-2.5">
+                  <AudioPlayerCapsule
+                    status={speechStatus}
+                    reliability={boundaryReliability}
+                    voices={voices}
+                    selectedVoiceURI={selectedVoiceURI}
+                    hasVietnameseVoice={hasVietnameseVoice(voices)}
+                    voicesLoading={voicesLoading}
+                    rate={rate}
+                    errorMessage={speechError}
+                    progressLabel={speechStatus === 'speaking' || speechStatus === 'paused'
+                      ? `${Math.min(currentSegmentIndex + 1, segments.length)}/${segments.length} đoạn`
+                      : undefined}
+                    onPlay={startReading}
+                    onPause={() => speechRef.current?.pause()}
+                    onResume={() => speechRef.current?.resume()}
+                    onStop={() => speechRef.current?.stop()}
+                    onRateCycle={cycleRate}
+                    onVoiceChange={(voiceURI) => {
+                      setSelectedVoiceURI(voiceURI);
+                      const voice = voices.find((item) => item.voiceURI === voiceURI) ?? null;
+                      if (speechStatus === 'speaking' || speechStatus === 'paused') {
+                        speechRef.current?.restartFromLastPosition(rate, voice);
+                      }
+                    }}
+                  />
+                </div>
+
                 {/* Nội dung bài đọc: theo cài đặt hiển thị */}
                 <div
                   ref={bodyRef}
@@ -415,11 +516,17 @@ export const MinimalReadingView: React.FC = () => {
                     </>
                   )}
 
-                  {paragraphs.map((paragraph, index) => (
-                    <p key={index} className="mb-8 indent-6 sm:indent-8 break-words">
-                      {paragraph}
-                    </p>
-                  ))}
+                  <ReadingText
+                    segments={segments}
+                    activeBoundary={activeBoundary}
+                    className="font-body text-on-surface break-words"
+                    style={{
+                      fontFamily: FONT_STACKS[s.fontFamily],
+                      fontSize: `${s.fontSize}px`,
+                      lineHeight: s.lineHeight,
+                      letterSpacing: `${s.letterSpacing}em`,
+                    }}
+                  />
                 </div>
 
                 <div className="my-16 flex items-center justify-center gap-3 select-none opacity-60">
