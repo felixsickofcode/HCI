@@ -109,6 +109,7 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
           return (
             <blockquote
               key={segment.id}
+              data-segment-id={segment.id}
               className="my-12 px-6 sm:px-8 py-5 bg-surface-container-low rounded-lg text-on-surface-variant font-headline italic text-lg sm:text-[1.3rem] leading-[1.9]"
             >
               {body}
@@ -118,6 +119,7 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
         return (
           <p
             key={segment.id}
+            data-segment-id={segment.id}
             className="mb-8 indent-6 sm:indent-8 last:mb-4"
           >
             {body}

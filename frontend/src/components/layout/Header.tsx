@@ -85,6 +85,10 @@ export const Header: React.FC<HeaderProps> = ({ className = '' }) => {
           </nav>
         </div>
 
+        {/* Mobile entry: the desktop navigation is hidden below md. */}
+        <Link to="/vocabulary" aria-label="Từ khó của tôi" className="md:hidden rounded-full p-2 text-primary">
+          <span className="material-symbols-outlined" aria-hidden>bookmarks</span>
+        </Link>
         {/* Right actions */}
         <div className="flex items-center gap-2 sm:gap-3">
           <Link

@@ -42,7 +42,7 @@ def test_invalid_token_is_rejected(client):
 
 def test_token_of_deleted_user_is_rejected(client, create_user):
     uid, headers = create_user()
-    assert client.delete(f"/api/v1/users/{uid}").status_code == 204
+    assert client.delete(f"/api/v1/users/{uid}", headers=headers).status_code == 204
     assert client.get(URL, headers=headers).status_code == 401
 
 
@@ -180,7 +180,7 @@ def test_deleting_a_user_deletes_their_settings(client, create_user):
     uid, headers = create_user()
     client.put(URL, json=CUSTOM, headers=headers)
 
-    assert client.delete(f"/api/v1/users/{uid}").status_code == 204
+    assert client.delete(f"/api/v1/users/{uid}", headers=headers).status_code == 204
 
     with engine.connect() as conn:
         assert conn.scalar(text("SELECT count(*) FROM display_settings")) == 0
