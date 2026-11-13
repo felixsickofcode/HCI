@@ -33,3 +33,8 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 
+# Local document samples and generated reader QA screenshots
+/test.pdf
+/output/reader-review/
+/pytest-cache-files-*/
+

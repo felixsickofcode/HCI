@@ -1,13 +1,15 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { extractText } from '../lib/api';
 import {
+  blocksToText,
   buildFileDocument,
   buildPastedDocument,
+  cloneBlocks,
   toExtractErrorMessage,
   validateFile,
   validatePastedText,
 } from '../lib/document';
-import type { ReadingDocument } from '../lib/document';
+import type { ReadingBlock, ReadingDocument } from '../lib/document';
 import { DocumentContext } from './document-context';
 
 export interface DocumentProviderProps {
@@ -32,7 +34,7 @@ export const DocumentProvider: React.FC<DocumentProviderProps> = ({ children }) 
       setDocument(buildFileDocument(file, result));
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') throw error;
-        throw new Error(toExtractErrorMessage(error), { cause: error });
+      throw new Error(toExtractErrorMessage(error), { cause: error });
     }
   }, []);
 
@@ -40,9 +42,30 @@ export const DocumentProvider: React.FC<DocumentProviderProps> = ({ children }) 
     setDocument(null);
   }, []);
 
+  const updateBlocks = useCallback((blocks: ReadingBlock[]) => {
+    setDocument((current) =>
+      current ? { ...current, blocks, text: blocksToText(blocks) } : current,
+    );
+  }, []);
+
+  const restoreSource = useCallback(() => {
+    setDocument((current) => {
+      if (!current) return current;
+      const blocks = cloneBlocks(current.sourceBlocks);
+      return { ...current, blocks, text: blocksToText(blocks) };
+    });
+  }, []);
+
   const value = useMemo(
-    () => ({ document, submitPastedText, submitFile, clearDocument }),
-    [document, submitPastedText, submitFile, clearDocument],
+    () => ({
+      document,
+      submitPastedText,
+      submitFile,
+      clearDocument,
+      updateBlocks,
+      restoreSource,
+    }),
+    [document, submitPastedText, submitFile, clearDocument, updateBlocks, restoreSource],
   );
 
   return <DocumentContext.Provider value={value}>{children}</DocumentContext.Provider>;
