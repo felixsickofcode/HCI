@@ -1,5 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { SaveVocabularyDialog } from '../../components/vocabulary/SaveVocabularyDialog';
+import { readVocabularySelection } from '../../lib/vocabulary-selection';
+import type { VocabularyDraft } from '../../lib/vocabulary';
 import { Link, Navigate } from 'react-router-dom';
 import { AudioPlayerCapsule, ManuscriptCard, ReadingText } from '../../components/common';
 import { useDocument } from '../../context';
@@ -36,7 +39,6 @@ const FONT_LABELS: Record<FontFamily, string> = {
 
 const SIDEBAR_ITEMS = [
   { icon: 'auto_stories', label: 'Đọc tài liệu', active: true },
-  { icon: 'library_books', label: 'Thư viện', active: false },
   { icon: 'bar_chart', label: 'Thống kê', active: false },
   { icon: 'settings', label: 'Cài đặt', active: false },
 ] as const;
@@ -88,6 +90,9 @@ export const MinimalReadingView: React.FC = () => {
   const [selectedVoiceURI, setSelectedVoiceURI] = useState(() => pickPreferredVoice(getSpeechVoices())?.voiceURI || '');
   const [rate, setRate] = useState<number>(1);
   const [speechError, setSpeechError] = useState('');
+  const [wordDraft, setWordDraft] = useState<VocabularyDraft | null>(null);
+  const [selectionError, setSelectionError] = useState('');
+  const closeWordDialog = useCallback(() => setWordDraft(null), []);
 
   useEffect(() => {
     const controller = new SpeechController();
@@ -159,7 +164,7 @@ export const MinimalReadingView: React.FC = () => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
       const tag = (e.target as HTMLElement).tagName;
-      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(tag)) return;
+      if (document.querySelector('dialog[open]') || ['INPUT', 'SELECT', 'TEXTAREA'].includes(tag)) return;
       e.preventDefault();
       const dir = e.key === 'ArrowDown' ? 1 : -1;
       setRulerY((y) => clampY(y + dir * lh));
@@ -169,6 +174,16 @@ export const MinimalReadingView: React.FC = () => {
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.focus.enabled, lh]);
+
+  const saveSelectedWord = () => {
+    if (!bodyRef.current || !doc) return;
+    try {
+      const draft = readVocabularySelection(bodyRef.current, doc);
+      if (!draft) { setSelectionError('Hãy bôi chọn một từ hoặc cụm từ trong bài trước khi lưu.'); return; }
+      setSelectionError('');
+      setWordDraft(draft);
+    } catch (error) { setSelectionError((error as Error).message); }
+  };
 
   const settingsPanel = (
     <aside className="flex flex-col w-[340px] max-w-[92vw] h-full rounded-3xl shadow-sm border border-black/5 bg-[#FFFDF8] overflow-hidden">
@@ -315,6 +330,7 @@ export const MinimalReadingView: React.FC = () => {
       className="font-body antialiased h-screen flex overflow-hidden relative isolate selection:bg-tertiary-fixed selection:text-on-tertiary-fixed"
       style={{ backgroundColor: theme.bg, color: theme.fg }}
     >
+      {wordDraft && wordDraft.sourceDocumentId === doc.id && <SaveVocabularyDialog draft={wordDraft} onClose={closeWordDialog} />}
       {/* Sidebar thương hiệu và điều hướng (chỉ desktop) */}
       <aside className="hidden lg:flex flex-col w-56 xl:w-60 h-screen shrink-0 bg-[#FCF8F1] border-r border-[#EDE5DA] px-4 py-6 overflow-hidden">
         <div className="shrink-0">
@@ -343,6 +359,10 @@ export const MinimalReadingView: React.FC = () => {
               {item.active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#1556B8]" />}
             </div>
           ))}
+          <Link to="/vocabulary" className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-[#344767] hover:bg-[#E9EDF7]">
+            <span className="material-symbols-outlined text-[21px]" aria-hidden>bookmarks</span>
+            Từ khó của tôi
+          </Link>
         </nav>
 
         <div className="flex-1 min-h-0 flex flex-col justify-end gap-4 pt-5">
@@ -387,6 +407,10 @@ export const MinimalReadingView: React.FC = () => {
             <span>Trở về trang chủ</span>
           </Link>
 
+          <Link to="/vocabulary" className="lg:hidden inline-flex items-center gap-1 text-xs text-primary" aria-label="Từ khó của tôi">
+            <span className="material-symbols-outlined" aria-hidden>bookmarks</span>
+            <span className="hidden sm:inline">Từ khó của tôi</span>
+          </Link>
           {!panelOpen && (
             <button
               type="button"
@@ -485,9 +509,21 @@ export const MinimalReadingView: React.FC = () => {
                   />
                 </div>
 
+                <div className="sticky top-3 z-20 mb-6 rounded-xl border border-current/10 p-3 text-sm shadow-sm" style={{ backgroundColor: theme.bg, color: theme.fg }}>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p>Bôi chọn từ/cụm từ muốn ôn lại, rồi bấm lưu.</p>
+                    <button type="button" onPointerDown={e => e.preventDefault()} onClick={saveSelectedWord}
+                      className="rounded-full bg-primary px-4 py-2 text-on-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+                      Lưu từ đã chọn
+                    </button>
+                  </div>
+                  {selectionError && <p role="alert" className="mt-2 text-error">{selectionError}</p>}
+                </div>
                 {/* Nội dung bài đọc: theo cài đặt hiển thị */}
                 <div
                   ref={bodyRef}
+                  tabIndex={0}
+                  aria-label="Nội dung bài đọc"
                   onMouseMove={onBodyMouseMove}
                   className="reading-body text-left mr-auto relative shrink-0"
                   style={{
@@ -548,7 +584,7 @@ export const MinimalReadingView: React.FC = () => {
               </ManuscriptCard>
 
               <div className="mt-8 text-center text-xs font-label opacity-50 tracking-wider select-none">
-                <span>Nhấp chuột phải bất kỳ nơi nào trên văn bản để mở thực đơn hỗ trợ nếu cần</span>
+                <span>Bôi chọn từ hoặc cụm từ trong bài, rồi dùng nút “Lưu từ đã chọn” để ôn lại sau.</span>
               </div>
             </div>
           </main>

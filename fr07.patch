@@ -1,0 +1,3100 @@
+diff --git a/README.md b/README.md
+index 6dcd171..78f1b15 100644
+--- a/README.md
++++ b/README.md
+@@ -342,3 +342,10 @@ python -m pytest
+ | `pytest`: `permission denied to create database` | Tài khoản trong `.env` không có quyền tạo database; tự tạo `hci_db_test` bằng pgAdmin |
+ | `pytest`: `No module named 'app'` | Chạy `python -m pytest` từ thư mục gốc repo (nơi có `pytest.ini`) |
+ | Cổng 8000 đã bận | `python -m uvicorn app.main:app --reload --port 8001` |
++
++
++## FR-07 — Thư viện từ khó cá nhân
++
++Đã có lưu từ được chọn trong bài đọc, thư viện riêng theo JWT hoặc localStorage cho khách, tìm/lọc/phân trang và xóa. Xem [hướng dẫn cài đặt, API và kiểm thử FR-07](docs/FR07.md).
++
++Sau khi cập nhật code, chạy `python -m alembic upgrade head`, rồi `npm ci` trong `frontend`. Các route GET/PATCH/DELETE `/users` nay yêu cầu xác thực và giới hạn chính chủ; xem tài liệu FR-07 trước khi dùng ví dụ CRUD user cũ trong README.
+diff --git a/app/api/deps.py b/app/api/deps.py
+index a9a535c..f823788 100644
+--- a/app/api/deps.py
++++ b/app/api/deps.py
+@@ -14,6 +14,8 @@ from app.repositories.user_repository import UserRepository
+ from app.services.display_settings_service import DisplaySettingsService
+ from app.services.user_service import UserService
+ from app.services.text_extraction_service import TextExtractionService
++from app.repositories.vocabulary_repository import VocabularyRepository
++from app.services.vocabulary_service import VocabularyService
+ 
+ DbSession = Annotated[Session, Depends(get_db)]
+ 
+@@ -70,4 +72,11 @@ def get_current_user(
+     return user
+ 
+ 
+-CurrentUser = Annotated[User, Depends(get_current_user)]
+\ No newline at end of file
++CurrentUser = Annotated[User, Depends(get_current_user)]
++
++
++def get_vocabulary_service(db: DbSession) -> VocabularyService:
++    return VocabularyService(VocabularyRepository(db))
++
++
++VocabularyServiceDep = Annotated[VocabularyService, Depends(get_vocabulary_service)]
+diff --git a/app/api/v1/endpoints/users.py b/app/api/v1/endpoints/users.py
+index 810293f..585a927 100644
+--- a/app/api/v1/endpoints/users.py
++++ b/app/api/v1/endpoints/users.py
+@@ -1,6 +1,7 @@
+ from fastapi import APIRouter, Query, status
+ 
+-from app.api.deps import UserServiceDep
++from app.api.deps import CurrentUser, UserServiceDep
++from app.core.exceptions import UserNotFoundError
+ from app.schemas.user import UserCreate, UserRead, UserUpdate
+ 
+ router = APIRouter(prefix="/users", tags=["users"])
+@@ -8,15 +9,18 @@ router = APIRouter(prefix="/users", tags=["users"])
+ 
+ @router.get("", response_model=list[UserRead])
+ def list_users(
++        current_user: CurrentUser,
+         service: UserServiceDep,
+         skip: int = Query(0, ge=0),
+         limit: int = Query(20, ge=1, le=100),
+ ):
+-    return service.list_users(skip, limit)
++    return [current_user] if skip == 0 else []  # No admin role: only expose self.
+ 
+ 
+ @router.get("/{user_id}", response_model=UserRead)
+-def get_user(user_id: int, service: UserServiceDep):
++def get_user(user_id: int, current_user: CurrentUser, service: UserServiceDep):
++    if user_id != current_user.id:
++        raise UserNotFoundError()
+     return service.get_user(user_id)
+ 
+ 
+@@ -26,10 +30,14 @@ def create_user(data: UserCreate, service: UserServiceDep):
+ 
+ 
+ @router.patch("/{user_id}", response_model=UserRead)
+-def update_user(user_id: int, data: UserUpdate, service: UserServiceDep):
++def update_user(user_id: int, data: UserUpdate, current_user: CurrentUser, service: UserServiceDep):
++    if user_id != current_user.id:
++        raise UserNotFoundError()
+     return service.update_user(user_id, data)
+ 
+ 
+ @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+-def delete_user(user_id: int, service: UserServiceDep):
+-    service.delete_user(user_id)
+\ No newline at end of file
++def delete_user(user_id: int, current_user: CurrentUser, service: UserServiceDep):
++    if user_id != current_user.id:
++        raise UserNotFoundError()
++    service.delete_user(user_id)
+diff --git a/app/api/v1/router.py b/app/api/v1/router.py
+index a5b81eb..047d49b 100644
+--- a/app/api/v1/router.py
++++ b/app/api/v1/router.py
+@@ -1,9 +1,10 @@
+ from fastapi import APIRouter
+ 
+-from app.api.v1.endpoints import auth, display_settings, text_extraction, users
++from app.api.v1.endpoints import auth, display_settings, text_extraction, users, vocabulary
+ 
+ api_router = APIRouter()
+ api_router.include_router(auth.router)
+ api_router.include_router(users.router)
+ api_router.include_router(display_settings.router)
+-api_router.include_router(text_extraction.router)
+\ No newline at end of file
++api_router.include_router(text_extraction.router)
++api_router.include_router(vocabulary.router)
+diff --git a/app/models/__init__.py b/app/models/__init__.py
+index c5a208a..7d95abb 100644
+--- a/app/models/__init__.py
++++ b/app/models/__init__.py
+@@ -1,2 +1,3 @@
+ from app.models.display_settings import UserDisplaySettings  # noqa: F401
+-from app.models.user import User  # noqa: F401
+\ No newline at end of file
++from app.models.user import User  # noqa: F401
++from app.models.vocabulary import VocabularyEntry  # noqa: F401
+diff --git a/frontend/.gitignore b/frontend/.gitignore
+index 659776a..05757e1 100644
+--- a/frontend/.gitignore
++++ b/frontend/.gitignore
+@@ -49,6 +49,8 @@ Thumbs.db:encryptable
+ [Dd]esktop.ini
+ 
+ # Testing & Coverage
++test-results/
++playwright-report/
+ coverage/
+ *.lcov
+ .nyc_output/
+diff --git a/frontend/package-lock.json b/frontend/package-lock.json
+index 31ecce2..921bc19 100644
+--- a/frontend/package-lock.json
++++ b/frontend/package-lock.json
+@@ -17,6 +17,9 @@
+       },
+       "devDependencies": {
+         "@eslint/js": "^10.0.1",
++        "@playwright/test": "^1.65.0",
++        "@testing-library/react": "^16.3.3",
++        "@testing-library/user-event": "^14.6.10",
+         "@types/node": "^24.19.2",
+         "@types/react": "^19.3.0",
+         "@types/react-dom": "^19.3.0",
+@@ -26,11 +29,13 @@
+         "eslint-plugin-react-hooks": "^7.1.1",
+         "eslint-plugin-react-refresh": "^0.5.7",
+         "globals": "^17.13.0",
++        "jsdom": "^31.0.0",
+         "postcss": "^8.5.6",
+         "tailwindcss": "^3.4.17",
+         "typescript": "~6.0.3",
+         "typescript-eslint": "^8.72.0",
+-        "vite": "^8.3.5"
++        "vite": "^8.3.5",
++        "vitest": "^5.1.0"
+       }
+     },
+     "node_modules/@alloc/quick-lru": {
+@@ -238,6 +243,16 @@
+         "node": ">=6.0.0"
+       }
+     },
++    "node_modules/@babel/runtime": {
++      "version": "7.29.14",
++      "resolved": "https://registry.npmjs.org/@babel/runtime/-/runtime-7.29.14.tgz",
++      "integrity": "sha512-Y5tqevQaUAZhhj82BpYMNC1ssvLQTVAfwKdm8iy8qwmhvC2/CpcAu8OC+QEtjM7pMk7knx83u1Qj8gzkicyelw==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=6.9.0"
++      }
++    },
+     "node_modules/@babel/template": {
+       "version": "7.29.7",
+       "resolved": "https://registry.npmjs.org/@babel/template/-/template-7.29.7.tgz",
+@@ -438,6 +453,24 @@
+         "node": "^20.19.0 || ^22.13.0 || >=24"
+       }
+     },
++    "node_modules/@exodus/bytes": {
++      "version": "1.16.0",
++      "resolved": "https://registry.npmjs.org/@exodus/bytes/-/bytes-1.16.0.tgz",
++      "integrity": "sha512-IcpW84uEn3N7ETtNZMlxKhfl6Pec8rUNGOTBtWbK1FKhJxIFAptZyVrvVRVBimAJxJCgc3PxepxkdWWG4DVzfA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
++      },
++      "peerDependencies": {
++        "@noble/hashes": "^1.8.0 || ^2.0.0"
++      },
++      "peerDependenciesMeta": {
++        "@noble/hashes": {
++          "optional": true
++        }
++      }
++    },
+     "node_modules/@fontsource/lexend": {
+       "version": "5.3.0",
+       "resolved": "https://registry.npmjs.org/@fontsource/lexend/-/lexend-5.3.0.tgz",
+@@ -653,6 +686,22 @@
+         "url": "https://github.com/sponsors/oxc-project"
+       }
+     },
++    "node_modules/@playwright/test": {
++      "version": "1.65.0",
++      "resolved": "https://registry.npmjs.org/@playwright/test/-/test-1.65.0.tgz",
++      "integrity": "sha512-iGURLGuKDLakSEl7Pgfv8h7f+XLT+V861Wfhz0zlEl5nyFuKUopdkFBPKqTllTUp06aOwPuH8iuUEb3yp3MpbQ==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "playwright": "1.65.0"
++      },
++      "bin": {
++        "playwright": "cli.js"
++      },
++      "engines": {
++        "node": ">=20"
++      }
++    },
+     "node_modules/@rolldown/binding-android-arm-eabi": {
+       "version": "1.2.16",
+       "resolved": "https://registry.npmjs.org/@rolldown/binding-android-arm-eabi/-/binding-android-arm-eabi-1.2.16.tgz",
+@@ -915,6 +964,95 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/@testing-library/dom": {
++      "version": "10.4.2",
++      "resolved": "https://registry.npmjs.org/@testing-library/dom/-/dom-10.4.2.tgz",
++      "integrity": "sha512-yzr2S9HyAIdhz2/6qHgbs665Q7PKVcDF05vsOlHPxG1mo36gKVesdYVeDLnXgfjJ03CrKRk08knc6+E/9m8v2Q==",
++      "dev": true,
++      "license": "MIT",
++      "peer": true,
++      "dependencies": {
++        "@babel/code-frame": "^7.10.4",
++        "@babel/runtime": "^7.12.5",
++        "@types/aria-query": "^5.0.1",
++        "aria-query": "5.3.0",
++        "dom-accessibility-api": "^0.5.9",
++        "lz-string": "^1.5.0",
++        "picocolors": "1.1.1",
++        "pretty-format": "^27.0.2"
++      },
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@testing-library/react": {
++      "version": "16.3.3",
++      "resolved": "https://registry.npmjs.org/@testing-library/react/-/react-16.3.3.tgz",
++      "integrity": "sha512-Uo193NgQbPMz6lrrhtRQQFcMC6Re/ELLFbbuVL30WDlZxlpZf9/lMHTAVxPRLw1q1iu9OJmR1c2BLiENRstdBg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@babel/runtime": "^7.12.5"
++      },
++      "engines": {
++        "node": ">=18"
++      },
++      "peerDependencies": {
++        "@testing-library/dom": "^10.0.0",
++        "@types/react": "^18.0.0 || ^19.0.0",
++        "@types/react-dom": "^18.0.0 || ^19.0.0",
++        "react": "^18.0.0 || ^19.0.0",
++        "react-dom": "^18.0.0 || ^19.0.0"
++      },
++      "peerDependenciesMeta": {
++        "@types/react": {
++          "optional": true
++        },
++        "@types/react-dom": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/@testing-library/user-event": {
++      "version": "14.6.10",
++      "resolved": "https://registry.npmjs.org/@testing-library/user-event/-/user-event-14.6.10.tgz",
++      "integrity": "sha512-tA4stGNp3mLGOGO+lh87UA56Tz4c8NVGBSkyIF58O+W/bs2Re9BCI9xihnL70+DsThncFznE0skS88SM1D2hyg==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=12",
++        "npm": ">=6"
++      },
++      "peerDependencies": {
++        "@testing-library/dom": ">=7.21.4"
++      }
++    },
++    "node_modules/@types/aria-query": {
++      "version": "5.0.4",
++      "resolved": "https://registry.npmjs.org/@types/aria-query/-/aria-query-5.0.4.tgz",
++      "integrity": "sha512-rfT93uj5s0PRL7EzccGMs3brplhcrghnDoV26NqKhCAS1hVo+WdNsPvE/yb6ilfr5hi2MEk6d5EWJTKdxg8jVw==",
++      "dev": true,
++      "license": "MIT",
++      "peer": true
++    },
++    "node_modules/@types/chai": {
++      "version": "5.2.3",
++      "resolved": "https://registry.npmjs.org/@types/chai/-/chai-5.2.3.tgz",
++      "integrity": "sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@types/deep-eql": "*",
++        "assertion-error": "^2.0.1"
++      }
++    },
++    "node_modules/@types/deep-eql": {
++      "version": "4.0.2",
++      "resolved": "https://registry.npmjs.org/@types/deep-eql/-/deep-eql-4.0.2.tgz",
++      "integrity": "sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/@types/esrecurse": {
+       "version": "4.3.1",
+       "resolved": "https://registry.npmjs.org/@types/esrecurse/-/esrecurse-4.3.1.tgz",
+@@ -1239,6 +1377,44 @@
+         }
+       }
+     },
++    "node_modules/@vitest/mocker": {
++      "version": "5.1.0",
++      "resolved": "https://registry.npmjs.org/@vitest/mocker/-/mocker-5.1.0.tgz",
++      "integrity": "sha512-5umB9/jlWcqVS6fsrFmv5Gdnpu6wAUio/lEOwAmvB7v+lFo/IW2B9FhAD0p19GCULTgMzLCdUmuCDCnAzWgppQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@jridgewell/trace-mapping": "0.3.31",
++        "@vitest/spy": "5.1.0",
++        "estree-walker": "^3.0.3",
++        "magic-string": "^1.4.3"
++      },
++      "funding": {
++        "url": "https://opencollective.com/vitest"
++      },
++      "peerDependencies": {
++        "msw": "^2.4.9 || ^3.0.0",
++        "vite": "^6.0.0 || ^7.0.0 || ^8.0.0"
++      },
++      "peerDependenciesMeta": {
++        "msw": {
++          "optional": true
++        },
++        "vite": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/@vitest/spy": {
++      "version": "5.1.0",
++      "resolved": "https://registry.npmjs.org/@vitest/spy/-/spy-5.1.0.tgz",
++      "integrity": "sha512-2DPO5OMHWKrBngC+fCmTQqemNF0gidRhp3lxbBmRhW+M1XJrfgPpqNqWVevXtn2f2ufD5ZaR1B6B641aAlcX5A==",
++      "dev": true,
++      "license": "MIT",
++      "funding": {
++        "url": "https://opencollective.com/vitest"
++      }
++    },
+     "node_modules/acorn": {
+       "version": "8.19.0",
+       "resolved": "https://registry.npmjs.org/acorn/-/acorn-8.19.0.tgz",
+@@ -1279,6 +1455,31 @@
+         "url": "https://github.com/sponsors/epoberezkin"
+       }
+     },
++    "node_modules/ansi-regex": {
++      "version": "5.0.1",
++      "resolved": "https://registry.npmjs.org/ansi-regex/-/ansi-regex-5.0.1.tgz",
++      "integrity": "sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==",
++      "dev": true,
++      "license": "MIT",
++      "peer": true,
++      "engines": {
++        "node": ">=8"
++      }
++    },
++    "node_modules/ansi-styles": {
++      "version": "5.2.0",
++      "resolved": "https://registry.npmjs.org/ansi-styles/-/ansi-styles-5.2.0.tgz",
++      "integrity": "sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA==",
++      "dev": true,
++      "license": "MIT",
++      "peer": true,
++      "engines": {
++        "node": ">=10"
++      },
++      "funding": {
++        "url": "https://github.com/chalk/ansi-styles?sponsor=1"
++      }
++    },
+     "node_modules/any-promise": {
+       "version": "1.3.0",
+       "resolved": "https://registry.npmjs.org/any-promise/-/any-promise-1.3.0.tgz",
+@@ -1320,6 +1521,27 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/aria-query": {
++      "version": "5.3.0",
++      "resolved": "https://registry.npmjs.org/aria-query/-/aria-query-5.3.0.tgz",
++      "integrity": "sha512-b0P0sZPKtyu8HkeRAfCq0IfURZK+SuwMjY1UXGBU27wpAiTwQAIlq56IbIO+ytk/JjS1fMR14ee5WBBfKi5J6A==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "peer": true,
++      "dependencies": {
++        "dequal": "^2.0.3"
++      }
++    },
++    "node_modules/assertion-error": {
++      "version": "2.0.1",
++      "resolved": "https://registry.npmjs.org/assertion-error/-/assertion-error-2.0.1.tgz",
++      "integrity": "sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=12"
++      }
++    },
+     "node_modules/autoprefixer": {
+       "version": "10.4.21",
+       "resolved": "https://registry.npmjs.org/autoprefixer/-/autoprefixer-10.4.21.tgz",
+@@ -1381,6 +1603,33 @@
+         "node": ">=6.0.0"
+       }
+     },
++    "node_modules/bcp-47": {
++      "version": "2.1.2",
++      "resolved": "https://registry.npmjs.org/bcp-47/-/bcp-47-2.1.2.tgz",
++      "integrity": "sha512-wsv86UuNFuPnVieKLyECTT+CP1WSAHeoIg5P3xu2kA9Z+7fVPoKt7dxzSeEhtJel0AI+NW3fIW3KtTKQKUCngg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "is-alphabetical": "^2.0.0",
++        "is-alphanumerical": "^2.0.0",
++        "is-decimal": "^2.0.0"
++      },
++      "funding": {
++        "type": "github",
++        "url": "https://github.com/sponsors/wooorm"
++      }
++    },
++    "node_modules/bcp-47-match": {
++      "version": "2.0.3",
++      "resolved": "https://registry.npmjs.org/bcp-47-match/-/bcp-47-match-2.0.3.tgz",
++      "integrity": "sha512-JtTezzbAibu8G0R9op9zb3vcWZd9JF6M0xOYGPn0fNCd7wOpRB1mU2mH9T8gaBGbAAyIIVgB2G7xG0GP98zMAQ==",
++      "dev": true,
++      "license": "MIT",
++      "funding": {
++        "type": "github",
++        "url": "https://github.com/sponsors/wooorm"
++      }
++    },
+     "node_modules/binary-extensions": {
+       "version": "2.3.0",
+       "resolved": "https://registry.npmjs.org/binary-extensions/-/binary-extensions-2.3.0.tgz",
+@@ -1499,6 +1748,16 @@
+       ],
+       "license": "CC-BY-4.0"
+     },
++    "node_modules/chai": {
++      "version": "6.3.0",
++      "resolved": "https://registry.npmjs.org/chai/-/chai-6.3.0.tgz",
++      "integrity": "sha512-XWAtwJ6OHO+tj0EKCs0Y2UamnyOxseZWltU4x2U2wh8g4AigdjwvtUjvLP2tqkA/avxHEtzxNaqGq/YGNwckKg==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=18"
++      }
++    },
+     "node_modules/chokidar": {
+       "version": "3.6.0",
+       "resolved": "https://registry.npmjs.org/chokidar/-/chokidar-3.6.0.tgz",
+@@ -1602,6 +1861,20 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/data-urls": {
++      "version": "8.0.0",
++      "resolved": "https://registry.npmjs.org/data-urls/-/data-urls-8.0.0.tgz",
++      "integrity": "sha512-JQUCCK+/CAGbGGx618PlFZMXH81Jtj7t73CHv9dd/zVWvxgGT2zLFRjnKb+Ng46GIwcy+f7f88qd4duqllK+WQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "whatwg-mimetype": "^5.0.0",
++        "whatwg-url": "^17.1.2"
++      },
++      "engines": {
++        "node": "^22.14.0 || >=24.0.0"
++      }
++    },
+     "node_modules/debug": {
+       "version": "4.4.3",
+       "resolved": "https://registry.npmjs.org/debug/-/debug-4.4.3.tgz",
+@@ -1620,6 +1893,13 @@
+         }
+       }
+     },
++    "node_modules/decimal.js": {
++      "version": "10.6.0",
++      "resolved": "https://registry.npmjs.org/decimal.js/-/decimal.js-10.6.0.tgz",
++      "integrity": "sha512-YpgQiITW3JXGntzdUmyUR1V812Hn8T1YVXhCu+wO3OpS4eU9l4YdD3qjyiKdV6mvV29zapkMeD390UVEf2lkUg==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/deep-is": {
+       "version": "0.1.4",
+       "resolved": "https://registry.npmjs.org/deep-is/-/deep-is-0.1.4.tgz",
+@@ -1627,6 +1907,17 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/dequal": {
++      "version": "2.0.3",
++      "resolved": "https://registry.npmjs.org/dequal/-/dequal-2.0.3.tgz",
++      "integrity": "sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==",
++      "dev": true,
++      "license": "MIT",
++      "peer": true,
++      "engines": {
++        "node": ">=6"
++      }
++    },
+     "node_modules/detect-libc": {
+       "version": "2.1.2",
+       "resolved": "https://registry.npmjs.org/detect-libc/-/detect-libc-2.1.2.tgz",
+@@ -1651,6 +1942,14 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/dom-accessibility-api": {
++      "version": "0.5.16",
++      "resolved": "https://registry.npmjs.org/dom-accessibility-api/-/dom-accessibility-api-0.5.16.tgz",
++      "integrity": "sha512-X7BJ2yElsnOJ30pZF4uIIDfBEVgF4XEBxL9Bxhy6dnrm5hkzqmsWHGTiHqRiITNhMyFLyAiWndIJP7Z1NTteDg==",
++      "dev": true,
++      "license": "MIT",
++      "peer": true
++    },
+     "node_modules/electron-to-chromium": {
+       "version": "1.5.473",
+       "resolved": "https://registry.npmjs.org/electron-to-chromium/-/electron-to-chromium-1.5.473.tgz",
+@@ -1658,6 +1957,19 @@
+       "dev": true,
+       "license": "ISC"
+     },
++    "node_modules/entities": {
++      "version": "9.0.0",
++      "resolved": "https://registry.npmjs.org/entities/-/entities-9.0.0.tgz",
++      "integrity": "sha512-oJFNDJg3kTPwAD1cNn2+WmUq4wFoo09npc3Ydf1D7ED4smRiWrsKnaLxykrTWgyGEcusc87P5dxlAleol9kpkg==",
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "engines": {
++        "node": ">=20.19.0"
++      },
++      "funding": {
++        "url": "https://github.com/fb55/entities?sponsor=1"
++      }
++    },
+     "node_modules/es-errors": {
+       "version": "1.3.0",
+       "resolved": "https://registry.npmjs.org/es-errors/-/es-errors-1.3.0.tgz",
+@@ -1668,6 +1980,13 @@
+         "node": ">= 0.4"
+       }
+     },
++    "node_modules/es-module-lexer": {
++      "version": "2.3.2",
++      "resolved": "https://registry.npmjs.org/es-module-lexer/-/es-module-lexer-2.3.2.tgz",
++      "integrity": "sha512-poHGpORABojJJucnV9KbOavETW8lBVnphkW77ER5/BQ5Fz7oXSoCNek7IH3vR5nRjdsEz926ibFYX8KtLQmdyw==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/escalade": {
+       "version": "3.2.0",
+       "resolved": "https://registry.npmjs.org/escalade/-/escalade-3.2.0.tgz",
+@@ -1866,6 +2185,16 @@
+         "node": ">=4.0"
+       }
+     },
++    "node_modules/estree-walker": {
++      "version": "3.0.3",
++      "resolved": "https://registry.npmjs.org/estree-walker/-/estree-walker-3.0.3.tgz",
++      "integrity": "sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@types/estree": "^1.0.0"
++      }
++    },
+     "node_modules/esutils": {
+       "version": "2.0.3",
+       "resolved": "https://registry.npmjs.org/esutils/-/esutils-2.0.3.tgz",
+@@ -1876,6 +2205,16 @@
+         "node": ">=0.10.0"
+       }
+     },
++    "node_modules/expect-type": {
++      "version": "1.4.0",
++      "resolved": "https://registry.npmjs.org/expect-type/-/expect-type-1.4.0.tgz",
++      "integrity": "sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "engines": {
++        "node": ">=12.0.0"
++      }
++    },
+     "node_modules/fast-deep-equal": {
+       "version": "3.1.3",
+       "resolved": "https://registry.npmjs.org/fast-deep-equal/-/fast-deep-equal-3.1.3.tgz",
+@@ -2139,6 +2478,19 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/html-encoding-sniffer": {
++      "version": "7.0.0",
++      "resolved": "https://registry.npmjs.org/html-encoding-sniffer/-/html-encoding-sniffer-7.0.0.tgz",
++      "integrity": "sha512-UikN5yr7xsCDAq87Or5or0PAlD3HJJOKVzM05az588WnpDJ4Ux7a2A53Qi6gofGg2/EtvF/H4hCi/TXfCW4Y6w==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@exodus/bytes": "^1.15.1"
++      },
++      "engines": {
++        "node": "^22.13.0 || >=24.0.0"
++      }
++    },
+     "node_modules/ignore": {
+       "version": "5.3.2",
+       "resolved": "https://registry.npmjs.org/ignore/-/ignore-5.3.2.tgz",
+@@ -2159,6 +2511,32 @@
+         "node": ">=0.8.19"
+       }
+     },
++    "node_modules/is-alphabetical": {
++      "version": "2.0.1",
++      "resolved": "https://registry.npmjs.org/is-alphabetical/-/is-alphabetical-2.0.1.tgz",
++      "integrity": "sha512-FWyyY60MeTNyeSRpkM2Iry0G9hpr7/9kD40mD/cGQEuilcZYS4okz8SN2Q6rLCJ8gbCt6fN+rC+6tMGS99LaxQ==",
++      "dev": true,
++      "license": "MIT",
++      "funding": {
++        "type": "github",
++        "url": "https://github.com/sponsors/wooorm"
++      }
++    },
++    "node_modules/is-alphanumerical": {
++      "version": "2.0.1",
++      "resolved": "https://registry.npmjs.org/is-alphanumerical/-/is-alphanumerical-2.0.1.tgz",
++      "integrity": "sha512-hmbYhX/9MUMF5uh7tOXyK/n0ZvWpad5caBA17GsC6vyuCqaWliRG5K1qS9inmUhEMaOBIW7/whAnSwveW/LtZw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "is-alphabetical": "^2.0.0",
++        "is-decimal": "^2.0.0"
++      },
++      "funding": {
++        "type": "github",
++        "url": "https://github.com/sponsors/wooorm"
++      }
++    },
+     "node_modules/is-binary-path": {
+       "version": "2.1.0",
+       "resolved": "https://registry.npmjs.org/is-binary-path/-/is-binary-path-2.1.0.tgz",
+@@ -2188,6 +2566,17 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/is-decimal": {
++      "version": "2.0.1",
++      "resolved": "https://registry.npmjs.org/is-decimal/-/is-decimal-2.0.1.tgz",
++      "integrity": "sha512-AAB9hiomQs5DXWcRB1rqsxGUstbRroFOPPVAomNk/3XHR5JyEZChOyTWe2oayKnsSsr/kcGqF+z6yuH6HHpN0A==",
++      "dev": true,
++      "license": "MIT",
++      "funding": {
++        "type": "github",
++        "url": "https://github.com/sponsors/wooorm"
++      }
++    },
+     "node_modules/is-extglob": {
+       "version": "2.1.1",
+       "resolved": "https://registry.npmjs.org/is-extglob/-/is-extglob-2.1.1.tgz",
+@@ -2221,6 +2610,13 @@
+         "node": ">=0.12.0"
+       }
+     },
++    "node_modules/is-potential-custom-element-name": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/is-potential-custom-element-name/-/is-potential-custom-element-name-1.0.1.tgz",
++      "integrity": "sha512-bCYeRA2rVibKZd+s2625gGnGF/t7DSqDs4dP7CrLA1m7jKWz6pps0LpYLJN8Q64HtmPKJ1hrN3nzPNKFEKOUiQ==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/isexe": {
+       "version": "2.0.0",
+       "resolved": "https://registry.npmjs.org/isexe/-/isexe-2.0.0.tgz",
+@@ -2245,6 +2641,54 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/jsdom": {
++      "version": "31.0.0",
++      "resolved": "https://registry.npmjs.org/jsdom/-/jsdom-31.0.0.tgz",
++      "integrity": "sha512-xAkhD9z1eyFC5+QUi9K24CaZJgdCQ2GOGLW1GdVDoQvkp/AxEH9TQ0pAplPOlIiV92hfcgnFOADZypbjgbBT6Q==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@exodus/bytes": "^1.16.0",
++        "bcp-47": "^2.1.2",
++        "bcp-47-match": "^2.0.3",
++        "data-urls": "^8.0.0",
++        "decimal.js": "^10.6.0",
++        "html-encoding-sniffer": "^7.0.0",
++        "is-potential-custom-element-name": "^1.0.1",
++        "lru-cache": "^11.5.3",
++        "parse5": "^8.1.0",
++        "parse5-parser-stream": "^8.1.0",
++        "saxes": "^6.0.0",
++        "tough-cookie": "^6.0.2",
++        "undici": "^8.12.3",
++        "w3c-xmlserializer": "^6.0.0",
++        "webidl-conversions": "^8.0.1",
++        "whatwg-mimetype": "^5.0.0",
++        "whatwg-url": "^17.3.0",
++        "xml-name-validator": "^5.0.0"
++      },
++      "engines": {
++        "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
++      },
++      "peerDependencies": {
++        "@napi-rs/canvas": "^1.0.13"
++      },
++      "peerDependenciesMeta": {
++        "@napi-rs/canvas": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/jsdom/node_modules/lru-cache": {
++      "version": "11.5.3",
++      "resolved": "https://registry.npmjs.org/lru-cache/-/lru-cache-11.5.3.tgz",
++      "integrity": "sha512-U4N8FgzmWxc8k1VH8Kr6lQg18U7Fjvby6wXHVRX/ZZ7IwWbRMgrRbP0Wrb5q5NVinryp4SQampHKdvtecItxUg==",
++      "dev": true,
++      "license": "BlueOak-1.0.0",
++      "engines": {
++        "node": "20 || >=22"
++      }
++    },
+     "node_modules/jsesc": {
+       "version": "3.1.0",
+       "resolved": "https://registry.npmjs.org/jsesc/-/jsesc-3.1.0.tgz",
+@@ -2616,6 +3060,27 @@
+         "yallist": "^3.0.2"
+       }
+     },
++    "node_modules/lz-string": {
++      "version": "1.5.0",
++      "resolved": "https://registry.npmjs.org/lz-string/-/lz-string-1.5.0.tgz",
++      "integrity": "sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==",
++      "dev": true,
++      "license": "MIT",
++      "peer": true,
++      "bin": {
++        "lz-string": "bin/bin.js"
++      }
++    },
++    "node_modules/magic-string": {
++      "version": "1.4.5",
++      "resolved": "https://registry.npmjs.org/magic-string/-/magic-string-1.4.5.tgz",
++      "integrity": "sha512-oLLC2+YvQUfAa+vxoufE/yc1icb87M9iXIRqAoR/2EhE/8cb3SF/+Gi0c2By1B+5Vz2e2vQtUvHiu1+63Znh+w==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@jridgewell/sourcemap-codec": "^1.6.0"
++      }
++    },
+     "node_modules/merge2": {
+       "version": "1.4.1",
+       "resolved": "https://registry.npmjs.org/merge2/-/merge2-1.4.1.tgz",
+@@ -2764,6 +3229,20 @@
+         "node": ">= 6"
+       }
+     },
++    "node_modules/obug": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/obug/-/obug-3.0.0.tgz",
++      "integrity": "sha512-5vvB5+W7ePv+p3uqxi+RcW1XAzLW0/hxt3/4X4Lc4qHudzOhmBiBwOY6DRob4WnanAEGvNcLjF+KNOufrUoEQw==",
++      "dev": true,
++      "funding": [
++        "https://github.com/sponsors/sxzz",
++        "https://opencollective.com/debug"
++      ],
++      "license": "MIT",
++      "engines": {
++        "node": ">=12.20.0"
++      }
++    },
+     "node_modules/optionator": {
+       "version": "0.9.4",
+       "resolved": "https://registry.npmjs.org/optionator/-/optionator-0.9.4.tgz",
+@@ -2814,6 +3293,32 @@
+         "url": "https://github.com/sponsors/sindresorhus"
+       }
+     },
++    "node_modules/parse5": {
++      "version": "8.1.1",
++      "resolved": "https://registry.npmjs.org/parse5/-/parse5-8.1.1.tgz",
++      "integrity": "sha512-EcR/6WDcU7b2N3vQSxKALCk9lXGtUMQxXio008OEMBE0kavu/7JLfBEeFPzi43nMqVDSbEn3QCK+BMCc9zO//w==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "entities": "^9.0.0"
++      },
++      "funding": {
++        "url": "https://github.com/inikulin/parse5?sponsor=1"
++      }
++    },
++    "node_modules/parse5-parser-stream": {
++      "version": "8.1.1",
++      "resolved": "https://registry.npmjs.org/parse5-parser-stream/-/parse5-parser-stream-8.1.1.tgz",
++      "integrity": "sha512-hMcVbbUJcQmP8rURWUdYrT1flRiBiBVjq/RYGguJpDUgIXSqdYKlE0CxthmdMWoSlBAuL5bUBa73g0pttSy7Hw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "parse5": "^8.1.1"
++      },
++      "funding": {
++        "url": "https://github.com/inikulin/parse5?sponsor=1"
++      }
++    },
+     "node_modules/path-exists": {
+       "version": "4.0.0",
+       "resolved": "https://registry.npmjs.org/path-exists/-/path-exists-4.0.0.tgz",
+@@ -2871,6 +3376,35 @@
+         "node": ">= 6"
+       }
+     },
++    "node_modules/playwright": {
++      "version": "1.65.0",
++      "resolved": "https://registry.npmjs.org/playwright/-/playwright-1.65.0.tgz",
++      "integrity": "sha512-F3AMWcR44qMBt4kq+6Kb6mX7bjGXshktKFOPULd7reED6ZJWevjbNRqysP7q+AATE9kdPEZBibex1BYsvpVoeA==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "playwright-core": "1.65.0"
++      },
++      "bin": {
++        "playwright": "cli.js"
++      },
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/playwright-core": {
++      "version": "1.65.0",
++      "resolved": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.65.0.tgz",
++      "integrity": "sha512-vNSKgH6YqtN7cdT/L334zo0a+YwkrpicyrHJlWWPIm/Q+Nn2SWInil01oT0mbu96U4GgoRtCYQD9CzJQgju+lA==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "bin": {
++        "playwright-core": "cli.js"
++      },
++      "engines": {
++        "node": ">=20"
++      }
++    },
+     "node_modules/postcss": {
+       "version": "8.5.6",
+       "resolved": "https://registry.npmjs.org/postcss/-/postcss-8.5.6.tgz",
+@@ -3037,6 +3571,22 @@
+         "node": ">= 0.8.0"
+       }
+     },
++    "node_modules/pretty-format": {
++      "version": "27.5.1",
++      "resolved": "https://registry.npmjs.org/pretty-format/-/pretty-format-27.5.1.tgz",
++      "integrity": "sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ==",
++      "dev": true,
++      "license": "MIT",
++      "peer": true,
++      "dependencies": {
++        "ansi-regex": "^5.0.1",
++        "ansi-styles": "^5.0.0",
++        "react-is": "^17.0.1"
++      },
++      "engines": {
++        "node": "^10.13.0 || ^12.13.0 || ^14.15.0 || >=15.0.0"
++      }
++    },
+     "node_modules/punycode": {
+       "version": "2.3.1",
+       "resolved": "https://registry.npmjs.org/punycode/-/punycode-2.3.1.tgz",
+@@ -3109,6 +3659,14 @@
+         "react": "^19.3.1"
+       }
+     },
++    "node_modules/react-is": {
++      "version": "17.0.2",
++      "resolved": "https://registry.npmjs.org/react-is/-/react-is-17.0.2.tgz",
++      "integrity": "sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w==",
++      "dev": true,
++      "license": "MIT",
++      "peer": true
++    },
+     "node_modules/react-router": {
+       "version": "7.18.5",
+       "resolved": "https://registry.npmjs.org/react-router/-/react-router-7.18.5.tgz",
+@@ -3271,6 +3829,19 @@
+         "queue-microtask": "^1.2.2"
+       }
+     },
++    "node_modules/saxes": {
++      "version": "6.0.0",
++      "resolved": "https://registry.npmjs.org/saxes/-/saxes-6.0.0.tgz",
++      "integrity": "sha512-xAg7SOnEhrm5zI3puOOKyy1OMcMlIJZYNJY7xLBwSze0UjhPLnWfj2GF2EpT0jmzaJKIWKHLsaSSajf35bcYnA==",
++      "dev": true,
++      "license": "ISC",
++      "dependencies": {
++        "xmlchars": "^2.2.0"
++      },
++      "engines": {
++        "node": ">=v12.22.7"
++      }
++    },
+     "node_modules/scheduler": {
+       "version": "0.28.0",
+       "resolved": "https://registry.npmjs.org/scheduler/-/scheduler-0.28.0.tgz",
+@@ -3326,6 +3897,13 @@
+         "node": ">=0.10.0"
+       }
+     },
++    "node_modules/std-env": {
++      "version": "4.3.0",
++      "resolved": "https://registry.npmjs.org/std-env/-/std-env-4.3.0.tgz",
++      "integrity": "sha512-OtU/EgQ1kIm5KwqQpBC6ZEMXrZRui11w8zgfTWp8cdO9B8OaPsbA8bTHO2P+HNo1VlUTGMVBwPhydu6poeXiag==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/sucrase": {
+       "version": "3.35.1",
+       "resolved": "https://registry.npmjs.org/sucrase/-/sucrase-3.35.1.tgz",
+@@ -3423,6 +4001,26 @@
+         "node": ">=0.8"
+       }
+     },
++    "node_modules/tinybench": {
++      "version": "6.2.3",
++      "resolved": "https://registry.npmjs.org/tinybench/-/tinybench-6.2.3.tgz",
++      "integrity": "sha512-Al01C2JIBnO2CXCAPbpAl6sUiOZHeThGtHYNTa51JRw9PyWOCdr+9Ong05R4qg/Sk3+H645E8ov1h2c58ityNw==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=20.0.0"
++      }
++    },
++    "node_modules/tinyexec": {
++      "version": "1.3.1",
++      "resolved": "https://registry.npmjs.org/tinyexec/-/tinyexec-1.3.1.tgz",
++      "integrity": "sha512-GCvB3aoys96IuDFBMcTB46JOR6mdMtAToqwiW8JlWhsoh1mhHi/xn9ss/Dg7N555GiJyEt2qzoG/NHCwM6h1EA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=18"
++      }
++    },
+     "node_modules/tinyglobby": {
+       "version": "0.2.17",
+       "resolved": "https://registry.npmjs.org/tinyglobby/-/tinyglobby-0.2.17.tgz",
+@@ -3440,6 +4038,26 @@
+         "url": "https://github.com/sponsors/SuperchupuDev"
+       }
+     },
++    "node_modules/tldts": {
++      "version": "7.5.1",
++      "resolved": "https://registry.npmjs.org/tldts/-/tldts-7.5.1.tgz",
++      "integrity": "sha512-UW1Z5afSpu5qA0qhDnaynyiwPa+/VC7J/mofz72R032It5DUTUWk8I502cAitA6qMQV1x7IwNHg7pCBNVORVww==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "tldts-core": "^7.5.1"
++      },
++      "bin": {
++        "tldts": "bin/cli.js"
++      }
++    },
++    "node_modules/tldts-core": {
++      "version": "7.5.1",
++      "resolved": "https://registry.npmjs.org/tldts-core/-/tldts-core-7.5.1.tgz",
++      "integrity": "sha512-GGSowIH9Pp52ym/x0OxBBNqS2DuqlLL91YNnlnj+k+ZWjJQ+ilNxpwP7/RT+iX1gzuafhj1l7j46CNVqm+xAeQ==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/to-regex-range": {
+       "version": "5.0.1",
+       "resolved": "https://registry.npmjs.org/to-regex-range/-/to-regex-range-5.0.1.tgz",
+@@ -3453,6 +4071,32 @@
+         "node": ">=8.0"
+       }
+     },
++    "node_modules/tough-cookie": {
++      "version": "6.1.0",
++      "resolved": "https://registry.npmjs.org/tough-cookie/-/tough-cookie-6.1.0.tgz",
++      "integrity": "sha512-FTxc8u8Kl2tz0Lat1u8ksvcy8bwHRyEMawwTWybo51JqaC6O7SvfuhAKg+Ld6VqyIe2QRJBzY9HA7y2WyFRT2w==",
++      "dev": true,
++      "license": "BSD-3-Clause",
++      "dependencies": {
++        "tldts": "^7.0.5"
++      },
++      "engines": {
++        "node": ">=16"
++      }
++    },
++    "node_modules/tr46": {
++      "version": "7.0.0",
++      "resolved": "https://registry.npmjs.org/tr46/-/tr46-7.0.0.tgz",
++      "integrity": "sha512-BcDSDW+SIGWVOns1Zm6Yg91q9AEj7eaID0QDY9oIqJD1A8dscNwMcl9Sms2DeuWCNov1X0/oXanHGYQBSLwZsg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "punycode": "^2.3.1"
++      },
++      "engines": {
++        "node": "^22.14.0 || >=24.0.0"
++      }
++    },
+     "node_modules/ts-api-utils": {
+       "version": "2.5.0",
+       "resolved": "https://registry.npmjs.org/ts-api-utils/-/ts-api-utils-2.5.0.tgz",
+@@ -3524,6 +4168,16 @@
+         "typescript": ">=4.8.4 <6.1.0"
+       }
+     },
++    "node_modules/undici": {
++      "version": "8.12.4",
++      "resolved": "https://registry.npmjs.org/undici/-/undici-8.12.4.tgz",
++      "integrity": "sha512-8Mx+uNKKER2bA4AdtedkqRbwUCIJFr2nJckXRe5yrDqzePqwLP7VNcctN8/XdmDSbF7mS+jJKIszlL+vbam1VA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=22.19.0"
++      }
++    },
+     "node_modules/undici-types": {
+       "version": "7.24.6",
+       "resolved": "https://registry.npmjs.org/undici-types/-/undici-types-7.24.6.tgz",
+@@ -3686,6 +4340,137 @@
+         "node": "^10 || ^12 || >=14"
+       }
+     },
++    "node_modules/vitest": {
++      "version": "5.1.0",
++      "resolved": "https://registry.npmjs.org/vitest/-/vitest-5.1.0.tgz",
++      "integrity": "sha512-MzmNFnrwa8v8lF1bLxw3UJ4EREwVOVb75VqJZmUDRjJ6EluK/x9th7qTbaeDk41WxE1GxWqmTXcdsfobfH5sOA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@types/chai": "^5.2.2",
++        "@vitest/mocker": "5.1.0",
++        "chai": "^6.3.0",
++        "es-module-lexer": "^2.3.2",
++        "expect-type": "^1.4.0",
++        "magic-string": "^1.4.3",
++        "obug": "^3.0.0",
++        "picomatch": "^4.0.7",
++        "std-env": "^4.3.0",
++        "tinybench": "^6.2.2",
++        "tinyexec": "^1.3.1",
++        "tinyglobby": "^0.2.17",
++        "why-is-node-running": "3.2.1"
++      },
++      "bin": {
++        "vitest": "vitest.mjs"
++      },
++      "engines": {
++        "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
++      },
++      "funding": {
++        "url": "https://opencollective.com/vitest"
++      },
++      "peerDependencies": {
++        "@edge-runtime/vm": "*",
++        "@opentelemetry/api": "^1.9.0",
++        "@types/node": "^22.0.0 || >=24.0.0",
++        "@vitest/browser-playwright": "5.1.0",
++        "@vitest/browser-preview": "5.1.0",
++        "@vitest/browser-webdriverio": "^5.0.0-beta.5 || >=5.0.0",
++        "@vitest/coverage-istanbul": "5.1.0",
++        "@vitest/coverage-v8": "5.1.0",
++        "@vitest/ui": "5.1.0",
++        "happy-dom": "*",
++        "jsdom": "*",
++        "vite": "^6.4.0 || ^7.0.0 || ^8.0.0"
++      },
++      "peerDependenciesMeta": {
++        "@edge-runtime/vm": {
++          "optional": true
++        },
++        "@opentelemetry/api": {
++          "optional": true
++        },
++        "@types/node": {
++          "optional": true
++        },
++        "@vitest/browser-playwright": {
++          "optional": true
++        },
++        "@vitest/browser-preview": {
++          "optional": true
++        },
++        "@vitest/browser-webdriverio": {
++          "optional": true
++        },
++        "@vitest/coverage-istanbul": {
++          "optional": true
++        },
++        "@vitest/coverage-v8": {
++          "optional": true
++        },
++        "@vitest/ui": {
++          "optional": true
++        },
++        "happy-dom": {
++          "optional": true
++        },
++        "jsdom": {
++          "optional": true
++        },
++        "vite": {
++          "optional": false
++        }
++      }
++    },
++    "node_modules/w3c-xmlserializer": {
++      "version": "6.0.0",
++      "resolved": "https://registry.npmjs.org/w3c-xmlserializer/-/w3c-xmlserializer-6.0.0.tgz",
++      "integrity": "sha512-4Nsy8K5Tr6SPDH9jhKJOHf7ChDrc1zufZTVSF7x72hwuEXBqxqk9G6cK+K2NRUtB3iELRJqjXb4JPDMBjMTl2Q==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "xml-name-validator": "^5.0.0"
++      },
++      "engines": {
++        "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
++      }
++    },
++    "node_modules/webidl-conversions": {
++      "version": "8.0.1",
++      "resolved": "https://registry.npmjs.org/webidl-conversions/-/webidl-conversions-8.0.1.tgz",
++      "integrity": "sha512-BMhLD/Sw+GbJC21C/UgyaZX41nPt8bUTg+jWyDeg7e7YN4xOM05YPSIXceACnXVtqyEw/LMClUQMtMZ+PGGpqQ==",
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/whatwg-mimetype": {
++      "version": "5.0.0",
++      "resolved": "https://registry.npmjs.org/whatwg-mimetype/-/whatwg-mimetype-5.0.0.tgz",
++      "integrity": "sha512-sXcNcHOC51uPGF0P/D4NVtrkjSU2fNsm9iog4ZvZJsL3rjoDAzXZhkm2MWt1y+PUdggKAYVoMAIYcs78wJ51Cw==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/whatwg-url": {
++      "version": "17.3.0",
++      "resolved": "https://registry.npmjs.org/whatwg-url/-/whatwg-url-17.3.0.tgz",
++      "integrity": "sha512-KwOAJrpf+GTgBvcBQJcP38sMF0DsQKdwtG+TxM2pW44P6E5k0hDbWrDmyuJDIF0Uef0aQq0ZoJs+5oI+k8ddhg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@exodus/bytes": "^1.16.0",
++        "tr46": "^7.0.0",
++        "webidl-conversions": "^8.0.1"
++      },
++      "engines": {
++        "node": "^22.14.0 || >=24.0.0"
++      }
++    },
+     "node_modules/which": {
+       "version": "2.0.2",
+       "resolved": "https://registry.npmjs.org/which/-/which-2.0.2.tgz",
+@@ -3702,6 +4487,19 @@
+         "node": ">= 8"
+       }
+     },
++    "node_modules/why-is-node-running": {
++      "version": "3.2.1",
++      "resolved": "https://registry.npmjs.org/why-is-node-running/-/why-is-node-running-3.2.1.tgz",
++      "integrity": "sha512-Tb2FUhB4vUsGQlfSquQLYkApkuPAFQXGFzxWKHHumVz2dK+X1RUm/HnID4+TfIGYJ1kTcwOaCk/buYCEJr6YjQ==",
++      "dev": true,
++      "license": "MIT",
++      "bin": {
++        "why-is-node-running": "cli.js"
++      },
++      "engines": {
++        "node": ">=20.11"
++      }
++    },
+     "node_modules/word-wrap": {
+       "version": "1.2.5",
+       "resolved": "https://registry.npmjs.org/word-wrap/-/word-wrap-1.2.5.tgz",
+@@ -3712,6 +4510,23 @@
+         "node": ">=0.10.0"
+       }
+     },
++    "node_modules/xml-name-validator": {
++      "version": "5.0.0",
++      "resolved": "https://registry.npmjs.org/xml-name-validator/-/xml-name-validator-5.0.0.tgz",
++      "integrity": "sha512-EvGK8EJ3DhaHfbRlETOWAS5pO9MZITeauHKJyb8wyajUfQUenkIg2MvLDTZ4T/TgIcm3HU0TFBgWWboAZ30UHg==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/xmlchars": {
++      "version": "2.2.0",
++      "resolved": "https://registry.npmjs.org/xmlchars/-/xmlchars-2.2.0.tgz",
++      "integrity": "sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/yallist": {
+       "version": "3.1.1",
+       "resolved": "https://registry.npmjs.org/yallist/-/yallist-3.1.1.tgz",
+diff --git a/frontend/package.json b/frontend/package.json
+index 639b5a7..5bac6db 100644
+--- a/frontend/package.json
++++ b/frontend/package.json
+@@ -7,7 +7,9 @@
+     "dev": "vite",
+     "build": "tsc -b && vite build",
+     "lint": "eslint .",
+-    "preview": "vite preview"
++    "preview": "vite preview",
++    "test": "vitest run",
++    "test:e2e": "playwright test"
+   },
+   "dependencies": {
+     "@fontsource/lexend": "^5.3.0",
+@@ -19,6 +21,9 @@
+   },
+   "devDependencies": {
+     "@eslint/js": "^10.0.1",
++    "@playwright/test": "^1.65.0",
++    "@testing-library/react": "^16.3.3",
++    "@testing-library/user-event": "^14.6.10",
+     "@types/node": "^24.19.2",
+     "@types/react": "^19.3.0",
+     "@types/react-dom": "^19.3.0",
+@@ -28,10 +33,12 @@
+     "eslint-plugin-react-hooks": "^7.1.1",
+     "eslint-plugin-react-refresh": "^0.5.7",
+     "globals": "^17.13.0",
++    "jsdom": "^31.0.0",
+     "postcss": "^8.5.6",
+     "tailwindcss": "^3.4.17",
+     "typescript": "~6.0.3",
+     "typescript-eslint": "^8.72.0",
+-    "vite": "^8.3.5"
++    "vite": "^8.3.5",
++    "vitest": "^5.1.0"
+   }
+ }
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index 5c02b14..1e7b942 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -1,11 +1,12 @@
+ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+-import { MinimalHomepage, MinimalReadingView, Auth } from './screens';
++import { MinimalHomepage, MinimalReadingView, Auth, Vocabulary } from './screens';
+ 
+ function App() {
+   return (
+     <BrowserRouter>
+       <Routes>
+         <Route path="/" element={<MinimalHomepage />} />
++        <Route path="/vocabulary" element={<Vocabulary />} />
+         <Route path="/reading" element={<MinimalReadingView />} />
+         <Route path="/auth" element={<Auth key="auth" initialMode="login" />} />
+         <Route path="/login" element={<Auth key="login" initialMode="login" />} />
+diff --git a/frontend/src/components/common/ReadingText.tsx b/frontend/src/components/common/ReadingText.tsx
+index f6970a3..a4b9675 100644
+--- a/frontend/src/components/common/ReadingText.tsx
++++ b/frontend/src/components/common/ReadingText.tsx
+@@ -109,6 +109,7 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
+           return (
+             <blockquote
+               key={segment.id}
++              data-segment-id={segment.id}
+               className="my-12 px-6 sm:px-8 py-5 bg-surface-container-low rounded-lg text-on-surface-variant font-headline italic text-lg sm:text-[1.3rem] leading-[1.9]"
+             >
+               {body}
+@@ -118,6 +119,7 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
+         return (
+           <p
+             key={segment.id}
++            data-segment-id={segment.id}
+             className="mb-8 indent-6 sm:indent-8 last:mb-4"
+           >
+             {body}
+diff --git a/frontend/src/components/layout/Header.tsx b/frontend/src/components/layout/Header.tsx
+index c7c7f24..83ca977 100644
+--- a/frontend/src/components/layout/Header.tsx
++++ b/frontend/src/components/layout/Header.tsx
+@@ -85,6 +85,10 @@ export const Header: React.FC<HeaderProps> = ({ className = '' }) => {
+           </nav>
+         </div>
+ 
++        {/* Mobile entry: the desktop navigation is hidden below md. */}
++        <Link to="/vocabulary" aria-label="Từ khó của tôi" className="md:hidden rounded-full p-2 text-primary">
++          <span className="material-symbols-outlined" aria-hidden>bookmarks</span>
++        </Link>
+         {/* Right actions */}
+         <div className="flex items-center gap-2 sm:gap-3">
+           <Link
+diff --git a/frontend/src/context/AuthProvider.tsx b/frontend/src/context/AuthProvider.tsx
+index cc76d6e..dfc2afe 100644
+--- a/frontend/src/context/AuthProvider.tsx
++++ b/frontend/src/context/AuthProvider.tsx
+@@ -25,13 +25,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+ 
+     getMe()
+       .then((currentUser) => {
+-        if (!active) return;
++        if (!active || tokenStore.get() !== stored) return;
+         setUser(currentUser);
+         setToken(stored);
+       })
+       .catch(() => {
++        if (!active || tokenStore.get() !== stored) return;
+         tokenStore.clear();
+-        if (!active) return;
+         setUser(null);
+         setToken(null);
+       })
+@@ -44,18 +44,49 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+     };
+   }, []);
+ 
++  useEffect(() => {
++    let active = true;
++    const onStorage = (event: StorageEvent) => {
++      if (event.key !== 'token' && event.key !== null) return;
++      const stored = tokenStore.get();
++      // Clear the previous account immediately, before loading a different account.
++      setUser(null);
++      setToken(stored);
++      setIsLoading(Boolean(stored));
++      if (!stored) return;
++      getMe().then(currentUser => {
++        if (active && tokenStore.get() === stored) setUser(currentUser);
++      }).catch(() => {
++        if (!active || tokenStore.get() !== stored) return;
++        tokenStore.clear();
++        setToken(null);
++      }).finally(() => {
++        if (active && (tokenStore.get() === stored || tokenStore.get() === null)) setIsLoading(false);
++      });
++    };
++    window.addEventListener('storage', onStorage);
++    return () => { active = false; window.removeEventListener('storage', onStorage); };
++  }, []);
++
+   const login = useCallback(async (email: string, password: string) => {
+     const response = await loginRequest(email, password);
++    setUser(null);
++    setIsLoading(true);
+     tokenStore.set(response.access_token);
+     setToken(response.access_token);
+     try {
+       const currentUser = await getMe();
++      if (tokenStore.get() !== response.access_token) throw new DOMException('Account changed', 'AbortError');
+       setUser(currentUser);
+     } catch (error) {
+-      tokenStore.clear();
+-      setToken(null);
+-      setUser(null);
++      if (tokenStore.get() === response.access_token) {
++        tokenStore.clear();
++        setToken(null);
++        setUser(null);
++      }
+       throw error;
++    } finally {
++      if (tokenStore.get() === response.access_token || tokenStore.get() === null) setIsLoading(false);
+     }
+   }, []);
+ 
+@@ -68,6 +99,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+     tokenStore.clear();
+     setToken(null);
+     setUser(null);
++    setIsLoading(false);
+   }, []);
+ 
+   const value = useMemo(
+diff --git a/frontend/src/mocks/navigation.ts b/frontend/src/mocks/navigation.ts
+index cd6cff3..4cc180f 100644
+--- a/frontend/src/mocks/navigation.ts
++++ b/frontend/src/mocks/navigation.ts
+@@ -6,7 +6,7 @@ export interface NavLinkItem {
+ 
+ export const mockHeaderNavLinks: NavLinkItem[] = [
+   { label: 'Trang chủ', path: '/', isActive: true },
+-  { label: 'Thư viện', path: '#thu-vien' },
++  { label: 'Từ khó của tôi', path: '/vocabulary' },
+   { label: 'Khám phá', path: '#kham-pha' },
+ ];
+ 
+diff --git a/frontend/src/screens/MinimalReadingView/MinimalReadingView.tsx b/frontend/src/screens/MinimalReadingView/MinimalReadingView.tsx
+index 7a07f33..0d57108 100644
+--- a/frontend/src/screens/MinimalReadingView/MinimalReadingView.tsx
++++ b/frontend/src/screens/MinimalReadingView/MinimalReadingView.tsx
+@@ -1,5 +1,8 @@
+-import React, { useEffect, useRef, useState } from 'react';
++import React, { useCallback, useEffect, useRef, useState } from 'react';
+ import { createPortal } from 'react-dom';
++import { SaveVocabularyDialog } from '../../components/vocabulary/SaveVocabularyDialog';
++import { readVocabularySelection } from '../../lib/vocabulary-selection';
++import type { VocabularyDraft } from '../../lib/vocabulary';
+ import { Link, Navigate } from 'react-router-dom';
+ import { AudioPlayerCapsule, ManuscriptCard, ReadingText } from '../../components/common';
+ import { useDocument } from '../../context';
+@@ -36,7 +39,6 @@ const FONT_LABELS: Record<FontFamily, string> = {
+ 
+ const SIDEBAR_ITEMS = [
+   { icon: 'auto_stories', label: 'Đọc tài liệu', active: true },
+-  { icon: 'library_books', label: 'Thư viện', active: false },
+   { icon: 'bar_chart', label: 'Thống kê', active: false },
+   { icon: 'settings', label: 'Cài đặt', active: false },
+ ] as const;
+@@ -88,6 +90,9 @@ export const MinimalReadingView: React.FC = () => {
+   const [selectedVoiceURI, setSelectedVoiceURI] = useState(() => pickPreferredVoice(getSpeechVoices())?.voiceURI || '');
+   const [rate, setRate] = useState<number>(1);
+   const [speechError, setSpeechError] = useState('');
++  const [wordDraft, setWordDraft] = useState<VocabularyDraft | null>(null);
++  const [selectionError, setSelectionError] = useState('');
++  const closeWordDialog = useCallback(() => setWordDraft(null), []);
+ 
+   useEffect(() => {
+     const controller = new SpeechController();
+@@ -159,7 +164,7 @@ export const MinimalReadingView: React.FC = () => {
+     const onKey = (e: KeyboardEvent) => {
+       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+       const tag = (e.target as HTMLElement).tagName;
+-      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(tag)) return;
++      if (document.querySelector('dialog[open]') || ['INPUT', 'SELECT', 'TEXTAREA'].includes(tag)) return;
+       e.preventDefault();
+       const dir = e.key === 'ArrowDown' ? 1 : -1;
+       setRulerY((y) => clampY(y + dir * lh));
+@@ -170,6 +175,16 @@ export const MinimalReadingView: React.FC = () => {
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [s.focus.enabled, lh]);
+ 
++  const saveSelectedWord = () => {
++    if (!bodyRef.current || !doc) return;
++    try {
++      const draft = readVocabularySelection(bodyRef.current, doc);
++      if (!draft) { setSelectionError('Hãy bôi chọn một từ hoặc cụm từ trong bài trước khi lưu.'); return; }
++      setSelectionError('');
++      setWordDraft(draft);
++    } catch (error) { setSelectionError((error as Error).message); }
++  };
++
+   const settingsPanel = (
+     <aside className="flex flex-col w-[340px] max-w-[92vw] h-full rounded-3xl shadow-sm border border-black/5 bg-[#FFFDF8] overflow-hidden">
+       <div className="flex items-center justify-between px-5 py-4 border-b border-black/5 shrink-0">
+@@ -315,6 +330,7 @@ export const MinimalReadingView: React.FC = () => {
+       className="font-body antialiased h-screen flex overflow-hidden relative isolate selection:bg-tertiary-fixed selection:text-on-tertiary-fixed"
+       style={{ backgroundColor: theme.bg, color: theme.fg }}
+     >
++      {wordDraft && wordDraft.sourceDocumentId === doc.id && <SaveVocabularyDialog draft={wordDraft} onClose={closeWordDialog} />}
+       {/* Sidebar thương hiệu và điều hướng (chỉ desktop) */}
+       <aside className="hidden lg:flex flex-col w-56 xl:w-60 h-screen shrink-0 bg-[#FCF8F1] border-r border-[#EDE5DA] px-4 py-6 overflow-hidden">
+         <div className="shrink-0">
+@@ -343,6 +359,10 @@ export const MinimalReadingView: React.FC = () => {
+               {item.active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#1556B8]" />}
+             </div>
+           ))}
++          <Link to="/vocabulary" className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-[#344767] hover:bg-[#E9EDF7]">
++            <span className="material-symbols-outlined text-[21px]" aria-hidden>bookmarks</span>
++            Từ khó của tôi
++          </Link>
+         </nav>
+ 
+         <div className="flex-1 min-h-0 flex flex-col justify-end gap-4 pt-5">
+@@ -387,6 +407,10 @@ export const MinimalReadingView: React.FC = () => {
+             <span>Trở về trang chủ</span>
+           </Link>
+ 
++          <Link to="/vocabulary" className="lg:hidden inline-flex items-center gap-1 text-xs text-primary" aria-label="Từ khó của tôi">
++            <span className="material-symbols-outlined" aria-hidden>bookmarks</span>
++            <span className="hidden sm:inline">Từ khó của tôi</span>
++          </Link>
+           {!panelOpen && (
+             <button
+               type="button"
+@@ -485,9 +509,21 @@ export const MinimalReadingView: React.FC = () => {
+                   />
+                 </div>
+ 
++                <div className="sticky top-3 z-20 mb-6 rounded-xl border border-current/10 p-3 text-sm shadow-sm" style={{ backgroundColor: theme.bg, color: theme.fg }}>
++                  <div className="flex flex-wrap items-center justify-between gap-3">
++                    <p>Bôi chọn từ/cụm từ muốn ôn lại, rồi bấm lưu.</p>
++                    <button type="button" onPointerDown={e => e.preventDefault()} onClick={saveSelectedWord}
++                      className="rounded-full bg-primary px-4 py-2 text-on-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
++                      Lưu từ đã chọn
++                    </button>
++                  </div>
++                  {selectionError && <p role="alert" className="mt-2 text-error">{selectionError}</p>}
++                </div>
+                 {/* Nội dung bài đọc: theo cài đặt hiển thị */}
+                 <div
+                   ref={bodyRef}
++                  tabIndex={0}
++                  aria-label="Nội dung bài đọc"
+                   onMouseMove={onBodyMouseMove}
+                   className="reading-body text-left mr-auto relative shrink-0"
+                   style={{
+@@ -548,7 +584,7 @@ export const MinimalReadingView: React.FC = () => {
+               </ManuscriptCard>
+ 
+               <div className="mt-8 text-center text-xs font-label opacity-50 tracking-wider select-none">
+-                <span>Nhấp chuột phải bất kỳ nơi nào trên văn bản để mở thực đơn hỗ trợ nếu cần</span>
++                <span>Bôi chọn từ hoặc cụm từ trong bài, rồi dùng nút “Lưu từ đã chọn” để ôn lại sau.</span>
+               </div>
+             </div>
+           </main>
+diff --git a/frontend/src/screens/index.ts b/frontend/src/screens/index.ts
+index 196b826..2c0f522 100644
+--- a/frontend/src/screens/index.ts
++++ b/frontend/src/screens/index.ts
+@@ -1,3 +1,5 @@
+ export * from './MinimalHomepage/MinimalHomepage';
+ export * from './MinimalReadingView/MinimalReadingView';
+ export * from './Auth/Auth';
++
++export * from './Vocabulary/Vocabulary';
+diff --git a/tests/conftest.py b/tests/conftest.py
+index e01c7cb..c1bda40 100644
+--- a/tests/conftest.py
++++ b/tests/conftest.py
+@@ -98,7 +98,7 @@ def create_user(client):
+         email = email or f"user{counter['n']}@example.com"
+         password = "password123"
+         response = client.post(
+-            "/api/v1/users",
++            "/api/v1/auth/register",
+             json={"email": email, "full_name": "Test User", "password": password},
+         )
+         assert response.status_code == 201, response.text
+diff --git a/tests/test_display_settings.py b/tests/test_display_settings.py
+index 99c75b3..2099588 100644
+--- a/tests/test_display_settings.py
++++ b/tests/test_display_settings.py
+@@ -42,7 +42,7 @@ def test_invalid_token_is_rejected(client):
+ 
+ def test_token_of_deleted_user_is_rejected(client, create_user):
+     uid, headers = create_user()
+-    assert client.delete(f"/api/v1/users/{uid}").status_code == 204
++    assert client.delete(f"/api/v1/users/{uid}", headers=headers).status_code == 204
+     assert client.get(URL, headers=headers).status_code == 401
+ 
+ 
+@@ -180,7 +180,7 @@ def test_deleting_a_user_deletes_their_settings(client, create_user):
+     uid, headers = create_user()
+     client.put(URL, json=CUSTOM, headers=headers)
+ 
+-    assert client.delete(f"/api/v1/users/{uid}").status_code == 204
++    assert client.delete(f"/api/v1/users/{uid}", headers=headers).status_code == 204
+ 
+     with engine.connect() as conn:
+         assert conn.scalar(text("SELECT count(*) FROM display_settings")) == 0
+diff --git a/alembic/versions/e7b03a9c6412_create_vocabulary_entries.py b/alembic/versions/e7b03a9c6412_create_vocabulary_entries.py
+new file mode 100644
+index 0000000..2b34eff
+--- /dev/null
++++ b/alembic/versions/e7b03a9c6412_create_vocabulary_entries.py
+@@ -0,0 +1,41 @@
++"""Create personal vocabulary entries.
++
++Revision ID: e7b03a9c6412
++Revises: c4f1a7d92b10
++"""
++from alembic import op
++import sqlalchemy as sa
++
++revision = "e7b03a9c6412"
++down_revision = "c4f1a7d92b10"
++branch_labels = None
++depends_on = None
++
++
++def upgrade() -> None:
++    op.create_table(
++        "vocabulary_entries",
++        sa.Column("id", sa.Integer(), primary_key=True),
++        sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
++        sa.Column("term", sa.String(120), nullable=False),
++        sa.Column("normalized_term", sa.String(240), nullable=False),
++        sa.Column("meaning", sa.Text(), nullable=True),
++        sa.Column("example", sa.Text(), nullable=True),
++        sa.Column("context_text", sa.Text(), nullable=False),
++        sa.Column("source_document_id", sa.String(200), nullable=True),
++        sa.Column("source_title", sa.String(300), nullable=True),
++        sa.Column("source_kind", sa.String(10), nullable=True),
++        sa.Column("content_version", sa.String(64), nullable=True),
++        sa.Column("segment_id", sa.String(100), nullable=True),
++        sa.Column("start", sa.Integer(), nullable=True),
++        sa.Column("end", sa.Integer(), nullable=True),
++        sa.Column("dedupe_key", sa.String(64), nullable=False),
++        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
++        sa.UniqueConstraint("user_id", "dedupe_key", name="uq_vocabulary_user_dedupe"),
++    )
++    op.create_index("ix_vocabulary_user_created", "vocabulary_entries", ["user_id", "created_at", "id"])
++
++
++def downgrade() -> None:
++    op.drop_index("ix_vocabulary_user_created", table_name="vocabulary_entries")
++    op.drop_table("vocabulary_entries")
+diff --git a/app/api/v1/endpoints/vocabulary.py b/app/api/v1/endpoints/vocabulary.py
+new file mode 100644
+index 0000000..ce0779c
+--- /dev/null
++++ b/app/api/v1/endpoints/vocabulary.py
+@@ -0,0 +1,42 @@
++from typing import Annotated
++
++from fastapi import APIRouter, Query, Response, status
++
++from app.api.deps import CurrentUser, VocabularyServiceDep
++from app.schemas.vocabulary import (
++    VocabularyPage, VocabularyQuery, VocabularyRead, VocabularySource, VocabularyWrite,
++)
++
++router = APIRouter(prefix="/me/vocabulary", tags=["vocabulary"])
++
++
++@router.get("", response_model=VocabularyPage)
++def list_vocabulary(current_user: CurrentUser, service: VocabularyServiceDep,
++                    query: Annotated[VocabularyQuery, Query()]):
++    items, total = service.list(current_user.id, query)
++    return VocabularyPage(items=[VocabularyRead.model_validate(item) for item in items],
++                          total=total, skip=query.skip, limit=query.limit)
++
++
++@router.get("/sources", response_model=list[VocabularySource])
++def list_sources(current_user: CurrentUser, service: VocabularyServiceDep):
++    return service.sources(current_user.id)
++
++
++@router.post("", response_model=VocabularyRead, status_code=status.HTTP_201_CREATED)
++def save_vocabulary(data: VocabularyWrite, current_user: CurrentUser,
++                    service: VocabularyServiceDep, response: Response):
++    entry, created = service.save(current_user.id, data)
++    if not created:
++        response.status_code = status.HTTP_200_OK
++    return VocabularyRead.model_validate(entry)
++
++
++@router.delete("/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
++def delete_vocabulary(entry_id: int, current_user: CurrentUser, service: VocabularyServiceDep):
++    service.delete(current_user.id, entry_id)
++
++
++@router.delete("", status_code=status.HTTP_204_NO_CONTENT)
++def clear_vocabulary(current_user: CurrentUser, service: VocabularyServiceDep):
++    service.clear(current_user.id)
+diff --git a/app/models/vocabulary.py b/app/models/vocabulary.py
+new file mode 100644
+index 0000000..5c16379
+--- /dev/null
++++ b/app/models/vocabulary.py
+@@ -0,0 +1,32 @@
++from datetime import datetime
++
++from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
++from sqlalchemy.orm import Mapped, mapped_column
++
++from app.db.base import Base
++from app.models.user import utcnow
++
++
++class VocabularyEntry(Base):
++    __tablename__ = "vocabulary_entries"
++    __table_args__ = (
++        UniqueConstraint("user_id", "dedupe_key", name="uq_vocabulary_user_dedupe"),
++        Index("ix_vocabulary_user_created", "user_id", "created_at", "id"),
++    )
++
++    id: Mapped[int] = mapped_column(primary_key=True)
++    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
++    term: Mapped[str] = mapped_column(String(120))
++    normalized_term: Mapped[str] = mapped_column(String(240))
++    meaning: Mapped[str | None] = mapped_column(Text)
++    example: Mapped[str | None] = mapped_column(Text)
++    context_text: Mapped[str] = mapped_column(Text)
++    source_document_id: Mapped[str | None] = mapped_column(String(200))
++    source_title: Mapped[str | None] = mapped_column(String(300))
++    source_kind: Mapped[str | None] = mapped_column(String(10))
++    content_version: Mapped[str | None] = mapped_column(String(64))
++    segment_id: Mapped[str | None] = mapped_column(String(100))
++    start: Mapped[int | None] = mapped_column(Integer)
++    end: Mapped[int | None] = mapped_column(Integer)
++    dedupe_key: Mapped[str] = mapped_column(String(64))
++    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+diff --git a/app/repositories/vocabulary_repository.py b/app/repositories/vocabulary_repository.py
+new file mode 100644
+index 0000000..65b0712
+--- /dev/null
++++ b/app/repositories/vocabulary_repository.py
+@@ -0,0 +1,64 @@
++from sqlalchemy import delete, func, select
++from sqlalchemy.exc import IntegrityError
++from sqlalchemy.orm import Session
++
++from app.models.vocabulary import VocabularyEntry
++from app.schemas.vocabulary import VocabularyQuery
++
++
++class VocabularyRepository:
++    def __init__(self, db: Session):
++        self.db = db
++
++    def find_duplicate(self, user_id: int, key: str) -> VocabularyEntry | None:
++        return self.db.scalar(select(VocabularyEntry).where(
++            VocabularyEntry.user_id == user_id, VocabularyEntry.dedupe_key == key,
++        ))
++
++    def create(self, entry: VocabularyEntry) -> VocabularyEntry:
++        self.db.add(entry)
++        try:
++            self.db.commit()
++        except IntegrityError:
++            self.db.rollback()
++            raise
++        self.db.refresh(entry)
++        return entry
++
++    def list(self, user_id: int, query: VocabularyQuery, normalized_query: str):
++        conditions = [VocabularyEntry.user_id == user_id]
++        if normalized_query:
++            conditions.append(VocabularyEntry.normalized_term.contains(normalized_query, autoescape=True))
++        if query.source_document_id:
++            conditions.append(VocabularyEntry.source_document_id == query.source_document_id)
++        if query.from_date:
++            conditions.append(VocabularyEntry.created_at >= query.from_date)
++        if query.to_date:
++            conditions.append(VocabularyEntry.created_at < query.to_date)
++        total = self.db.scalar(select(func.count()).select_from(VocabularyEntry).where(*conditions))
++        items = list(self.db.scalars(select(VocabularyEntry).where(*conditions).order_by(
++            VocabularyEntry.created_at.desc(), VocabularyEntry.id.desc(),
++        ).offset(query.skip).limit(query.limit)))
++        return items, total
++
++    def sources(self, user_id: int):
++        return self.db.execute(select(
++            VocabularyEntry.source_document_id,
++            func.max(VocabularyEntry.source_title).label("source_title"),
++        ).where(
++            VocabularyEntry.user_id == user_id,
++            VocabularyEntry.source_document_id.is_not(None),
++        ).group_by(VocabularyEntry.source_document_id).order_by(
++            VocabularyEntry.source_document_id,
++        )).all()
++
++    def delete_one(self, user_id: int, entry_id: int) -> bool:
++        result = self.db.execute(delete(VocabularyEntry).where(
++            VocabularyEntry.user_id == user_id, VocabularyEntry.id == entry_id,
++        ))
++        self.db.commit()
++        return result.rowcount > 0
++
++    def delete_all(self, user_id: int) -> None:
++        self.db.execute(delete(VocabularyEntry).where(VocabularyEntry.user_id == user_id))
++        self.db.commit()
+diff --git a/app/schemas/vocabulary.py b/app/schemas/vocabulary.py
+new file mode 100644
+index 0000000..c21de6c
+--- /dev/null
++++ b/app/schemas/vocabulary.py
+@@ -0,0 +1,91 @@
++from datetime import datetime
++from typing import Literal, Self
++
++from pydantic import AwareDatetime, ConfigDict, Field, field_validator, model_validator
++
++from app.schemas.base import CamelModel
++
++
++class VocabularyWrite(CamelModel):
++    # Reject forged owner/timestamp fields rather than silently accepting them.
++    model_config = ConfigDict(extra="forbid")
++    term: str = Field(min_length=1, max_length=120)
++    meaning: str | None = Field(default=None, max_length=2000)
++    example: str | None = Field(default=None, max_length=2000)
++    context_text: str = Field(min_length=1, max_length=4000)
++    source_document_id: str | None = Field(default=None, min_length=1, max_length=200)
++    source_title: str | None = Field(default=None, min_length=1, max_length=300)
++    source_kind: Literal["paste", "pdf", "image"] | None = None
++    content_version: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
++    segment_id: str | None = Field(default=None, min_length=1, max_length=100)
++    start: int | None = Field(default=None, ge=0, strict=True)
++    end: int | None = Field(default=None, ge=1, strict=True)
++
++    @field_validator("meaning", "example", mode="before")
++    @classmethod
++    def blank_optional_text(cls, value):
++        return (value.strip() or None) if isinstance(value, str) else value
++
++    @model_validator(mode="after")
++    def validate_selection(self) -> Self:
++        if not self.term.strip() or not self.context_text.strip():
++            raise ValueError("Từ và ngữ cảnh không được trống")
++        for value in self.model_dump().values():
++            if isinstance(value, str):
++                if "\x00" in value:
++                    raise ValueError("Văn bản chứa ký tự NUL không hợp lệ")
++                try:
++                    value.encode("utf-16-le")
++                except UnicodeEncodeError:
++                    raise ValueError("Văn bản chứa Unicode không hợp lệ") from None
++        if len(self.term.encode("utf-16-le")) // 2 > 120:
++            raise ValueError("Từ/cụm từ tối đa 120 ký tự UTF-16")
++        if len(self.context_text.encode("utf-16-le")) // 2 > 4000:
++            raise ValueError("Ngữ cảnh tối đa 4000 ký tự UTF-16")
++        coordinates = (self.segment_id, self.start, self.end)
++        if any(v is not None for v in coordinates):
++            if any(v is None for v in coordinates):
++                raise ValueError("segmentId, start và end phải được gửi cùng nhau")
++            encoded = self.context_text.encode("utf-16-le")
++            if self.start >= self.end or self.end * 2 > len(encoded):
++                raise ValueError("Vị trí từ nằm ngoài đoạn ngữ cảnh")
++            try:
++                selected = encoded[self.start * 2:self.end * 2].decode("utf-16-le")
++            except UnicodeDecodeError:
++                raise ValueError("Vị trí từ chia đôi ký tự Unicode") from None
++            if selected != self.term:
++                raise ValueError("Từ được lưu không khớp vị trí trong ngữ cảnh")
++        return self
++
++
++class VocabularyRead(VocabularyWrite):
++    model_config = ConfigDict(from_attributes=True)
++    id: int
++    created_at: datetime
++
++
++class VocabularyQuery(CamelModel):
++    q: str = Field(default="", max_length=120)
++    source_document_id: str | None = Field(default=None, max_length=200)
++    from_date: AwareDatetime | None = Field(default=None, alias="from")
++    to_date: AwareDatetime | None = Field(default=None, alias="to")
++    skip: int = Field(default=0, ge=0)
++    limit: int = Field(default=20, ge=1, le=100)
++
++    @model_validator(mode="after")
++    def validate_dates(self) -> Self:
++        if self.from_date and self.to_date and self.from_date >= self.to_date:
++            raise ValueError("Ngày kết thúc phải sau ngày bắt đầu")
++        return self
++
++
++class VocabularyPage(CamelModel):
++    items: list[VocabularyRead]
++    total: int
++    skip: int
++    limit: int
++
++
++class VocabularySource(CamelModel):
++    source_document_id: str
++    source_title: str
+diff --git a/app/services/vocabulary_service.py b/app/services/vocabulary_service.py
+new file mode 100644
+index 0000000..93a0215
+--- /dev/null
++++ b/app/services/vocabulary_service.py
+@@ -0,0 +1,53 @@
++import hashlib
++import json
++import unicodedata
++
++from sqlalchemy.exc import IntegrityError
++
++from app.core.exceptions import NotFoundError
++from app.models.vocabulary import VocabularyEntry
++from app.repositories.vocabulary_repository import VocabularyRepository
++from app.schemas.vocabulary import VocabularyQuery, VocabularyWrite
++
++
++def normalize_text(value: str) -> str:
++    return " ".join(unicodedata.normalize("NFC", value).lower().split())
++
++
++class VocabularyService:
++    def __init__(self, repo: VocabularyRepository):
++        self.repo = repo
++
++    def save(self, user_id: int, data: VocabularyWrite) -> tuple[VocabularyEntry, bool]:
++        payload = data.model_dump()
++        normalized = normalize_text(data.term)
++        identity = [normalized, normalize_text(data.context_text), data.source_document_id,
++                    data.content_version, data.segment_id, data.start, data.end]
++        key = hashlib.sha256(json.dumps(identity, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
++        existing = self.repo.find_duplicate(user_id, key)
++        if existing:
++            return existing, False
++        record = VocabularyEntry(user_id=user_id, normalized_term=normalized, dedupe_key=key, **payload)
++        try:
++            return self.repo.create(record), True
++        except IntegrityError:
++            # A concurrent request may have inserted this selection after our read.
++            existing = self.repo.find_duplicate(user_id, key)
++            if existing:
++                return existing, False
++            raise
++
++    def list(self, user_id: int, query: VocabularyQuery):
++        return self.repo.list(user_id, query, normalize_text(query.q))
++
++    def sources(self, user_id: int):
++        return [{"sourceDocumentId": row.source_document_id,
++                 "sourceTitle": row.source_title or "Tài liệu không có tên"}
++                for row in self.repo.sources(user_id)]
++
++    def delete(self, user_id: int, entry_id: int) -> None:
++        if not self.repo.delete_one(user_id, entry_id):
++            raise NotFoundError("Không tìm thấy từ đã lưu")
++
++    def clear(self, user_id: int) -> None:
++        self.repo.delete_all(user_id)
+diff --git a/docs/FR07.md b/docs/FR07.md
+new file mode 100644
+index 0000000..5ec6ba7
+--- /dev/null
++++ b/docs/FR07.md
+@@ -0,0 +1,103 @@
++# FR-07 — Từ khó của tôi
++
++Triển khai trên nền commit `a4084f23bae7e370542ac5d17dbc88c05086b006` của `main`.
++
++## Hành vi đã triển khai
++
++- Trong bài đọc, bôi chọn từ/cụm từ trong một đoạn, bấm **Lưu từ đã chọn**. Thanh thao tác bám khi cuộn. Xác nhận lưu trong hộp thoại; nghĩa/ghi chú không bắt buộc.
++- FR-06 chưa có trong code gốc nên không tạo nghĩa giả hoặc gọi AI. Có thể truyền `meaning` và `example` từ FR-06 vào `VocabularyDraft` và dùng lại `useVocabulary().save()` khi tính năng đó hoàn tất.
++- Trang `/vocabulary` hoạt động độc lập với tài liệu đang mở: tìm từ (giữ dấu tiếng Việt), lọc nguồn/ngày, phân trang 20 mục, xóa một/toàn bộ có xác nhận.
++- Có lối vào từ Header, sidebar màn hình đọc và màn hình nhỏ.
++- Khách lưu theo key `lexiease:vocabulary:guest:v1`, tối đa 1.000 mục. Không tự chuyển dữ liệu khách lên tài khoản. Lỗi quota/storage hỏng được báo và không ghi đè dữ liệu hỏng; người dùng có thể chủ động xóa toàn bộ để khởi tạo lại.
++- Đăng nhập lưu theo user JWT trên PostgreSQL. Đăng xuất/đổi tài khoản hủy yêu cầu đang chờ và không hiển thị kết quả của tài khoản trước; đăng xuất ở tab khác cập nhật trạng thái trong tab hiện tại.
++- Dữ liệu nguồn chỉ là metadata + đoạn ngữ cảnh. Không lưu cả tài liệu và không hứa mở lại tài liệu gốc sau refresh.
++- Cùng từ trong ngữ cảnh/nguồn/range khác được giữ riêng. Lưu lại cùng mục trả bản đã có và giữ nguyên nghĩa cũ; chưa có chức năng chỉnh sửa nghĩa.
++
++## Cài đặt/chạy
++
++Không thêm dependency Python cho tính năng; dùng `requirements.txt` hiện có. PostgreSQL phải đang chạy và `DATABASE_URL` phải trỏ đúng database của bạn.
++
++Từ root repo, trong môi trường Python đã cài dependencies:
++
++```bash
++python -m alembic upgrade head
++python -m uvicorn app.main:app --reload
++```
++
++Mở terminal khác:
++
++```bash
++cd frontend
++npm ci
++npm run dev
++```
++
++Mở trang chủ, dán một đoạn như “Em học sinh học.”, chọn `sinh học` trong bài đọc và lưu. Vào **Từ khó của tôi** để kiểm tra. Không cần API key AI để chạy FR-07.
++
++## API
++
++Prefix `/api/v1`; mọi route sau yêu cầu `Authorization: Bearer <token>`.
++
++| Method | URL | Phản hồi |
++|---|---|---|
++| GET | `/me/vocabulary?q=&sourceDocumentId=&from=&to=&skip=0&limit=20` | `items`, `total`, `skip`, `limit`; limit tối đa 100 |
++| GET | `/me/vocabulary/sources` | Danh sách nguồn của user hiện tại để lọc toàn bộ thư viện |
++| POST | `/me/vocabulary` | 201 mới; 200 nếu đã có cùng mục |
++| DELETE | `/me/vocabulary/{entry_id}` | 204; 404 nếu không tồn tại hoặc thuộc user khác |
++| DELETE | `/me/vocabulary` | 204, chỉ xóa mục của user đang đăng nhập |
++
++Ví dụ body POST:
++
++```json
++{
++  "term": "sinh học",
++  "meaning": "Môn học về sự sống",
++  "contextText": "Em học sinh học.",
++  "sourceDocumentId": "client-document-id",
++  "sourceTitle": "Bài đọc",
++  "sourceKind": "paste",
++  "segmentId": "paragraph-0",
++  "start": 7,
++  "end": 15
++}
++```
++
++`meaning`/`example` và metadata nguồn có thể null. `segmentId`, `start`, `end` phải cùng có hoặc cùng thiếu; range `[start,end)` là UTF-16 trong `contextText`, phải đúng term (kể cả emoji/từ lặp). Giới hạn term 120, context 4.000 UTF-16 units, nghĩa/ví dụ 2.000 ký tự. Owner, ngày lưu và dedupe key do server tạo; request tự thêm `userId` bị từ chối. Date filter nhận ISO timestamp có timezone, khoảng `[from,to)`; giao diện đổi “đến hết ngày” thành đầu ngày hôm sau theo timezone người dùng.
++
++Model/schema/repository/service/router đều ở các thư mục tương ứng trong `app/`; migration mới `e7b03a9c6412` nối sau `c4f1a7d92b10`. Unique constraint `(user_id, dedupe_key)` chống tạo trùng khi hai request đến đồng thời. Xóa user sẽ cascade xóa vocabulary.
++
++## Thay đổi quyền tài khoản liên quan
++
++Các route cũ `/users` từng đọc/sửa/xóa được tài khoản không cần auth. Để bảo vệ thư viện riêng:
++
++- GET `/users` chỉ trả user hiện tại (không có vai trò admin trong repo).
++- GET/PATCH/DELETE `/users/{id}` yêu cầu JWT chính chủ; truy cập user khác trả 404.
++- POST `/users` giữ khả năng đăng ký để tương thích; frontend/test dùng `/auth/register`.
++- Test display settings đã được cập nhật để xóa user bằng token chính chủ.
++
++Nếu có client ngoài frontend đang dùng CRUD user không xác thực, cần cập nhật client đó theo quy tắc trên.
++
++## Kiểm thử
++
++```bash
++# Root repo, dùng PostgreSQL test riêng có hậu tố _test:
++python -m pytest
++
++# Frontend:
++cd frontend
++npm run build
++npm run lint
++npm test
++npx playwright install chromium
++npm run test:e2e
++```
++
++`tests/conftest.py` tự tạo database test, cần tài khoản PostgreSQL có quyền tạo DB; chỉ định `TEST_DATABASE_URL` khi muốn chọn database test khác. Không trỏ test vào dữ liệu thật.
++
++Test backend kiểm tra JWT, A/B isolation, unique race, lọc/ngày/phân trang, source list, Unicode, validation, cascade và khóa đường vòng qua CRUD user. Frontend có test localStorage/quota, selection với emoji/từ lặp, auth lifecycle/request cũ, lưu/xóa qua component và StrictMode. Playwright có kịch bản khách ở viewport 1366px và 390px.
++
++**Kết quả trong môi trường triển khai:** 66 test backend PostgreSQL đã pass; đã thử migration upgrade, `alembic check`, downgrade và re-upgrade trên database thử nghiệm riêng. Frontend: build và lint pass, 14 test Vitest pass. Playwright đã được thêm nhưng chưa xác nhận pass vì môi trường thực thi chặn Unix socket khi Chromium khởi động. Cần chạy `npm run test:e2e` trên máy phát triển để kiểm tra trình duyệt thật, thao tác cảm ứng và bố cục.
++
++## Phạm vi chưa làm
++
++Giải nghĩa tự động FR-06, tóm tắt FR-08, ghi âm FR-09, sửa nghĩa đã lưu, nhập kho khách vào tài khoản, lưu tài liệu/vị trí đọc lâu dài. Web Locks giúp tuần tự hóa ghi localStorage giữa nhiều tab ở trình duyệt hỗ trợ; trình duyệt không có Web Locks chỉ bảo đảm luồng lưu trong từng tab, chưa bảo đảm ghi đồng thời giữa các tab.
+diff --git a/frontend/e2e/fr07.spec.ts b/frontend/e2e/fr07.spec.ts
+new file mode 100644
+index 0000000..3456640
+--- /dev/null
++++ b/frontend/e2e/fr07.spec.ts
+@@ -0,0 +1,42 @@
++import { expect, test } from '@playwright/test';
++
++for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 }]) {
++  test(`guest saves, filters, reloads and deletes a selected phrase (${viewport.width}px)`, async ({ page }) => {
++    await page.setViewportSize(viewport);
++    await page.goto('/');
++    await page.getByRole('textbox', { name: 'Văn bản cần đọc' }).fill('🌱 Em học sinh học. Sinh học thật thú vị.');
++    await page.getByRole('button', { name: 'Đọc ngay', exact: true }).click();
++    await expect(page).toHaveURL(/\/reading$/);
++    await page.locator('[data-segment-id="paragraph-0"]').evaluate(paragraph => {
++      const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
++      let position = 0, node: Node | null;
++      const range = document.createRange();
++      while ((node = walker.nextNode())) {
++        const length = node.textContent!.length;
++        if (position <= 10 && position + length > 10) range.setStart(node, 10 - position);
++        if (position < 18 && position + length >= 18) { range.setEnd(node, 18 - position); break; }
++        position += length;
++      }
++      const selection = window.getSelection()!;
++      selection.removeAllRanges(); selection.addRange(range);
++    });
++    await page.getByRole('button', { name: 'Lưu từ đã chọn', exact: true }).click();
++    await expect(page.getByRole('dialog')).toContainText('sinh học');
++    await page.getByRole('textbox', { name: 'Nghĩa / ghi chú' }).fill('Môn học về sự sống');
++    await page.getByRole('button', { name: 'Lưu vào thư viện', exact: true }).click();
++    await page.getByRole('link', { name: 'Xem thư viện', exact: true }).click();
++    await expect(page.getByRole('heading', { name: 'sinh học', exact: true })).toBeVisible();
++    await expect(page.getByText('Môn học về sự sống')).toBeVisible();
++    await page.reload();
++    await expect(page.getByRole('heading', { name: 'sinh học', exact: true })).toBeVisible();
++    await page.getByRole('searchbox').fill('không có');
++    await expect(page.getByText('Chưa tìm thấy từ phù hợp')).toBeVisible();
++    await page.getByRole('button', { name: 'Bỏ bộ lọc' }).click();
++    await page.getByRole('button', { name: 'Xóa từ sinh học' }).click();
++    await page.getByRole('button', { name: 'Giữ lại' }).click();
++    await expect(page.getByRole('heading', { name: 'sinh học', exact: true })).toBeVisible();
++    await page.getByRole('button', { name: 'Xóa toàn bộ thư viện', exact: true }).click();
++    await page.getByRole('button', { name: 'Xác nhận xóa', exact: true }).click();
++    await expect(page.getByText('Bắt đầu từ một từ bạn muốn nhớ')).toBeVisible();
++  });
++}
+diff --git a/frontend/playwright.config.ts b/frontend/playwright.config.ts
+new file mode 100644
+index 0000000..31e3015
+--- /dev/null
++++ b/frontend/playwright.config.ts
+@@ -0,0 +1,7 @@
++import { defineConfig } from '@playwright/test';
++
++export default defineConfig({
++  testDir: './e2e',
++  use: { baseURL: 'http://127.0.0.1:5173', headless: true, launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } },
++  webServer: { command: 'npm run dev -- --host 127.0.0.1', url: 'http://127.0.0.1:5173', reuseExistingServer: !process.env.CI },
++});
+diff --git a/frontend/src/components/vocabulary/SaveVocabularyDialog.tsx b/frontend/src/components/vocabulary/SaveVocabularyDialog.tsx
+new file mode 100644
+index 0000000..f140f73
+--- /dev/null
++++ b/frontend/src/components/vocabulary/SaveVocabularyDialog.tsx
+@@ -0,0 +1,69 @@
++import { useEffect, useRef, useState } from 'react';
++import { Link } from 'react-router-dom';
++import { useVocabulary } from '../../hooks/useVocabulary';
++import type { VocabularyDraft } from '../../lib/vocabulary';
++
++export function SaveVocabularyDialog({ draft, onClose }: { draft: VocabularyDraft; onClose: () => void }) {
++  const dialog = useRef<HTMLDialogElement>(null);
++  const [meaning, setMeaning] = useState(draft.meaning ?? '');
++  const [saved, setSaved] = useState(false);
++  const { save, ready, busy, error, signedIn, scope } = useVocabulary();
++  // Remount form state on account changes; never keep a previous account's success state.
++  const initialScope = useRef(scope);
++  useEffect(() => {
++    if (initialScope.current !== scope) onClose();
++  }, [scope, onClose]);
++  useEffect(() => {
++    const el = dialog.current;
++    const previous = document.activeElement;
++    el?.showModal();
++    return () => { el?.close(); if (previous instanceof HTMLElement) previous.focus(); };
++  }, []);
++
++  return (
++    <dialog ref={dialog} onCancel={onClose} aria-labelledby="save-word-title"
++      className="w-[calc(100%_-_2rem)] max-w-lg rounded-3xl bg-[#FFFDF8] p-6 text-on-surface shadow-2xl backdrop:bg-black/30">
++      <div className="flex items-start justify-between gap-4">
++        <div>
++          <p className="text-xs uppercase tracking-wider text-tertiary">Từ khó của tôi</p>
++          <h2 id="save-word-title" className="mt-2 text-xl font-semibold break-words">Lưu “{draft.term}”</h2>
++        </div>
++        <button type="button" onClick={onClose} aria-label="Đóng hộp lưu từ" className="rounded-lg p-2 hover:bg-black/5">✕</button>
++      </div>
++      <blockquote className="mt-4 max-h-36 overflow-y-auto rounded-xl bg-surface-container-low p-4 text-sm leading-relaxed break-words">
++        {draft.contextText}
++      </blockquote>
++      {saved ? (
++        <div className="mt-5 space-y-4">
++          <p role="status">Từ đã có trong thư viện. Bạn có thể ôn lại bất cứ lúc nào.</p>
++          <div className="flex flex-wrap gap-3">
++            <Link to="/vocabulary" className="rounded-full bg-primary px-5 py-2.5 text-on-primary">Xem thư viện</Link>
++            <button type="button" onClick={onClose} className="rounded-full border px-5 py-2.5">Đọc tiếp</button>
++          </div>
++        </div>
++      ) : (
++        <form className="mt-5 space-y-4" onSubmit={async e => {
++          e.preventDefault();
++          if (await save({ ...draft, meaning: meaning.trim() || null })) setSaved(true);
++        }}>
++          <label className="block text-sm font-medium">
++            Nghĩa / ghi chú (không bắt buộc)
++            <textarea autoFocus value={meaning} onChange={e => setMeaning(e.target.value)} maxLength={2000} rows={3}
++              placeholder="Ghi lại cách bạn hiểu từ này…" disabled={busy}
++              className="mt-2 block w-full rounded-xl border border-outline-variant bg-white/70 p-3 font-normal focus:outline-primary" />
++          </label>
++          <p className="text-xs leading-relaxed text-on-surface-variant">
++            {signedIn ? 'Lưu riêng trong tài khoản đang đăng nhập.' : 'Chỉ lưu trên trình duyệt này. Các từ này sẽ không tự chuyển vào tài khoản khi bạn đăng nhập.'}
++          </p>
++          {error && <p role="alert" className="text-sm text-error">{error}</p>}
++          <div className="flex justify-end gap-3">
++            <button type="button" onClick={onClose} className="rounded-full border px-5 py-2.5">Hủy</button>
++            <button type="submit" disabled={!ready || busy} className="rounded-full bg-primary px-5 py-2.5 text-on-primary disabled:opacity-50">
++              {busy ? 'Đang lưu…' : 'Lưu vào thư viện'}
++            </button>
++          </div>
++        </form>
++      )}
++    </dialog>
++  );
++}
+diff --git a/frontend/src/components/vocabulary/vocabulary-ui.test.tsx b/frontend/src/components/vocabulary/vocabulary-ui.test.tsx
+new file mode 100644
+index 0000000..7cdffb3
+--- /dev/null
++++ b/frontend/src/components/vocabulary/vocabulary-ui.test.tsx
+@@ -0,0 +1,64 @@
++import { StrictMode } from 'react';
++import { MemoryRouter } from 'react-router-dom';
++import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
++import userEvent from '@testing-library/user-event';
++import { afterEach, beforeEach, expect, it, vi } from 'vitest';
++import { AuthContext } from '../../context/auth-context';
++import { SaveVocabularyDialog } from './SaveVocabularyDialog';
++import { Vocabulary } from '../../screens/Vocabulary/Vocabulary';
++import { readGuestVocabulary, saveGuestVocabulary } from '../../lib/vocabulary';
++
++const guest = { user: null, token: null, isLoading: false, login: async () => {}, register: async () => {}, logout: () => {} };
++const draft = { term: 'sinh học', contextText: 'Em học sinh học.', segmentId: 'paragraph-0', start: 7, end: 15 };
++beforeEach(() => {
++  localStorage.clear();
++  HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
++  HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); this.dispatchEvent(new Event('close')); };
++});
++afterEach(cleanup);
++
++it('saves a selected phrase through the dialog under StrictMode', async () => {
++  const close = vi.fn();
++  render(<StrictMode><MemoryRouter><AuthContext.Provider value={guest}>
++    <SaveVocabularyDialog draft={draft} onClose={close} />
++  </AuthContext.Provider></MemoryRouter></StrictMode>);
++  expect(close).not.toHaveBeenCalled();
++  const user = userEvent.setup();
++  await user.type(screen.getByRole('textbox', { name: /Nghĩa/ }), 'Môn học về sự sống');
++  await user.click(screen.getByRole('button', { name: 'Lưu vào thư viện' }));
++  await screen.findByRole('link', { name: 'Xem thư viện' });
++  expect(readGuestVocabulary()[0].meaning).toBe('Môn học về sự sống');
++  expect(close).not.toHaveBeenCalled();
++});
++
++it('lists, searches and confirms deletion without requiring an open document', async () => {
++  saveGuestVocabulary(draft);
++  render(<MemoryRouter><AuthContext.Provider value={guest}><Vocabulary /></AuthContext.Provider></MemoryRouter>);
++  const user = userEvent.setup();
++  await screen.findByRole('heading', { name: 'sinh học' });
++  await user.type(screen.getByRole('searchbox'), 'không có');
++  await screen.findByText('Chưa tìm thấy từ phù hợp');
++  await user.click(screen.getByRole('button', { name: 'Bỏ bộ lọc' }));
++  await screen.findByRole('heading', { name: 'sinh học' });
++  await user.click(screen.getByRole('button', { name: 'Xóa từ sinh học' }));
++  await user.click(screen.getByRole('button', { name: 'Giữ lại' }));
++  expect(readGuestVocabulary()).toHaveLength(1);
++  await user.click(screen.getByRole('button', { name: 'Xóa toàn bộ thư viện' }));
++  await user.click(screen.getByRole('button', { name: 'Xác nhận xóa' }));
++  await screen.findByText('Bắt đầu từ một từ bạn muốn nhớ');
++  expect(readGuestVocabulary()).toEqual([]);
++});
++
++it('closes the save dialog when the account changes', async () => {
++  const close = vi.fn();
++  const { rerender } = render(<MemoryRouter><AuthContext.Provider value={guest}>
++    <SaveVocabularyDialog draft={draft} onClose={close} />
++  </AuthContext.Provider></MemoryRouter>);
++  localStorage.setItem('token', 'new-token');
++  rerender(<MemoryRouter><AuthContext.Provider value={{ ...guest, token: 'new-token', user: { id: 2, email: 'b@example.com', fullName: 'B', isActive: true, createdAt: '' } }}>
++    <SaveVocabularyDialog draft={draft} onClose={close} />
++  </AuthContext.Provider></MemoryRouter>);
++  await waitFor(() => expect(close).toHaveBeenCalled());
++  expect(readGuestVocabulary()).toHaveLength(0);
++  fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }));
++});
+diff --git a/frontend/src/context/AuthProvider.test.tsx b/frontend/src/context/AuthProvider.test.tsx
+new file mode 100644
+index 0000000..dfe9a80
+--- /dev/null
++++ b/frontend/src/context/AuthProvider.test.tsx
+@@ -0,0 +1,31 @@
++import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
++import { afterEach, beforeEach, expect, it, vi } from 'vitest';
++import { AuthProvider } from './AuthProvider';
++import { useAuth } from './auth-context';
++
++beforeEach(() => localStorage.clear());
++afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
++const alice = { id: 1, email: 'a@example.com', fullName: 'A', isActive: true, createdAt: '' };
++it('clears authenticated state when another tab logs out', async () => {
++  localStorage.setItem('token', 'alice');
++  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(alice))));
++  const { result } = renderHook(useAuth, { wrapper: AuthProvider });
++  await waitFor(() => expect(result.current.user?.id).toBe(1));
++  act(() => {
++    localStorage.removeItem('token');
++    window.dispatchEvent(new StorageEvent('storage', { key: 'token', newValue: null }));
++  });
++  expect(result.current.user).toBeNull();
++  expect(result.current.token).toBeNull();
++});
++
++it('does not restore the previous user from a delayed bootstrap response after logout', async () => {
++  localStorage.setItem('token', 'alice');
++  let resolve!: (value: Response) => void;
++  vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise<Response>(r => { resolve = r; })));
++  const { result } = renderHook(useAuth, { wrapper: AuthProvider });
++  act(() => result.current.logout());
++  await act(async () => { resolve(new Response(JSON.stringify(alice))); });
++  expect(result.current.user).toBeNull();
++  expect(localStorage.getItem('token')).toBeNull();
++});
+diff --git a/frontend/src/hooks/useVocabulary.test.tsx b/frontend/src/hooks/useVocabulary.test.tsx
+new file mode 100644
+index 0000000..f897ae6
+--- /dev/null
++++ b/frontend/src/hooks/useVocabulary.test.tsx
+@@ -0,0 +1,83 @@
++import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
++import { afterEach, beforeEach, expect, it, vi } from 'vitest';
++import type { ReactNode } from 'react';
++import { AuthContext } from '../context/auth-context';
++import type { AuthContextValue } from '../context/auth-context';
++import { useVocabulary } from './useVocabulary';
++import { readGuestVocabulary, saveGuestVocabulary } from '../lib/vocabulary';
++
++const draft = { term: 'sinh học', contextText: 'Em học sinh học.' };
++const user = (id: number) => ({ id, email: `user${id}@example.com`, fullName: 'Test', isActive: true, createdAt: '' });
++const emptyAuth: AuthContextValue = { user: null, token: null, isLoading: false, login: async () => {}, register: async () => {}, logout: () => {} };
++let auth = emptyAuth;
++const Wrapper = ({ children }: { children: ReactNode }) => <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>;
++const page = (term: string) => ({ items: [{ ...draft, term, id: 1, createdAt: '2026-11-13T00:00:00Z' }], total: 1, skip: 0, limit: 20 });
++beforeEach(() => { localStorage.clear(); auth = { ...emptyAuth }; });
++afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
++
++it('does not load guest data while authentication is pending or import it after login', async () => {
++  saveGuestVocabulary(draft);
++  auth = { ...emptyAuth, token: 'alice', isLoading: true };
++  localStorage.setItem('token', 'alice');
++  const fetchMock = vi.fn().mockImplementation(async (url: string) => new Response(JSON.stringify(
++    url.includes('/sources') ? [] : { items: [], total: 0, skip: 0, limit: 20 })));
++  vi.stubGlobal('fetch', fetchMock);
++  const { result, rerender } = renderHook(() => useVocabulary({}), { wrapper: Wrapper });
++  expect(result.current.loading).toBe(true);
++  expect(result.current.page).toBeUndefined();
++  expect(fetchMock).not.toHaveBeenCalled();
++  auth = { ...auth, user: user(1), isLoading: false };
++  rerender();
++  await waitFor(() => expect(result.current.page?.total).toBe(0));
++  expect(readGuestVocabulary()).toHaveLength(1);
++  expect(fetchMock.mock.calls.every(([, init]) => !init.method)).toBe(true);
++});
++
++it('hides old account data immediately and ignores a late response after switching accounts', async () => {
++  auth = { ...emptyAuth, user: user(1), token: 'alice' };
++  localStorage.setItem('token', 'alice');
++  let resolveOld!: (response: Response) => void;
++  const old = new Promise<Response>(resolve => { resolveOld = resolve; });
++  const fetchMock = vi.fn().mockImplementation((url: string, init: RequestInit) => {
++    if (url.includes('/sources')) return Promise.resolve(new Response('[]'));
++    return new Headers(init.headers).get('Authorization') === 'Bearer alice'
++      ? old : Promise.resolve(new Response(JSON.stringify(page('từ của Bob'))));
++  });
++  vi.stubGlobal('fetch', fetchMock);
++  const { result, rerender } = renderHook(() => useVocabulary({}), { wrapper: Wrapper });
++  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
++  auth = { ...emptyAuth, user: user(2), token: 'bob' };
++  localStorage.setItem('token', 'bob');
++  rerender();
++  expect(result.current.page).toBeUndefined();
++  await waitFor(() => expect(result.current.page?.items[0].term).toBe('từ của Bob'));
++  await act(async () => { resolveOld(new Response(JSON.stringify(page('bí mật của Alice')))); await old; });
++  expect(result.current.page?.items[0].term).toBe('từ của Bob');
++});
++
++it('reports an expired session without falling back to guest storage', async () => {
++  auth = { ...emptyAuth, user: user(1), token: 'expired' };
++  localStorage.setItem('token', 'expired');
++  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"detail":"expired"}', { status: 401 })));
++  const { result } = renderHook(() => useVocabulary(), { wrapper: Wrapper });
++  await act(async () => { expect(await result.current.save(draft)).toBeNull(); });
++  expect(result.current.error).toContain('hết hạn');
++  expect(readGuestVocabulary()).toEqual([]);
++});
++
++it('does not report a save as successful after logout', async () => {
++  auth = { ...emptyAuth, user: user(1), token: 'alice' };
++  localStorage.setItem('token', 'alice');
++  let resolveSave!: (response: Response) => void;
++  vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise<Response>(r => { resolveSave = r; })));
++  const { result, rerender } = renderHook(() => useVocabulary(), { wrapper: Wrapper });
++  let pending!: ReturnType<typeof result.current.save>;
++  act(() => { pending = result.current.save(draft); });
++  auth = { ...emptyAuth }; localStorage.removeItem('token'); rerender();
++  await act(async () => {
++    resolveSave(new Response(JSON.stringify(page('sinh học').items[0])));
++    expect(await pending).toBeNull();
++  });
++  expect(result.current.busy).toBe(false);
++  expect(readGuestVocabulary()).toEqual([]);
++});
+diff --git a/frontend/src/hooks/useVocabulary.ts b/frontend/src/hooks/useVocabulary.ts
+new file mode 100644
+index 0000000..20ac456
+--- /dev/null
++++ b/frontend/src/hooks/useVocabulary.ts
+@@ -0,0 +1,111 @@
++import { useCallback, useEffect, useRef, useState } from 'react';
++import { useAuth } from '../context/auth-context';
++import { tokenStore } from '../lib/api';
++import {
++  VOCABULARY_CHANGED, VOCABULARY_KEY, deleteGuestVocabulary, deleteVocabulary,
++  fetchSources, fetchVocabulary, filterGuestVocabulary, guestSources, mutateGuest,
++  queryString, readGuestVocabulary, saveGuestVocabulary, saveVocabulary, vocabularyError,
++} from '../lib/vocabulary';
++import type { VocabularyDraft, VocabularyEntry, VocabularyFilters, VocabularyPage, VocabularySource } from '../lib/vocabulary';
++
++export function useVocabulary(filters?: VocabularyFilters) {
++  const { user, token, isLoading } = useAuth();
++  const ready = !isLoading && (!token || !!user);
++  const scope = !ready ? 'pending' : user ? `user:${user.id}:${token}` : 'guest';
++  const query = filters === undefined ? undefined : queryString(filters);
++  const [revision, setRevision] = useState(0);
++  const key = `${scope}|${query}|${revision}`;
++  const [loaded, setLoaded] = useState<{ key: string; page?: VocabularyPage; sources?: VocabularySource[]; error?: string }>();
++  const [mutation, setMutation] = useState<{ scope: string; busy: boolean; error?: string }>();
++  const requests = useRef(new Set<AbortController>());
++  const busy = useRef(false);
++  const refresh = useCallback(() => { setRevision(value => value + 1); setMutation(undefined); }, []);
++
++  useEffect(() => {
++    const controllers = requests.current;
++    return () => { controllers.forEach(c => c.abort()); controllers.clear(); busy.current = false; };
++  }, [scope]);
++
++  useEffect(() => {
++    const changed = () => refresh();
++    const storage = (e: StorageEvent) => { if (e.key === VOCABULARY_KEY || e.key === null) refresh(); };
++    window.addEventListener(VOCABULARY_CHANGED, changed);
++    window.addEventListener('storage', storage);
++    return () => {
++      window.removeEventListener(VOCABULARY_CHANGED, changed);
++      window.removeEventListener('storage', storage);
++    };
++  }, [refresh]);
++
++  useEffect(() => {
++    if (!ready || query === undefined) return;
++    const controller = new AbortController();
++    const timer = setTimeout(async () => {
++      try {
++        let page: VocabularyPage, sources: VocabularySource[];
++        if (token) [page, sources] = await Promise.all([
++          fetchVocabulary(query, token, controller.signal), fetchSources(token, controller.signal),
++        ]);
++        else {
++          const entries = readGuestVocabulary();
++          const params = new URLSearchParams(query);
++          const localFilters: VocabularyFilters = Object.fromEntries(params);
++          localFilters.skip = Number(params.get('skip') ?? 0);
++          localFilters.limit = Number(params.get('limit') ?? 20);
++          page = filterGuestVocabulary(entries, localFilters);
++          sources = guestSources(entries);
++        }
++        if (!controller.signal.aborted) setLoaded({ key, page, sources });
++      } catch (error) {
++        if (!controller.signal.aborted) setLoaded({ key, error: vocabularyError(error) });
++      }
++    }, 180);
++    return () => { clearTimeout(timer); controller.abort(); };
++  }, [key, query, ready, token]);
++
++  const mutate = useCallback(async <T,>(operation: (signal: AbortSignal, assertScope: () => void) => Promise<T>): Promise<T | null> => {
++    if (!ready || busy.current) return null;
++    const controller = new AbortController();
++    requests.current.add(controller);
++    busy.current = true;
++    setMutation({ scope, busy: true });
++    const assertScope = () => {
++      if (controller.signal.aborted || tokenStore.get() !== token) throw new DOMException('Account changed', 'AbortError');
++    };
++    try {
++      assertScope();
++      const result = await operation(controller.signal, assertScope);
++      assertScope();
++      window.dispatchEvent(new Event(VOCABULARY_CHANGED));
++      setMutation({ scope, busy: false });
++      return result;
++    } catch (error) {
++      if (!controller.signal.aborted && !(error instanceof DOMException && error.name === 'AbortError')) {
++        setMutation({ scope, busy: false, error: vocabularyError(error) });
++      }
++      return null;
++    } finally {
++      requests.current.delete(controller);
++      if (!controller.signal.aborted) busy.current = false;
++    }
++  }, [ready, scope, token]);
++
++  const save = useCallback((draft: VocabularyDraft) => mutate<VocabularyEntry>(async (signal, assertScope) => {
++    if (token) return saveVocabulary(draft, token, signal);
++    return mutateGuest(() => { assertScope(); return saveGuestVocabulary(draft); });
++  }), [mutate, token]);
++  const remove = useCallback((id?: string | number) => mutate(async (signal, assertScope) => {
++    if (token) await deleteVocabulary(token, signal, id);
++    else await mutateGuest(() => { assertScope(); deleteGuestVocabulary(id); });
++    return true;
++  }), [mutate, token]);
++
++  const current = loaded?.key === key ? loaded : undefined;
++  return {
++    scope, ready, signedIn: !!user, save, remove, refresh,
++    page: current?.page, sources: current?.sources ?? [],
++    loading: !ready || (query !== undefined && !current),
++    error: (mutation?.scope === scope ? mutation.error : undefined) || current?.error,
++    busy: mutation?.scope === scope && mutation.busy,
++  };
++}
+diff --git a/frontend/src/lib/vocabulary-selection.ts b/frontend/src/lib/vocabulary-selection.ts
+new file mode 100644
+index 0000000..01ac7c3
+--- /dev/null
++++ b/frontend/src/lib/vocabulary-selection.ts
+@@ -0,0 +1,26 @@
++import type { ReadingDocument } from './document';
++import type { VocabularyDraft } from './vocabulary';
++
++export function readVocabularySelection(root: HTMLElement, doc: ReadingDocument): VocabularyDraft | null {
++  const selection = window.getSelection();
++  if (!selection || selection.isCollapsed || selection.rangeCount !== 1) return null;
++  const range = selection.getRangeAt(0);
++  if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
++  const element = (node: Node) => node instanceof Element ? node : node.parentElement;
++  const paragraph = element(range.startContainer)?.closest<HTMLElement>('[data-segment-id]');
++  const endParagraph = element(range.endContainer)?.closest<HTMLElement>('[data-segment-id]');
++  if (!paragraph || paragraph !== endParagraph) throw new Error('Hãy chọn từ/cụm từ trong cùng một đoạn văn.');
++  const contextText = paragraph.textContent ?? '';
++  const before = range.cloneRange();
++  before.selectNodeContents(paragraph);
++  before.setEnd(range.startContainer, range.startOffset);
++  let start = before.toString().length;
++  const selected = range.toString();
++  start += selected.length - selected.trimStart().length;
++  const term = selected.trim();
++  if (!term) return null;
++  if (term.length > 120) throw new Error('Hãy chọn từ/cụm từ ngắn hơn (tối đa 120 ký tự).');
++  if (contextText.length > 4000) throw new Error('Đoạn văn này quá dài để lưu ngữ cảnh. Hãy chia đoạn dưới 4.000 ký tự rồi thử lại.');
++  return { term, contextText, sourceDocumentId: doc.id, sourceTitle: doc.title.slice(0, 300),
++    sourceKind: doc.source, segmentId: paragraph.dataset.segmentId!, start, end: start + term.length };
++}
+diff --git a/frontend/src/lib/vocabulary.test.ts b/frontend/src/lib/vocabulary.test.ts
+new file mode 100644
+index 0000000..bb6e44a
+--- /dev/null
++++ b/frontend/src/lib/vocabulary.test.ts
+@@ -0,0 +1,59 @@
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++import { VOCABULARY_KEY, dateBounds, deleteGuestVocabulary, filterGuestVocabulary, readGuestVocabulary, saveGuestVocabulary, validateDraft } from './vocabulary';
++import { readVocabularySelection } from './vocabulary-selection';
++
++const draft = { term: 'sinh học', contextText: 'Em học sinh học.', segmentId: 'paragraph-0', start: 7, end: 15 };
++beforeEach(() => { localStorage.clear(); document.body.innerHTML = ''; });
++
++describe('guest vocabulary', () => {
++  it('persists, deduplicates and keeps distinct contexts', () => {
++    const first = saveGuestVocabulary(draft);
++    expect(saveGuestVocabulary({ ...draft, meaning: 'Different' }).id).toBe(first.id);
++    saveGuestVocabulary({ ...draft, contextText: 'Em học sinh học rất vui.' });
++    expect(readGuestVocabulary()).toHaveLength(2);
++    deleteGuestVocabulary(first.id);
++    expect(readGuestVocabulary()).toHaveLength(1);
++    deleteGuestVocabulary();
++    expect(readGuestVocabulary()).toEqual([]);
++  });
++  it('does not discard corrupt data or report success on quota errors', () => {
++    localStorage.setItem(VOCABULARY_KEY, '{broken');
++    expect(() => saveGuestVocabulary(draft)).toThrow('Không đọc được');
++    expect(localStorage.getItem(VOCABULARY_KEY)).toBe('{broken');
++    deleteGuestVocabulary();
++    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('quota', 'QuotaExceededError'); });
++    expect(() => saveGuestVocabulary(draft)).toThrow('Chưa lưu được');
++  });
++  it('rejects partial or incorrect UTF-16 ranges', () => {
++    expect(() => validateDraft({ ...draft, start: undefined })).toThrow();
++    expect(() => validateDraft({ ...draft, start: 6 })).toThrow();
++    expect(() => validateDraft({ ...draft, contextText: '🌱 Em học sinh học.', start: 10, end: 18 })).not.toThrow();
++  });
++  it('normalizes searches and filters dates/source with an exclusive upper bound', () => {
++    const entries = [
++      { ...draft, id: '1', sourceDocumentId: 'one', createdAt: '2026-11-12T17:00:00Z' },
++      { ...draft, id: '2', sourceDocumentId: 'two', createdAt: '2026-11-13T17:00:00Z' },
++    ];
++    expect(filterGuestVocabulary(entries, { q: ' SINH  HỌC ', sourceDocumentId: 'one', from: '2026-11-12T17:00:00Z', to: '2026-11-13T17:00:00Z' }).items.map(e => e.id)).toEqual(['1']);
++    expect(filterGuestVocabulary(entries, { q: '%' }).total).toBe(0);
++    expect(filterGuestVocabulary(entries, { skip: 1, limit: 1 }).total).toBe(2);
++    expect(() => dateBounds('2026-11-14', '2026-11-13')).toThrow();
++    const bounds = dateBounds('2026-11-13', '2026-11-13');
++    expect(new Date(bounds.from!).getDate()).toBe(13);
++    expect(new Date(bounds.to!).getDate()).toBe(14);
++  });
++});
++
++it('captures the second occurrence across nested TTS spans, including an emoji prefix', () => {
++  document.body.innerHTML = '<div id="reading"><p data-segment-id="paragraph-0"><span>🌱 sinh học, </span><mark>sinh</mark><span> học.</span></p></div>';
++  const root = document.getElementById('reading')!;
++  const range = document.createRange();
++  range.setStart(root.querySelector('mark')!.firstChild!, 0);
++  range.setEnd(root.querySelector('p')!.lastChild!.firstChild!, 4);
++  const selection = window.getSelection()!;
++  selection.removeAllRanges(); selection.addRange(range);
++  const result = readVocabularySelection(root, { id: 'doc', title: 'Bài đọc', text: root.textContent!, source: 'paste', ocrUsed: false });
++  expect(result?.term).toBe('sinh học');
++  expect(result?.start).toBe(13);
++  expect(result?.contextText.slice(result.start!, result.end!)).toBe(result?.term);
++});
+diff --git a/frontend/src/lib/vocabulary.ts b/frontend/src/lib/vocabulary.ts
+new file mode 100644
+index 0000000..e9d5fd6
+--- /dev/null
++++ b/frontend/src/lib/vocabulary.ts
+@@ -0,0 +1,165 @@
++import { ApiError, apiFetch } from './api';
++import type { DocumentSource } from './document';
++
++export interface VocabularyDraft {
++  term: string;
++  meaning?: string | null;
++  example?: string | null;
++  contextText: string;
++  sourceDocumentId?: string | null;
++  sourceTitle?: string | null;
++  sourceKind?: DocumentSource | null;
++  contentVersion?: string | null;
++  segmentId?: string | null;
++  start?: number | null;
++  end?: number | null;
++}
++export interface VocabularyEntry extends VocabularyDraft {
++  id: number | string;
++  createdAt: string;
++}
++export interface VocabularyFilters {
++  q?: string;
++  sourceDocumentId?: string;
++  from?: string;
++  to?: string;
++  skip?: number;
++  limit?: number;
++}
++export interface VocabularyPage { items: VocabularyEntry[]; total: number; skip: number; limit: number }
++export interface VocabularySource { sourceDocumentId: string; sourceTitle: string }
++export const VOCABULARY_KEY = 'lexiease:vocabulary:guest:v1';
++export const VOCABULARY_CHANGED = 'lexiease:vocabulary-changed';
++const MAX_GUEST_ENTRIES = 1000;
++const endpoint = '/me/vocabulary';
++
++export const normalizeTerm = (text: string) => text.normalize('NFC').toLowerCase().trim().replace(/\s+/gu, ' ');
++export function validateDraft(draft: VocabularyDraft): void {
++  if (typeof draft?.term !== 'string' || !draft.term.trim() || draft.term.length > 120 ||
++      typeof draft.contextText !== 'string' || !draft.contextText.trim() || draft.contextText.length > 4000) {
++    throw new Error('Chọn từ/cụm từ tối đa 120 ký tự trong đoạn ngữ cảnh tối đa 4.000 ký tự.');
++  }
++  const limits = { meaning: 2000, example: 2000, sourceDocumentId: 200, sourceTitle: 300, segmentId: 100 } as const;
++  for (const [key, max] of Object.entries(limits)) {
++    const value = draft[key as keyof typeof limits];
++    if (value != null && (typeof value !== 'string' || value.length > max ||
++        (!['meaning', 'example'].includes(key) && !value.length))) throw new Error('Dữ liệu từ đã lưu không hợp lệ.');
++  }
++  for (const value of Object.values(draft)) {
++    if (typeof value === 'string' && (value.includes('\0') || (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(value)))) {
++      throw new Error('Văn bản chứa ký tự không hợp lệ.');
++    }
++  }
++  if (draft.sourceKind != null && !['paste', 'pdf', 'image'].includes(draft.sourceKind)) throw new Error('Nguồn không hợp lệ.');
++  if (draft.contentVersion != null && !/^[a-f0-9]{64}$/.test(draft.contentVersion)) throw new Error('Phiên bản nội dung không hợp lệ.');
++  if ([draft.segmentId, draft.start, draft.end].some(v => v != null)) {
++    const { start, end } = draft;
++    if (!draft.segmentId || !Number.isInteger(start) || !Number.isInteger(end) ||
++        start! < 0 || end! <= start! || end! > draft.contextText.length ||
++        draft.contextText.slice(start!, end!) !== draft.term) throw new Error('Vị trí từ không khớp đoạn văn.');
++  }
++}
++
++function identity(draft: VocabularyDraft): string {
++  return JSON.stringify([normalizeTerm(draft.term), normalizeTerm(draft.contextText),
++    draft.sourceDocumentId ?? null, draft.contentVersion ?? null,
++    draft.segmentId ?? null, draft.start ?? null, draft.end ?? null]);
++}
++
++export function readGuestVocabulary(): VocabularyEntry[] {
++  let raw: string | null;
++  try { raw = localStorage.getItem(VOCABULARY_KEY); }
++  catch { throw new Error('Trình duyệt đang chặn bộ nhớ. Hãy cho phép lưu dữ liệu trang này.'); }
++  if (!raw) return [];
++  try {
++    const value = JSON.parse(raw);
++    if (value.version !== 1 || !Array.isArray(value.entries) || value.entries.length > MAX_GUEST_ENTRIES) throw new Error();
++    const ids = new Set<string>();
++    for (const entry of value.entries) {
++      validateDraft(entry);
++      if (typeof entry.id !== 'string' || !entry.id || ids.has(entry.id) ||
++          typeof entry.createdAt !== 'string' || !Number.isFinite(Date.parse(entry.createdAt))) throw new Error();
++      ids.add(entry.id);
++    }
++    return value.entries;
++  } catch {
++    throw new Error('Không đọc được thư viện trên máy. Dữ liệu được giữ nguyên; bạn có thể xóa thư viện này để bắt đầu lại.');
++  }
++}
++
++function writeGuestVocabulary(entries: VocabularyEntry[]): void {
++  try { localStorage.setItem(VOCABULARY_KEY, JSON.stringify({ version: 1, entries })); }
++  catch { throw new Error('Chưa lưu được: bộ nhớ trình duyệt đã đầy hoặc bị chặn.'); }
++}
++
++// Serialize mutations across tabs where Web Locks are available; never silently overwrite corrupt data.
++export async function mutateGuest<T>(action: () => T): Promise<T> {
++  if (typeof navigator !== 'undefined' && navigator.locks) return navigator.locks.request(VOCABULARY_KEY, action);
++  return action();
++}
++export function saveGuestVocabulary(draft: VocabularyDraft): VocabularyEntry {
++  validateDraft(draft);
++  const entries = readGuestVocabulary();
++  const existing = entries.find(entry => identity(entry) === identity(draft));
++  if (existing) return existing;
++  if (entries.length >= MAX_GUEST_ENTRIES) throw new Error('Thư viện đã có 1.000 mục. Hãy xóa bớt từ trước khi lưu thêm.');
++  const entry = { ...draft, meaning: draft.meaning?.trim() || null, example: draft.example?.trim() || null,
++    id: crypto.randomUUID(), createdAt: new Date().toISOString() };
++  writeGuestVocabulary([entry, ...entries]);
++  return entry;
++}
++export function deleteGuestVocabulary(id?: string | number): void {
++  if (id === undefined) {
++    try { localStorage.removeItem(VOCABULARY_KEY); }
++    catch { throw new Error('Không thể xóa dữ liệu trên trình duyệt này.'); }
++  } else writeGuestVocabulary(readGuestVocabulary().filter(entry => entry.id !== id));
++}
++export function filterGuestVocabulary(entries: VocabularyEntry[], filters: VocabularyFilters): VocabularyPage {
++  const q = normalizeTerm(filters.q ?? '');
++  const filtered = entries.filter(entry => (!q || normalizeTerm(entry.term).includes(q)) &&
++    (!filters.sourceDocumentId || entry.sourceDocumentId === filters.sourceDocumentId) &&
++    (!filters.from || Date.parse(entry.createdAt) >= Date.parse(filters.from)) &&
++    (!filters.to || Date.parse(entry.createdAt) < Date.parse(filters.to)))
++    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || String(b.id).localeCompare(String(a.id)));
++  const skip = filters.skip ?? 0, limit = filters.limit ?? 20;
++  return { items: filtered.slice(skip, skip + limit), total: filtered.length, skip, limit };
++}
++export function guestSources(entries: VocabularyEntry[]): VocabularySource[] {
++  return [...new Map(entries.filter(e => e.sourceDocumentId).map(e => [e.sourceDocumentId!, {
++    sourceDocumentId: e.sourceDocumentId!, sourceTitle: e.sourceTitle || 'Tài liệu không có tên',
++  }])).values()];
++}
++
++export function queryString(filters: VocabularyFilters): string {
++  const params = new URLSearchParams();
++  Object.entries(filters).forEach(([key, value]) => { if (value !== '' && value != null) params.set(key, String(value)); });
++  return params.toString();
++}
++const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
++export const fetchVocabulary = (query: string, token: string, signal: AbortSignal) =>
++  apiFetch<VocabularyPage>(`${endpoint}?${query}`, { headers: auth(token), signal });
++export const fetchSources = (token: string, signal: AbortSignal) =>
++  apiFetch<VocabularySource[]>(`${endpoint}/sources`, { headers: auth(token), signal });
++export const saveVocabulary = (draft: VocabularyDraft, token: string, signal: AbortSignal) =>
++  apiFetch<VocabularyEntry>(endpoint, { method: 'POST', headers: auth(token), body: JSON.stringify(draft), signal });
++export const deleteVocabulary = (token: string, signal: AbortSignal, id?: string | number) =>
++  apiFetch<void>(id === undefined ? endpoint : `${endpoint}/${encodeURIComponent(id)}`,
++    { method: 'DELETE', headers: auth(token), signal });
++
++export function vocabularyError(error: unknown): string {
++  if (error instanceof ApiError && error.status === 401) return 'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại để tiếp tục.';
++  if (error instanceof ApiError && error.status >= 500) return 'Máy chủ chưa xử lý được thư viện. Hãy thử lại sau.';
++  if (error instanceof TypeError) return 'Không kết nối được máy chủ. Thao tác chưa được xác nhận; hãy thử lại.';
++  return error instanceof Error ? error.message : 'Không thực hiện được thao tác. Hãy thử lại.';
++}
++
++// End date is inclusive in the UI, exclusive in the API, using the user's local timezone.
++export function dateBounds(from: string, to: string): Pick<VocabularyFilters, 'from' | 'to'> {
++  const start = from ? new Date(`${from}T00:00:00`) : undefined;
++  const end = to ? new Date(`${to}T00:00:00`) : undefined;
++  if (end) end.setDate(end.getDate() + 1);
++  if ((start && !Number.isFinite(+start)) || (end && !Number.isFinite(+end)) || (start && end && start >= end)) {
++    throw new Error('Khoảng ngày không hợp lệ. Ngày kết thúc phải từ ngày bắt đầu trở đi.');
++  }
++  return { from: start?.toISOString(), to: end?.toISOString() };
++}
+diff --git a/frontend/src/screens/Vocabulary/Vocabulary.tsx b/frontend/src/screens/Vocabulary/Vocabulary.tsx
+new file mode 100644
+index 0000000..272d46d
+--- /dev/null
++++ b/frontend/src/screens/Vocabulary/Vocabulary.tsx
+@@ -0,0 +1,174 @@
++import { useEffect, useRef, useState } from 'react';
++import { Link } from 'react-router-dom';
++import { Header } from '../../components/layout';
++import { useVocabulary } from '../../hooks/useVocabulary';
++import { dateBounds } from '../../lib/vocabulary';
++import type { VocabularyEntry, VocabularyFilters } from '../../lib/vocabulary';
++
++function DeleteConfirmation({ entry, busy, error, onDelete, onClose }: {
++  entry: VocabularyEntry | 'all'; busy: boolean; error?: string;
++  onDelete: () => void; onClose: () => void;
++}) {
++  const dialog = useRef<HTMLDialogElement>(null);
++  useEffect(() => {
++    const el = dialog.current;
++    const previous = document.activeElement;
++    el?.showModal();
++    return () => { el?.close(); if (previous instanceof HTMLElement) previous.focus(); };
++  }, []);
++  return (
++    <dialog ref={dialog} onCancel={onClose} aria-labelledby="delete-word-title"
++      className="w-[calc(100%_-_2rem)] max-w-md rounded-3xl bg-[#FFFDF8] p-6 text-on-surface shadow-xl backdrop:bg-black/30">
++      <h2 id="delete-word-title" className="text-lg font-semibold">
++        {entry === 'all' ? 'Xóa toàn bộ thư viện?' : `Xóa “${entry.term}”?`}
++      </h2>
++      <p className="mt-3 text-sm leading-relaxed text-on-surface-variant">
++        {entry === 'all' ? 'Xóa mọi từ trong kho đang dùng, kể cả các từ ngoài bộ lọc hiện tại.' : 'Từ này sẽ được xóa khỏi kho đang dùng.'}
++        {' '}Thao tác này không thể hoàn tác.
++      </p>
++      {error && <p role="alert" className="mt-3 text-sm text-error">{error}</p>}
++      <div className="mt-6 flex justify-end gap-3">
++        <button autoFocus type="button" onClick={onClose} disabled={busy} className="rounded-full border px-5 py-2.5">Giữ lại</button>
++        <button type="button" onClick={onDelete} disabled={busy} className="rounded-full bg-error px-5 py-2.5 text-on-error disabled:opacity-50">
++          {busy ? 'Đang xóa…' : 'Xác nhận xóa'}
++        </button>
++      </div>
++    </dialog>
++  );
++}
++
++export function Vocabulary() {
++  const [search, setSearch] = useState('');
++  const [source, setSource] = useState('');
++  const [from, setFrom] = useState('');
++  const [to, setTo] = useState('');
++  const [offset, setOffset] = useState({ scope: '', value: 0 });
++  const [confirmation, setConfirmation] = useState<{ scope: string; entry: VocabularyEntry | 'all' }>();
++  const [notice, setNotice] = useState<{ scope: string; text: string }>();
++  let bounds: Pick<VocabularyFilters, 'from' | 'to'> = {};
++  let dateError = '';
++  try { bounds = dateBounds(from, to); } catch (error) { dateError = (error as Error).message; }
++  // Account-scoped pagination prevents switching into a non-existent page of another account.
++  const filters = { q: search.trim(), sourceDocumentId: source, ...bounds, skip: offset.value, limit: 20 };
++  const library = useVocabulary(dateError ? undefined : filters);
++  const { scope, signedIn, ready, page, sources, loading, busy, error } = library;
++  useEffect(() => {
++    if (offset.scope !== scope || (page && page.total > 0 && page.items.length === 0 && offset.value > 0)) {
++      // Pagination reset is a response to a completed account/load transition.
++      queueMicrotask(() => setOffset({ scope, value: page?.total ? Math.floor((page.total - 1) / 20) * 20 : 0 }));
++    }
++  }, [scope, offset.scope, offset.value, page]);
++  const resetPage = () => setOffset({ scope, value: 0 });
++  const formatDate = (date: string) => new Date(date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
++  const control = 'w-full rounded-xl border border-outline-variant/60 bg-[#FFFDF8] px-3 py-2.5 text-sm focus:outline-primary';
++
++  return (
++    <div className="min-h-screen bg-[#FAF7F0] font-body text-on-surface">
++      <Header />
++      <main className="mx-auto max-w-5xl px-4 pb-16 pt-28 sm:px-8">
++        <div className="flex flex-wrap items-start justify-between gap-5">
++          <div>
++            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-tertiary">Góp từng từ, hiểu thêm mỗi ngày</p>
++            <h1 className="mt-3 font-headline text-3xl sm:text-4xl">Từ khó của tôi</h1>
++            <p className="mt-3 max-w-xl text-sm leading-relaxed text-on-surface-variant">
++              Những từ bạn chủ động lưu, cùng ngữ cảnh để đọc và ôn lại.
++            </p>
++          </div>
++          <Link to="/reading" className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm text-on-primary">
++            <span className="material-symbols-outlined text-lg" aria-hidden>auto_stories</span>Trở lại bài đọc
++          </Link>
++        </div>
++
++        <div role="note" className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/10 bg-primary/[0.04] p-4 text-sm leading-relaxed">
++          <span>{!ready ? 'Đang kiểm tra tài khoản…' : signedIn
++            ? 'Thư viện riêng của tài khoản đang đăng nhập. Từ lưu khi dùng khách vẫn ở riêng trên trình duyệt.'
++            : 'Chỉ lưu trên trình duyệt này. Xóa dữ liệu trình duyệt sẽ mất các từ đã lưu; đăng nhập không tự chuyển những từ này lên tài khoản.'}</span>
++          {!signedIn && ready && <Link to="/login" state={{ from: '/vocabulary' }} className="font-semibold text-primary underline">Đăng nhập</Link>}
++        </div>
++
++        <section aria-label="Tìm và lọc từ đã lưu" className="mt-7 rounded-2xl border border-black/5 bg-white/50 p-4 sm:p-5">
++          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
++            <label className="text-xs font-medium text-on-surface-variant">Tìm từ/cụm từ
++              <input type="search" aria-label="Tìm từ/cụm từ" value={search} maxLength={120}
++                onChange={e => { setSearch(e.target.value); resetPage(); }} placeholder="Ví dụ: sinh học" className={`mt-2 ${control}`} />
++            </label>
++            <label className="text-xs font-medium text-on-surface-variant">Tài liệu nguồn
++              <select value={source} onChange={e => { setSource(e.target.value); resetPage(); }} className={`mt-2 ${control}`}>
++                <option value="">Mọi tài liệu</option>
++                {source && !sources.some(s => s.sourceDocumentId === source) && <option value={source}>Nguồn đã chọn</option>}
++                {sources.map(s => <option key={s.sourceDocumentId} value={s.sourceDocumentId}>{s.sourceTitle}</option>)}
++              </select>
++            </label>
++            <label className="text-xs font-medium text-on-surface-variant">Lưu từ ngày
++              <input type="date" value={from} onChange={e => { setFrom(e.target.value); resetPage(); }} className={`mt-2 ${control}`} />
++            </label>
++            <label className="text-xs font-medium text-on-surface-variant">Đến hết ngày
++              <input type="date" value={to} onChange={e => { setTo(e.target.value); resetPage(); }} className={`mt-2 ${control}`} />
++            </label>
++          </div>
++          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
++            <button type="button" onClick={() => { setSearch(''); setSource(''); setFrom(''); setTo(''); resetPage(); }} className="text-primary underline">Bỏ bộ lọc</button>
++            <button type="button" disabled={!ready || busy} onClick={() => setConfirmation({ scope, entry: 'all' })}
++              className="rounded-lg px-2 py-1 text-error hover:bg-error/5 disabled:opacity-40">Xóa toàn bộ thư viện</button>
++          </div>
++        </section>
++
++        {dateError && <p role="alert" className="mt-5 text-error">{dateError}</p>}
++        {error && <div role="alert" className="mt-5 rounded-xl bg-error/5 p-4 text-sm text-error">
++          <p>{error}</p>
++          <div className="mt-2 flex gap-4">
++            <button type="button" onClick={library.refresh} className="underline">Thử lại</button>
++            {signedIn && <Link to="/login" state={{ from: '/vocabulary' }} className="underline">Đăng nhập lại</Link>}
++          </div>
++        </div>}
++        {notice?.scope === scope && <p role="status" className="mt-4 text-sm text-primary">{notice.text}</p>}
++        {!dateError && loading && <p role="status" className="py-12 text-center text-on-surface-variant">Đang tải thư viện…</p>}
++        {!dateError && !loading && page && <>
++          <p className="my-5 text-sm text-on-surface-variant">{page.total} từ/cụm từ · Mới nhất trước</p>
++          {page.total === 0 ? <div className="rounded-3xl border border-dashed border-outline-variant bg-white/40 px-6 py-14 text-center">
++            <span className="material-symbols-outlined text-4xl text-tertiary" aria-hidden>bookmark_border</span>
++            <h2 className="mt-4 text-xl font-headline">{search || source || from || to ? 'Chưa tìm thấy từ phù hợp' : 'Bắt đầu từ một từ bạn muốn nhớ'}</h2>
++            <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-on-surface-variant">
++              Mở bài đọc, bôi chọn từ hoặc cụm từ rồi bấm “Lưu từ đã chọn”. Bạn có thể ghi thêm nghĩa theo cách hiểu của mình.
++            </p>
++            <Link to="/" className="mt-6 inline-block rounded-full border border-primary/30 px-5 py-2.5 text-sm text-primary">Chọn văn bản để đọc</Link>
++          </div> : <ul className="space-y-4">
++            {page.items.map(entry => <li key={entry.id} className="rounded-2xl border border-black/5 bg-[#FFFDF8] p-5 shadow-sm sm:p-6">
++              <div className="flex items-start justify-between gap-4">
++                <div className="min-w-0">
++                  <h2 className="break-words font-headline text-xl font-semibold text-primary">{entry.term}</h2>
++                  <p className="mt-2 text-xs text-on-surface-variant break-words">Lưu {formatDate(entry.createdAt)} · {entry.sourceTitle || 'Không có tên nguồn'}</p>
++                </div>
++                <button type="button" disabled={busy} onClick={() => setConfirmation({ scope, entry })} aria-label={`Xóa từ ${entry.term}`}
++                  className="shrink-0 rounded-full p-2 text-on-surface-variant hover:bg-error/10 hover:text-error">
++                  <span className="material-symbols-outlined text-xl" aria-hidden>delete</span>
++                </button>
++              </div>
++              <p className={`mt-4 whitespace-pre-wrap break-words leading-relaxed ${entry.meaning ? '' : 'text-sm italic text-on-surface-variant'}`}>
++                {entry.meaning || 'Chưa ghi nghĩa. Hãy đọc lại từ trong ngữ cảnh bên dưới.'}
++              </p>
++              {entry.example && <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed"><strong>Ví dụ:</strong> {entry.example}</p>}
++              <details className="mt-4 text-sm text-on-surface-variant">
++                <summary className="cursor-pointer text-primary">Xem ngữ cảnh đã lưu</summary>
++                <blockquote className="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-surface-container-low p-4 leading-loose">{entry.contextText}</blockquote>
++              </details>
++            </li>)}
++          </ul>}
++          {page.total > page.limit && <nav aria-label="Phân trang thư viện" className="mt-7 flex items-center justify-center gap-5 text-sm">
++            <button disabled={page.skip === 0 || busy} onClick={() => setOffset({ scope, value: Math.max(0, page.skip - page.limit) })} className="rounded-full border px-4 py-2 disabled:opacity-40">Trang trước</button>
++            <span>{Math.floor(page.skip / page.limit) + 1} / {Math.ceil(page.total / page.limit)}</span>
++            <button disabled={page.skip + page.limit >= page.total || busy} onClick={() => setOffset({ scope, value: page.skip + page.limit })} className="rounded-full border px-4 py-2 disabled:opacity-40">Trang sau</button>
++          </nav>}
++        </>}
++        {confirmation?.scope === scope && <DeleteConfirmation entry={confirmation.entry} busy={!!busy} error={error}
++          onClose={() => setConfirmation(undefined)} onDelete={async () => {
++            if (await library.remove(confirmation.entry === 'all' ? undefined : confirmation.entry.id)) {
++              setConfirmation(undefined);
++              setNotice({ scope, text: confirmation.entry === 'all' ? 'Đã xóa thư viện đang dùng.' : 'Đã xóa từ khỏi thư viện.' });
++              resetPage();
++            }
++          }} />}
++      </main>
++    </div>
++  );
++}
+diff --git a/frontend/vitest.config.ts b/frontend/vitest.config.ts
+new file mode 100644
+index 0000000..1e8db9d
+--- /dev/null
++++ b/frontend/vitest.config.ts
+@@ -0,0 +1,7 @@
++import { defineConfig } from 'vitest/config';
++import react from '@vitejs/plugin-react';
++
++export default defineConfig({
++  plugins: [react()],
++  test: { environment: 'jsdom', include: ['src/**/*.test.{ts,tsx}'], restoreMocks: true },
++});
+diff --git a/tests/test_vocabulary.py b/tests/test_vocabulary.py
+new file mode 100644
+index 0000000..725f05c
+--- /dev/null
++++ b/tests/test_vocabulary.py
+@@ -0,0 +1,132 @@
++from concurrent.futures import ThreadPoolExecutor
++from datetime import datetime, timezone
++
++import pytest
++from fastapi.testclient import TestClient
++from sqlalchemy import select, update
++
++from app.db.session import SessionLocal
++from app.main import app
++from app.models.vocabulary import VocabularyEntry
++
++URL = "/api/v1/me/vocabulary"
++DRAFT = {
++    "term": "sinh học", "meaning": "Môn học về sự sống", "example": "Em thích sinh học.",
++    "contextText": "Em học sinh học.", "sourceDocumentId": "doc-1", "sourceTitle": "Bài đọc",
++    "sourceKind": "paste", "segmentId": "paragraph-0", "start": 7, "end": 15,
++}
++
++
++def test_save_duplicate_and_read(client, create_user):
++    _, headers = create_user()
++    response = client.post(URL, json=DRAFT, headers=headers)
++    assert response.status_code == 201, response.text
++    entry = response.json()
++    assert entry["term"] == DRAFT["term"]
++    assert "userId" not in entry and "dedupeKey" not in entry
++    duplicate = client.post(URL, json={**DRAFT, "meaning": "Changed"}, headers=headers)
++    assert duplicate.status_code == 200
++    assert duplicate.json() == entry  # Saving again never silently overwrites the user's note.
++    page = client.get(URL, headers=headers).json()
++    assert page == {"items": [entry], "total": 1, "skip": 0, "limit": 20}
++
++
++def test_same_word_different_context_is_separate(client, create_user):
++    _, headers = create_user()
++    client.post(URL, json=DRAFT, headers=headers)
++    response = client.post(URL, json={**DRAFT, "contextText": "Em học sinh học rất vui."}, headers=headers)
++    assert response.status_code == 201
++    assert client.get(URL, headers=headers).json()["total"] == 2
++
++
++@pytest.mark.parametrize("method,path", [("get", ""), ("get", "/sources"), ("post", ""), ("delete", ""), ("delete", "/1")])
++def test_requires_auth(client, method, path):
++    args = {"json": DRAFT} if method == "post" else {}
++    assert getattr(client, method)(URL + path, **args).status_code == 401
++
++
++def test_ownership_isolation_and_clear(client, create_user):
++    _, alice = create_user()
++    _, bob = create_user()
++    entry = client.post(URL, json=DRAFT, headers=alice).json()
++    assert client.get(URL, headers=bob).json()["total"] == 0
++    assert client.get(URL + "/sources", headers=bob).json() == []
++    assert client.delete(f'{URL}/{entry["id"]}', headers=bob).status_code == 404
++    assert client.delete(URL, headers=bob).status_code == 204
++    assert client.get(URL, headers=alice).json()["total"] == 1
++    assert client.delete(URL, headers=alice).status_code == 204
++    assert client.delete(URL, headers=alice).status_code == 204
++    assert client.get(URL, headers=alice).json()["total"] == 0
++
++
++@pytest.mark.parametrize("change", [
++    {"userId": 9}, {"createdAt": "2026-01-01T00:00:00Z"}, {"term": " "}, {"term": "x" * 121},
++    {"contextText": "x" * 4001}, {"meaning": "x" * 2001}, {"start": 6}, {"end": 16},
++    {"start": None}, {"segmentId": None}, {"start": True}, {"term": "other"},
++    {"sourceKind": "unknown"}, {"contextText": "bad\u0000text"}, {"meaning": "bad\u0000text"},
++])
++def test_rejects_invalid_input(client, create_user, change):
++    _, headers = create_user()
++    assert client.post(URL, headers=headers, json={**DRAFT, **change}).status_code == 422
++    assert client.get(URL, headers=headers).json()["total"] == 0
++
++
++def test_optional_meaning_and_utf16_range(client, create_user):
++    _, headers = create_user()
++    draft = {**DRAFT, "meaning": None, "contextText": "🌱 Em học sinh học.", "start": 10, "end": 18}
++    response = client.post(URL, json=draft, headers=headers)
++    assert response.status_code == 201, response.text
++    assert response.json()["meaning"] is None
++    # A range splitting an emoji must be rejected.
++    assert client.post(URL, json={**draft, "start": 1, "end": 2, "term": "x"}, headers=headers).status_code == 422
++
++
++def test_search_sources_dates_and_pagination(client, create_user):
++    _, headers = create_user()
++    entry = client.post(URL, json=DRAFT, headers=headers).json()
++    client.post(URL, json={"term": "đường", "contextText": "Con đường", "sourceDocumentId": "doc-2", "sourceTitle": "Bài khác"}, headers=headers)
++    with SessionLocal() as db:
++        db.execute(update(VocabularyEntry).values(created_at=datetime(2026, 11, 13, 17, tzinfo=timezone.utc)))
++        db.execute(update(VocabularyEntry).where(VocabularyEntry.id == entry["id"]).values(
++            created_at=datetime(2026, 11, 12, 17, tzinfo=timezone.utc)))
++        db.commit()
++    page = client.get(URL, params={"q": " SINH HỌC ", "sourceDocumentId": "doc-1",
++        "from": "2026-11-13T00:00:00+07:00", "to": "2026-11-14T00:00:00+07:00"}, headers=headers).json()
++    assert page["total"] == 1
++    assert page["items"][0]["id"] == entry["id"]
++    assert client.get(URL, params={"to": "2026-11-12T17:00:00Z"}, headers=headers).json()["total"] == 0
++    assert client.get(URL, params={"q": "%"}, headers=headers).json()["total"] == 0
++    assert client.get(URL, params={"skip": 1, "limit": 1}, headers=headers).json()["total"] == 2
++    assert len(client.get(URL, params={"skip": 1, "limit": 1}, headers=headers).json()["items"]) == 1
++    assert len(client.get(URL + "/sources", headers=headers).json()) == 2
++    assert client.get(URL, params={"from": "2026-11-14T00:00:00Z", "to": "2026-11-13T00:00:00Z"}, headers=headers).status_code == 422
++    assert client.get(URL, params={"from": "2026-11-14T00:00:00"}, headers=headers).status_code == 422
++    assert client.get(URL, params={"limit": 101}, headers=headers).status_code == 422
++
++
++def test_concurrent_saves_are_idempotent(client, create_user):
++    _, headers = create_user()
++    def save(_):
++        with TestClient(app) as other_client:
++            return other_client.post(URL, json=DRAFT, headers=headers)
++    with ThreadPoolExecutor(max_workers=4) as executor:
++        responses = list(executor.map(save, range(4)))
++    assert sorted(r.status_code for r in responses) == [200, 200, 200, 201]
++    assert len({r.json()["id"] for r in responses}) == 1
++    assert client.get(URL, headers=headers).json()["total"] == 1
++
++
++def test_user_crud_cannot_bypass_vocabulary_privacy(client, create_user):
++    alice_id, alice = create_user()
++    bob_id, bob = create_user()
++    client.post(URL, json=DRAFT, headers=alice)
++    for path in ["/api/v1/users", f"/api/v1/users/{alice_id}"]:
++        assert client.get(path).status_code == 401
++    assert client.get(f"/api/v1/users/{alice_id}", headers=bob).status_code == 404
++    assert client.patch(f"/api/v1/users/{alice_id}", json={"password": "stolenpassword"}, headers=bob).status_code == 404
++    assert client.delete(f"/api/v1/users/{alice_id}", headers=bob).status_code == 404
++    assert [u["id"] for u in client.get("/api/v1/users", headers=bob).json()] == [bob_id]
++    assert client.delete(f"/api/v1/users/{alice_id}", headers=alice).status_code == 204
++    with SessionLocal() as db:
++        assert db.scalar(select(VocabularyEntry).where(VocabularyEntry.user_id == alice_id)) is None
++    assert client.get(URL, headers=alice).status_code == 401

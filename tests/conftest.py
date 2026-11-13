@@ -98,7 +98,7 @@ def create_user(client):
         email = email or f"user{counter['n']}@example.com"
         password = "password123"
         response = client.post(
-            "/api/v1/users",
+            "/api/v1/auth/register",
             json={"email": email, "full_name": "Test User", "password": password},
         )
         assert response.status_code == 201, response.text

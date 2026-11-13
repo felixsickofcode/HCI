@@ -342,3 +342,10 @@ python -m pytest
 | `pytest`: `permission denied to create database` | Tài khoản trong `.env` không có quyền tạo database; tự tạo `hci_db_test` bằng pgAdmin |
 | `pytest`: `No module named 'app'` | Chạy `python -m pytest` từ thư mục gốc repo (nơi có `pytest.ini`) |
 | Cổng 8000 đã bận | `python -m uvicorn app.main:app --reload --port 8001` |
+
+
+## FR-07 — Thư viện từ khó cá nhân
+
+Đã có lưu từ được chọn trong bài đọc, thư viện riêng theo JWT hoặc localStorage cho khách, tìm/lọc/phân trang và xóa. Xem [hướng dẫn cài đặt, API và kiểm thử FR-07](docs/FR07.md).
+
+Sau khi cập nhật code, chạy `python -m alembic upgrade head`, rồi `npm ci` trong `frontend`. Các route GET/PATCH/DELETE `/users` nay yêu cầu xác thực và giới hạn chính chủ; xem tài liệu FR-07 trước khi dùng ví dụ CRUD user cũ trong README.
