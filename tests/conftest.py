@@ -7,10 +7,14 @@ không bị đụng tới.
 Địa chỉ database lấy theo thứ tự:
   1. biến môi trường TEST_DATABASE_URL (tên database phải kết thúc bằng `_test`)
   2. DATABASE_URL trong biến môi trường hoặc file .env, tự thêm hậu tố `_test`
+
+Test được đánh dấu `no_db` (ví dụ parser thuần) sẽ bỏ qua toàn bộ thiết lập
+database, nên chạy được mà không cần PostgreSQL.
 """
 import os
 from pathlib import Path
 
+import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
@@ -38,21 +42,8 @@ def _test_database_url() -> str:
     return url.render_as_string(hide_password=False)
 
 
-# Phải đặt TRƯỚC khi import `app`, vì app đọc DATABASE_URL ngay lúc import.
-TEST_URL = _test_database_url()
-os.environ["DATABASE_URL"] = TEST_URL
-
-import pytest  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-
-import app.models  # noqa: E402,F401  (để Base.metadata biết hết các bảng)
-from app.db.base import Base  # noqa: E402
-from app.db.session import engine  # noqa: E402
-from app.main import app as fastapi_app  # noqa: E402
-
-
-def _ensure_database_exists() -> None:
-    url = make_url(TEST_URL)
+def _ensure_database_exists(test_url: str) -> None:
+    url = make_url(test_url)
     admin = create_engine(url.set(database="postgres"), isolation_level="AUTOCOMMIT")
     try:
         with admin.connect() as conn:
@@ -65,18 +56,35 @@ def _ensure_database_exists() -> None:
         admin.dispose()
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def _schema():
+    test_url = _test_database_url()
+    # Phải đặt TRƯỚC khi import `app`, vì app đọc DATABASE_URL ngay lúc import.
+    os.environ["DATABASE_URL"] = test_url
+
+    import app.models  # noqa: F401  (để Base.metadata biết hết các bảng)
+    from app.db.base import Base
+    from app.db.session import engine
+
     assert engine.url.database.endswith("_test"), "Từ chối chạy test trên database không phải *_test"
-    _ensure_database_exists()
+    _ensure_database_exists(test_url)
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     yield
 
 
 @pytest.fixture(autouse=True)
-def _clean_tables():
-    """Sau mỗi test, xóa sạch dữ liệu để các test không ảnh hưởng nhau."""
+def _clean_tables(request):
+    """Sau mỗi test DB, xóa sạch dữ liệu để các test không ảnh hưởng nhau."""
+    if request.node.get_closest_marker("no_db"):
+        yield
+        return
+
+    request.getfixturevalue("_schema")
+
+    from app.db.base import Base
+    from app.db.session import engine
+
     yield
     tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
     with engine.begin() as conn:
@@ -84,7 +92,11 @@ def _clean_tables():
 
 
 @pytest.fixture
-def client():
+def client(_schema):
+    from fastapi.testclient import TestClient
+
+    from app.main import app as fastapi_app
+
     return TestClient(fastapi_app)
 
 

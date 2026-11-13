@@ -23,7 +23,7 @@ export const DEFAULTS: DisplaySettings = {
   fontFamily: 'lexend',
   fontSize: 20,
   lineHeight: 1.8,
-  letterSpacing: 0.08,
+  letterSpacing: 0.02,
   theme: 'cream',
   columnWidth: 60,
   focus: { enabled: false, dimOpacity: 0.6, followPointer: false },

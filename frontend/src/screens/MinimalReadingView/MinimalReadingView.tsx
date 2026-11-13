@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, Navigate } from 'react-router-dom';
 import { AudioPlayerCapsule, ManuscriptCard, ReadingText } from '../../components/common';
@@ -6,7 +6,7 @@ import { useDocument } from '../../context';
 import {
   useDisplaySettings, THEMES, FONT_STACKS, LIMITS,
 } from '../../context/DisplaySettingsProvider';
-import { countWords, readingMinutes, toParagraphs } from '../../lib/document';
+import { countWords, readingMinutes } from '../../lib/document';
 import type { DocumentSource } from '../../lib/document';
 import type { FontFamily, ThemeName } from '../../lib/api';
 import booksIllustration from '../../assets/book_illustration.jpg';
@@ -19,6 +19,8 @@ import {
   SpeechController,
 } from '../../lib/speech';
 import type { BoundaryReliability, ReadingSegment, SpeechBoundaryEvent, SpeechStatus } from '../../lib/speech';
+import { LayoutEditor } from './LayoutEditor';
+import { OriginalDocumentView } from './OriginalDocumentView';
 
 const SOURCE_LABEL: Record<DocumentSource, string> = {
   paste: 'Văn bản dán',
@@ -42,6 +44,7 @@ const SIDEBAR_ITEMS = [
 ] as const;
 
 type Tab = 'Giao diện' | 'Hỗ trợ đọc' | 'Khác';
+type ViewMode = 'original' | 'reading';
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'Giao diện', label: 'Giao diện', icon: 'desktop_windows' },
@@ -66,18 +69,32 @@ const Slider = (p: {
 );
 
 export const MinimalReadingView: React.FC = () => {
-  const { document: doc, clearDocument } = useDocument();
+  const { document: doc, clearDocument, updateBlocks, restoreSource } = useDocument();
   const { settings: s, update, reset } = useDisplaySettings();
   const [panelOpen, setPanelOpen] = useState(() => window.innerWidth >= 1024);
   const [tab, setTab] = useState<Tab>('Giao diện');
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [viewSelection, setViewSelection] = useState<{ documentId: string; mode: ViewMode } | null>(null);
   const theme = THEMES[s.theme];
+  const hasOriginal = Boolean(doc?.originalFile && (doc.source === 'pdf' || doc.source === 'image'));
+  const viewMode = viewSelection && viewSelection.documentId === doc?.id
+    ? viewSelection.mode
+    : 'reading';
+  const showSettingsPanel = viewMode === 'reading' && panelOpen;
 
-  const paragraphs = doc ? toParagraphs(doc.text) : [];
-  const segments: ReadingSegment[] = paragraphs.map((text, index) => ({
-    id: `paragraph-${index}`,
-    text,
-    kind: 'paragraph',
-  }));
+  const blocks = useMemo(() => doc?.blocks ?? [], [doc?.blocks]);
+  const toc = useMemo(() => blocks.filter((block) => block.type === 'heading'), [blocks]);
+  const segments: ReadingSegment[] = useMemo(
+    () =>
+      blocks
+        .filter((block) => block.text.trim().length > 0)
+        .map((block) => ({
+          id: block.id,
+          text: block.text,
+          kind: block.type === 'quote' ? 'quote' : 'paragraph',
+        })),
+    [blocks],
+  );
   const speechRef = useRef<SpeechController | null>(null);
   const [speechStatus, setSpeechStatus] = useState<SpeechStatus>(() => isSpeechSupported() ? 'idle' : 'unsupported');
   const [boundaryReliability, setBoundaryReliability] = useState<BoundaryReliability>('unknown');
@@ -387,26 +404,79 @@ export const MinimalReadingView: React.FC = () => {
             <span>Trở về trang chủ</span>
           </Link>
 
-          {!panelOpen && (
-            <button
+          <div className="flex items-center gap-2">
+            {hasOriginal && (
+              <div className="flex rounded-xl border border-black/10 bg-white/75 p-1 text-xs font-label" role="group" aria-label="Chế độ xem tài liệu">
+                <button
+                  type="button"
+                  aria-pressed={viewMode === 'original'}
+                  onClick={() => {
+                    speechRef.current?.stop();
+                    setActiveBoundary(null);
+                    setViewSelection({ documentId: doc.id, mode: 'original' });
+                  }}
+                  className={`rounded-lg px-2.5 py-1.5 transition-colors ${viewMode === 'original' ? 'bg-primary text-on-primary' : 'text-on-surface hover:bg-black/5'}`}
+                >
+                  Bản gốc
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={viewMode === 'reading'}
+                  onClick={() => setViewSelection({ documentId: doc.id, mode: 'reading' })}
+                  className={`rounded-lg px-2.5 py-1.5 transition-colors ${viewMode === 'reading' ? 'bg-primary text-on-primary' : 'text-on-surface hover:bg-black/5'}`}
+                >
+                  Trang đọc
+                </button>
+              </div>
+            )}
+            {viewMode === 'reading' && <button
               type="button"
-              onClick={() => setPanelOpen(true)}
-              aria-expanded={panelOpen}
-              aria-label="Mở cài đặt hiển thị"
+              onClick={() => setEditorOpen(true)}
+              aria-label="Chỉnh bố cục văn bản"
               className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-label font-medium tracking-wide bg-white/75 border border-black/5 hover:bg-white text-on-surface transition-colors"
             >
-              <span className="material-symbols-outlined text-[17px]">tune</span>
-              Cài đặt hiển thị
-            </button>
-          )}
+              <span className="material-symbols-outlined text-[17px]">edit_note</span>
+              <span className="hidden sm:inline">Chỉnh bố cục</span>
+            </button>}
+            {viewMode === 'reading' && !panelOpen && (
+              <button
+                type="button"
+                onClick={() => setPanelOpen(true)}
+                aria-expanded={panelOpen}
+                aria-label="Mở cài đặt hiển thị"
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-label font-medium tracking-wide bg-white/75 border border-black/5 hover:bg-white text-on-surface transition-colors"
+              >
+                <span className="material-symbols-outlined text-[17px]">tune</span>
+                <span className="hidden sm:inline">Cài đặt hiển thị</span>
+              </button>
+            )}
+          </div>
         </header>
 
         {/* Mobile/tablet: panel là overlay portal */}
-        {panelOpen && createPortal(
+        {showSettingsPanel && createPortal(
           <div className="lg:hidden">
             <div className="fixed inset-0 bg-black/20 z-[60]" onClick={() => setPanelOpen(false)} />
             <div className="fixed top-0 right-0 h-full z-[70] py-0">{settingsPanel}</div>
           </div>,
+          document.body,
+        )}
+
+        {editorOpen && viewMode === 'reading' && doc && createPortal(
+          <LayoutEditor
+            document={doc}
+            onClose={() => setEditorOpen(false)}
+            onChange={(nextBlocks) => {
+              speechRef.current?.stop();
+              setActiveBoundary(null);
+              updateBlocks(nextBlocks);
+            }}
+            onRestore={() => {
+              speechRef.current?.stop();
+              setActiveBoundary(null);
+              restoreSource();
+            }}
+          />,
           document.body,
         )}
 
@@ -417,10 +487,26 @@ export const MinimalReadingView: React.FC = () => {
               <div className="w-[620px] h-[620px] rounded-full bg-tertiary-fixed/20 blur-[130px] opacity-70" />
             </div>
 
+            {viewMode === 'original' && doc.originalFile ? (
+              <OriginalDocumentView
+                key={doc.id}
+                file={doc.originalFile}
+                source={doc.source === 'image' ? 'image' : 'pdf'}
+              />
+            ) : (
             <div className="flex flex-col items-center px-4 sm:px-6 lg:px-8 py-6">
               <ManuscriptCard>
+                <div
+                  className="mx-auto"
+                  style={{
+                    width: `${s.columnWidth}ch`,
+                    maxWidth: '100%',
+                    fontFamily: FONT_STACKS[s.fontFamily],
+                    fontSize: `${s.fontSize}px`,
+                  }}
+                >
                 {/* Tiêu đề và thông tin bài */}
-                <div className="mb-10 text-center sm:text-left">
+                <div className="mb-10 text-left">
                   <div className="inline-block text-tertiary font-label text-xs tracking-[0.25em] uppercase font-semibold mb-3.5 bg-tertiary-fixed/30 px-3 py-1 rounded-full select-none">
                     {SOURCE_LABEL[doc.source]}
                   </div>
@@ -431,7 +517,7 @@ export const MinimalReadingView: React.FC = () => {
                     {doc.title}
                   </h1>
 
-                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-5 gap-y-2 text-[13.5px] font-label select-none">
+                  <div className="flex flex-wrap items-center justify-start gap-x-5 gap-y-2 text-[13.5px] font-label select-none">
                     <span className="flex items-center gap-1.5">
                       <span className="material-symbols-outlined text-[15px] text-tertiary">schedule</span>
                       Khoảng {readingMinutes(doc.text)} phút đọc
@@ -455,6 +541,17 @@ export const MinimalReadingView: React.FC = () => {
                   >
                     Văn bản này được nhận dạng tự động từ hình ảnh nên có thể còn sai sót về chữ hoặc dấu.
                   </p>
+                )}
+
+                {doc.warnings.length > 0 && (
+                  <div
+                    role="alert"
+                    className="mb-10 px-4 py-3 rounded-lg border border-error/40 text-xs font-label leading-relaxed"
+                  >
+                    {doc.warnings.map((warning) => (
+                      <p key={warning}>{warning}</p>
+                    ))}
+                  </div>
                 )}
 
                 <div className="mb-10 rounded-2xl bg-[#F3F5FA]/80 p-2 sm:p-2.5">
@@ -485,18 +582,31 @@ export const MinimalReadingView: React.FC = () => {
                   />
                 </div>
 
+                {toc.length > 0 && (
+                  <nav aria-label="Mục lục tài liệu" className="mb-10 rounded-xl border border-current/15 p-5">
+                    <h2 className="mb-3 font-label text-sm font-semibold">Mục lục</h2>
+                    <ol className="space-y-2 font-label text-sm">
+                      {toc.map((heading) => (
+                        <li key={heading.id} className={heading.headingLevel === 3 ? 'pl-5' : ''}>
+                          <a href={`#reader-${heading.id}`} className="hover:underline focus-visible:underline">
+                            {heading.text}
+                          </a>
+                        </li>
+                      ))}
+                    </ol>
+                  </nav>
+                )}
+
                 {/* Nội dung bài đọc: theo cài đặt hiển thị */}
                 <div
                   ref={bodyRef}
                   onMouseMove={onBodyMouseMove}
-                  className="reading-body text-left mr-auto relative shrink-0"
+                  className="reading-body text-left relative w-full"
                   style={{
                     fontFamily: FONT_STACKS[s.fontFamily],
                     fontSize: `${s.fontSize}px`,
                     lineHeight: s.lineHeight,
                     letterSpacing: `${s.letterSpacing}em`,
-                    width: `${s.columnWidth}ch`,
-                    maxWidth: '100%',
                     backgroundColor: theme.bg,
                     color: theme.fg,
                   }}
@@ -517,9 +627,9 @@ export const MinimalReadingView: React.FC = () => {
                   )}
 
                   <ReadingText
-                    segments={segments}
+                    blocks={blocks}
                     activeBoundary={activeBoundary}
-                    className="font-body text-on-surface break-words"
+                    className="font-body break-words"
                     style={{
                       fontFamily: FONT_STACKS[s.fontFamily],
                       fontSize: `${s.fontSize}px`,
@@ -545,15 +655,17 @@ export const MinimalReadingView: React.FC = () => {
                     <span>Đọc văn bản khác</span>
                   </Link>
                 </footer>
+                </div>
               </ManuscriptCard>
 
               <div className="mt-8 text-center text-xs font-label opacity-50 tracking-wider select-none">
                 <span>Nhấp chuột phải bất kỳ nơi nào trên văn bản để mở thực đơn hỗ trợ nếu cần</span>
               </div>
             </div>
+            )}
           </main>
 
-          {panelOpen && <div className="hidden lg:block shrink-0 h-full py-6 pr-6">{settingsPanel}</div>}
+          {showSettingsPanel && <div className="hidden lg:block shrink-0 h-full py-6 pr-6">{settingsPanel}</div>}
         </div>
       </div>
     </div>

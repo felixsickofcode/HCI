@@ -1,3 +1,5 @@
+import type { ReadingBlock } from "./document";
+
 const API_URL = (import.meta.env.VITE_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
 const API_PREFIX = import.meta.env.VITE_API_PREFIX ?? "/api/v1";
 const TOKEN_KEY = "token";
@@ -130,6 +132,10 @@ export interface ExtractedText {
   pageCount: number | null;
   charCount: number;
   ocrUsed: boolean;
+  sourceText?: string;
+  blocks?: ReadingBlock[];
+  warnings?: string[];
+  skippedOcrPages?: number[];
 }
 
 export const extractText = (file: File, signal?: AbortSignal) => {

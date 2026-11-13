@@ -1,6 +1,6 @@
 import io
+import logging
 import re
-import unicodedata
 from dataclasses import dataclass
 
 import pypdf
@@ -15,6 +15,12 @@ from app.core.exceptions import (
     TextExtractionError,
     UnsupportedFileTypeError,
 )
+from app.services.text_blocks import (
+    TextBlock,
+    blocks_to_text,
+    normalize_source_text,
+    parse_blocks,
+)
 
 # min text layer length to consider a PDF page as having text
 MIN_TEXT_LAYER_CHARS = 10
@@ -26,6 +32,7 @@ PDF_OCR_SCALE = 3.0
 Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 
 _available_languages: set[str] | None = None
+logger = logging.getLogger(__name__)
 
 @dataclass
 class ExtractionResult:
@@ -33,6 +40,10 @@ class ExtractionResult:
     source: str  # pdf or image
     page_count: int | None
     ocr_used: bool
+    source_text: str
+    blocks: list[TextBlock]
+    warnings: list[str]
+    skipped_ocr_pages: list[int]
 
 def detect_file_kind(data: bytes) -> str | None:
     if data.startswith(b"%PDF-"):
@@ -46,35 +57,17 @@ def detect_file_kind(data: bytes) -> str | None:
     return None
 
 
-def normalize_text(text: str) -> str:
-    text = unicodedata.normalize("NFC", text)
-    text = text.replace("\x00", "").replace("\r\n", "\n").replace("\r", "\n")
-    text = text.replace("\u00ad", "")  # soft hyphen
-    text = re.sub(r"[ \t\u00a0]+", " ", text)
-    text = re.sub(r" ?\n ?", "\n", text)
-    text = _reflow(text)
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
-
-
-def _reflow(text: str) -> str:
-    out: list[str] = []
-    for line in text.split("\n"):
-        if (
-            out
-            and out[-1]
-            and line
-            and out[-1][-1] not in ".!?:;…\"”’)"
-            and line[0].isalpha()
-            and line[0].islower()
-        ):
-            out[-1] = f"{out[-1]} {line}"
-        else:
-            out.append(line)
-    return "\n".join(out)
-
-
-
+def _format_page_ranges(pages: list[int]) -> str:
+    ranges: list[str] = []
+    start = previous = pages[0]
+    for page in pages[1:]:
+        if page == previous + 1:
+            previous = page
+            continue
+        ranges.append(str(start) if start == previous else f"{start}–{previous}")
+        start = previous = page
+    ranges.append(str(start) if start == previous else f"{start}–{previous}")
+    return ", ".join(ranges)
 
 
 class TextExtractionService:
@@ -101,36 +94,81 @@ class TextExtractionService:
                 raise TextExtractionError(
                     f"PDF has too many pages (max {self.settings.MAX_PDF_PAGES})"
                 )
-            pages = [page.extract_text() or "" for page in reader.pages]
+            page_texts = [page.extract_text() or "" for page in reader.pages]
         except TextExtractionError:
             raise
         except (PyPdfError, ValueError, KeyError, OSError):
             raise TextExtractionError("Could not read the PDF file") from None
 
-        raw = "\n\n".join(pages)
-        if len(re.sub(r"\s", "", raw)) >= MIN_TEXT_LAYER_CHARS:
-            return self._result(raw, "pdf", page_count, ocr_used=False)
+        pages_needing_ocr = [
+            index
+            for index, text in enumerate(page_texts)
+            if len(re.sub(r"\s", "", text)) < MIN_TEXT_LAYER_CHARS
+        ]
+        warnings: list[str] = []
+        skipped_ocr_pages: list[int] = []
+        ocr_used = False
 
+        if pages_needing_ocr:
+            allowed = pages_needing_ocr[: self.settings.MAX_OCR_PAGES]
+            skipped_ocr_pages = [
+                index + 1 for index in pages_needing_ocr[self.settings.MAX_OCR_PAGES :]
+            ]
+            if allowed:
+                for index, text in self._ocr_pdf_pages(data, allowed).items():
+                    page_texts[index] = text
+                ocr_used = True
+            if skipped_ocr_pages:
+                warnings.append(
+                    f"Không OCR được {len(skipped_ocr_pages)} trang vì vượt giới hạn "
+                    f"{self.settings.MAX_OCR_PAGES} trang: "
+                    f"{_format_page_ranges(skipped_ocr_pages)}."
+                )
 
-        raw = self._ocr_pdf_pages(data, page_count)
-        return self._result(raw, "pdf", page_count, ocr_used=True)
+        try:
+            from app.services.layout_pdf import parse_layout_pdf
 
-    def _ocr_pdf_pages(self, data: bytes, page_count: int) -> str:
-        if page_count > self.settings.MAX_OCR_PAGES:
-            raise TextExtractionError(
-                f"Scanned PDF has too many pages for OCR (max {self.settings.MAX_OCR_PAGES})"
-            )
+            blocks = parse_layout_pdf(data, skip_pages={index + 1 for index in pages_needing_ocr})
+        except Exception:
+            logger.exception("PDF geometry parsing failed")
+            raise TextExtractionError("Không xử lý được bố cục PDF. Vui lòng thử lại hoặc chọn tệp khác.") from None
+        for index in pages_needing_ocr:
+            # OCR has no reliable layout coordinates; reflow its paragraph lines.
+            for block in parse_blocks(page_texts[index], page_number=index + 1):
+                if block.type == "paragraph":
+                    block.text = " ".join(block.text.splitlines())
+                blocks.append(block)
+        blocks.sort(key=lambda block: block.page_number or 0)
+        for index, block in enumerate(blocks, 1):
+            block.id = f"block-{index}"
+        text = blocks_to_text(blocks)
+        if not text and not any(block.image_src for block in blocks):
+            raise TextExtractionError("No readable text was found in the file")
+        return ExtractionResult(
+            text=text, source="pdf", page_count=page_count, ocr_used=ocr_used,
+            source_text="\n\n".join(normalize_source_text(value) for value in page_texts if value.strip()),
+            blocks=blocks, warnings=warnings, skipped_ocr_pages=skipped_ocr_pages,
+        )
+
+    def _ocr_pdf_pages(self, data: bytes, page_indices: list[int]) -> dict[int, str]:
         try:
             pdf = pypdfium2.PdfDocument(data)
-        except Exception: 
+        except Exception:
             raise TextExtractionError("Could not read the PDF file") from None
         try:
-            texts = []
-            for index in range(len(pdf)):
-                page = pdf[index]
-                image = page.render(scale=PDF_OCR_SCALE).to_pil()
-                texts.append(self._ocr(image))
-            return "\n\n".join(texts)
+            texts: dict[int, str] = {}
+            for index in page_indices:
+                try:
+                    page = pdf[index]
+                    image = page.render(scale=PDF_OCR_SCALE).to_pil()
+                    texts[index] = self._ocr(image)
+                except TextExtractionError:
+                    raise
+                except Exception:
+                    raise TextExtractionError(
+                        f"Could not render page {index + 1} for OCR"
+                    ) from None
+            return texts
         finally:
             pdf.close()
 
@@ -141,7 +179,9 @@ class TextExtractionService:
         except (UnidentifiedImageError, Image.DecompressionBombError, OSError):
             raise TextExtractionError("Could not read the image file") from None
         image = ImageOps.exif_transpose(image)  # ảnh chụp điện thoại hay bị xoay
-        return self._result(self._ocr(image), "image", None, ocr_used=True)
+        return self._result(
+            [(self._ocr(image), None)], "image", None, True, [], []
+        )
 
     def _ensure_languages(self) -> None:
         global _available_languages
@@ -169,9 +209,34 @@ class TextExtractionService:
             raise OcrUnavailableError("Tesseract is not installed on the server") from None
         except pytesseract.TesseractError:
             raise TextExtractionError("OCR failed on this file") from None
+
     @staticmethod
-    def _result(raw: str, source: str, page_count: int | None, ocr_used: bool) -> ExtractionResult:
-        text = normalize_text(raw)
+    def _result(
+        pages: list[tuple[str, int | None]],
+        source: str,
+        page_count: int | None,
+        ocr_used: bool,
+        warnings: list[str],
+        skipped_ocr_pages: list[int],
+    ) -> ExtractionResult:
+        blocks: list[TextBlock] = []
+        for page_text, page_number in pages:
+            blocks.extend(parse_blocks(page_text, page_number=page_number))
+        text = blocks_to_text(blocks)
         if not text:
             raise TextExtractionError("No readable text was found in the file")
-        return ExtractionResult(text, source, page_count, ocr_used)
+        source_text = "\n\n".join(
+            normalized
+            for page_text, _ in pages
+            if (normalized := normalize_source_text(page_text))
+        )
+        return ExtractionResult(
+            text,
+            source,
+            page_count,
+            ocr_used,
+            source_text,
+            blocks,
+            warnings,
+            skipped_ocr_pages,
+        )

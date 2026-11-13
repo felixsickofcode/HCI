@@ -1,7 +1,4 @@
 import pytest
-from sqlalchemy import text
-
-from app.db.session import engine
 
 URL = "/api/v1/me/display-settings"
 
@@ -21,7 +18,7 @@ DEFAULTS = {
     "fontFamily": "lexend",
     "fontSize": 20,
     "lineHeight": 1.8,
-    "letterSpacing": 0.08,
+    "letterSpacing": 0.02,
     "theme": "cream",
     "columnWidth": 60,
     "focus": {"enabled": False, "dimOpacity": 0.6, "followPointer": False},
@@ -177,6 +174,10 @@ def test_reset_removes_saved_settings_and_is_idempotent(client, create_user):
 
 
 def test_deleting_a_user_deletes_their_settings(client, create_user):
+    from sqlalchemy import text
+
+    from app.db.session import engine
+
     uid, headers = create_user()
     client.put(URL, json=CUSTOM, headers=headers)
 

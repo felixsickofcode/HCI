@@ -1,5 +1,24 @@
 import { ApiError } from './api';
+
 export type DocumentSource = 'paste' | 'pdf' | 'image';
+export type BlockType = 'paragraph' | 'heading' | 'listItem' | 'quote' | 'table' | 'snapshot';
+export type ListKind = 'ordered' | 'unordered';
+
+export interface ReadingBlock {
+  id: string;
+  type: BlockType;
+  text: string;
+  pageNumber?: number;
+  headingLevel?: 2 | 3;
+  listKind?: ListKind;
+  rows?: string[][];
+  caption?: string;
+  imageSrc?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  snapshotKind?: 'table' | 'image';
+  sourceBbox?: [number, number, number, number];
+}
 
 export interface ReadingDocument {
   id: string;
@@ -7,11 +26,17 @@ export interface ReadingDocument {
   text: string;
   source: DocumentSource;
   fileName?: string;
+  originalFile?: File;
   pageCount?: number | null;
   ocrUsed: boolean;
+  sourceText: string;
+  blocks: ReadingBlock[];
+  sourceBlocks: ReadingBlock[];
+  warnings: string[];
+  skippedOcrPages: number[];
 }
 
-export const MAX_UPLOAD_MB = 10; 
+export const MAX_UPLOAD_MB = 10;
 export const MAX_PASTE_CHARS = 200_000;
 export const ACCEPT_ATTR = '.pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp';
 
@@ -35,9 +60,183 @@ export function normalizePastedText(raw: string): string {
     .trim();
 }
 
-export function toParagraphs(text: string): string[] {
-  const parts = /\n\s*\n/.test(text) ? text.split(/\n\s*\n/) : text.split('\n');
-  return parts.map((part) => part.trim()).filter(Boolean);
+const HEADING_RE = /^\s*(#{1,6})\s+(.*?)\s*#*\s*$/;
+const QUOTE_RE = /^\s*>\s?(.*)$/;
+const UNORDERED_LIST_RE = /^\s*[-*•]\s+(.*)$/;
+const ORDERED_LIST_RE = /^\s*\d{1,3}[.)]\s+(.*)$/;
+const SENTENCE_END = '.!?,;:…';
+
+export function parseTextBlocks(
+  text: string,
+  options: { pageNumber?: number } = {},
+): ReadingBlock[] {
+  const normalized = text.replace(/\r\n?/g, '\n').trim();
+  if (!normalized) return [];
+
+  const blocks: ReadingBlock[] = [];
+  const pageNumber = options.pageNumber;
+  let paragraphLines: string[] = [];
+  let quoteLines: string[] = [];
+
+  const addBlock = (
+    type: BlockType,
+    body: string,
+    extra: Pick<ReadingBlock, 'headingLevel' | 'listKind'> = {},
+  ) => {
+    const value = body.trim();
+    if (!value) return;
+    blocks.push({
+      id: `block-${blocks.length + 1}`,
+      type,
+      text: value,
+      ...(pageNumber ? { pageNumber } : {}),
+      ...extra,
+    });
+  };
+
+  const flushParagraph = () => {
+    if (paragraphLines.length === 0) return;
+    const body = paragraphLines.join('\n').trim();
+    paragraphLines = [];
+    if (!body) return;
+    if (body.split('\n').length === 1 && looksLikeHeading(body)) {
+      addBlock('heading', body, { headingLevel: 2 });
+    } else {
+      addBlock('paragraph', body);
+    }
+  };
+
+  const flushQuote = () => {
+    if (quoteLines.length === 0) return;
+    const body = quoteLines.join('\n').trim();
+    quoteLines = [];
+    addBlock('quote', body);
+  };
+
+  for (const rawLine of normalized.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) {
+      flushParagraph();
+      flushQuote();
+      continue;
+    }
+
+    const heading = HEADING_RE.exec(line);
+    if (heading) {
+      flushParagraph();
+      flushQuote();
+      addBlock('heading', heading[2], { headingLevel: heading[1].length <= 2 ? 2 : 3 });
+      continue;
+    }
+
+    const quote = QUOTE_RE.exec(line);
+    if (quote) {
+      flushParagraph();
+      quoteLines.push(quote[1].trim());
+      continue;
+    }
+
+    flushQuote();
+    const unordered = UNORDERED_LIST_RE.exec(line);
+    const ordered = unordered ? null : ORDERED_LIST_RE.exec(line);
+    const listMatch = unordered ?? ordered;
+    if (listMatch) {
+      flushParagraph();
+      addBlock('listItem', listMatch[1], {
+        listKind: unordered ? 'unordered' : 'ordered',
+      });
+      continue;
+    }
+
+    paragraphLines.push(line);
+  }
+
+  flushParagraph();
+  flushQuote();
+  return blocks;
+}
+
+function looksLikeHeading(text: string): boolean {
+  const clean = text.trim();
+  if (clean.length < 3 || clean.length > 80) return false;
+  if (clean.split(/\s+/).length > 12) return false;
+  if (!/^\p{Lu}/u.test(clean)) return false;
+  return !SENTENCE_END.includes(clean[clean.length - 1]);
+}
+
+export function cloneBlocks(blocks: ReadingBlock[]): ReadingBlock[] {
+  return blocks.map((block) => ({
+    ...block,
+    rows: block.rows?.map((row) => [...row]),
+  }));
+}
+
+export function blocksToText(blocks: ReadingBlock[]): string {
+  return blocks
+    .filter((block) => block.text.trim())
+    .map((block) => block.text)
+    .join('\n\n');
+}
+
+export function updateBlock(
+  blocks: ReadingBlock[],
+  id: string,
+  changes: Partial<Pick<ReadingBlock, 'type' | 'text' | 'headingLevel' | 'listKind'>>,
+): ReadingBlock[] {
+  return blocks.map((block) => (block.id === id ? { ...block, ...changes } : block));
+}
+
+export function splitBlock(
+  blocks: ReadingBlock[],
+  id: string,
+  offset: number,
+): ReadingBlock[] {
+  const index = blocks.findIndex((block) => block.id === id);
+  if (index === -1) return blocks;
+  const block = blocks[index];
+  const safeOffset = Math.min(Math.max(offset, 0), block.text.length);
+  const before = block.text.slice(0, safeOffset).trimEnd();
+  const after = block.text.slice(safeOffset).trimStart();
+  if (!before || !after) return blocks;
+
+  const created: ReadingBlock = {
+    ...block,
+    id: newId(),
+    text: after,
+    ...(block.pageNumber ? { pageNumber: block.pageNumber } : {}),
+  };
+  const next = cloneBlocks(blocks);
+  next[index] = { ...block, text: before };
+  next.splice(index + 1, 0, created);
+  return next;
+}
+
+export function mergeBlockWithNext(blocks: ReadingBlock[], id: string): ReadingBlock[] {
+  const index = blocks.findIndex((block) => block.id === id);
+  if (index === -1 || index + 1 >= blocks.length) return blocks;
+  const current = blocks[index];
+  const following = blocks[index + 1];
+  const merged: ReadingBlock = {
+    ...current,
+    text: `${current.text}\n${following.text}`.trim(),
+  };
+  const next = cloneBlocks(blocks);
+  next.splice(index, 2, merged);
+  return next;
+}
+
+export function moveBlock(
+  blocks: ReadingBlock[],
+  id: string,
+  direction: 'up' | 'down',
+): ReadingBlock[] {
+  const index = blocks.findIndex((block) => block.id === id);
+  if (index === -1) return blocks;
+  const target = direction === 'up' ? index - 1 : index + 1;
+  if (target < 0 || target >= blocks.length) return blocks;
+  const next = cloneBlocks(blocks);
+  [next[index], next[target]] = [next[target], next[index]];
+  return next;
 }
 
 const WORDS_PER_MINUTE = 200;
@@ -53,26 +252,96 @@ export function readingMinutes(text: string): number {
 const newId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
-    : String(Date.now());
+    : `block-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 export function buildPastedDocument(raw: string): ReadingDocument {
-  const text = normalizePastedText(raw);
-  return { id: newId(), title: 'Văn bản đã dán', text, source: 'paste', ocrUsed: false };
+  const sourceText = normalizePastedText(raw);
+  const blocks = parseTextBlocks(sourceText);
+  return {
+    id: newId(),
+    title: 'Văn bản đã dán',
+    text: blocksToText(blocks),
+    source: 'paste',
+    ocrUsed: false,
+    sourceText,
+    blocks,
+    sourceBlocks: cloneBlocks(blocks),
+    warnings: [],
+    skippedOcrPages: [],
+  };
+}
+
+interface FileExtractionResult {
+  text: string;
+  source: 'pdf' | 'image';
+  pageCount: number | null;
+  ocrUsed: boolean;
+  sourceText?: string;
+  blocks?: ReadingBlock[];
+  warnings?: string[];
+  skippedOcrPages?: number[];
 }
 
 export function buildFileDocument(
   file: File,
-  result: { text: string; source: 'pdf' | 'image'; pageCount: number | null; ocrUsed: boolean },
+  result: FileExtractionResult,
 ): ReadingDocument {
+  const blocks = result.blocks?.length
+    ? sanitizeBlocks(result.blocks)
+    : parseTextBlocks(result.text);
   return {
     id: newId(),
     title: file.name.replace(/\.[^.]+$/, '') || 'Tài liệu',
-    text: result.text,
+    text: blocksToText(blocks),
     source: result.source,
     fileName: file.name,
+    originalFile: file,
     pageCount: result.pageCount,
     ocrUsed: result.ocrUsed,
+    sourceText: result.sourceText ?? result.text,
+    blocks,
+    sourceBlocks: cloneBlocks(blocks),
+    warnings: result.warnings ?? [],
+    skippedOcrPages: result.skippedOcrPages ?? [],
   };
+}
+
+function sanitizeBlocks(blocks: ReadingBlock[]): ReadingBlock[] {
+  const seen = new Set<string>();
+  const allowedTypes: BlockType[] = ['paragraph', 'heading', 'listItem', 'quote', 'table', 'snapshot'];
+  const clean: ReadingBlock[] = [];
+  blocks.forEach((block, index) => {
+    if (!block || typeof block.text !== 'string' || (!block.text.trim() && block.type !== 'snapshot')) return;
+    const type = allowedTypes.includes(block.type) ? block.type : 'paragraph';
+    let id = typeof block.id === 'string' && block.id ? block.id : `block-${index + 1}`;
+    if (seen.has(id)) id = `${id}-${index + 1}`;
+    seen.add(id);
+    clean.push({
+      id,
+      type,
+      text: block.text.trim(),
+      ...(typeof block.pageNumber === 'number' ? { pageNumber: block.pageNumber } : {}),
+      ...(block.headingLevel === 2 || block.headingLevel === 3
+        ? { headingLevel: block.headingLevel }
+        : {}),
+      ...(block.listKind === 'ordered' || block.listKind === 'unordered'
+        ? { listKind: block.listKind }
+        : {}),
+      ...(type === 'table' && Array.isArray(block.rows)
+        ? { rows: block.rows.map((row) => row.map(String)) }
+        : {}),
+      ...(type === 'table' && typeof block.caption === 'string'
+        ? { caption: block.caption }
+        : {}),
+      ...(type === 'snapshot' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(block.imageSrc ?? '')
+        ? {
+          imageSrc: block.imageSrc, imageWidth: block.imageWidth, imageHeight: block.imageHeight,
+          snapshotKind: block.snapshotKind, sourceBbox: block.sourceBbox,
+        }
+        : {}),
+    });
+  });
+  return clean;
 }
 
 export function validatePastedText(raw: string): string | null {

@@ -5,7 +5,7 @@ from fastapi import APIRouter, File, UploadFile
 from app.api.deps import TextExtractionServiceDep
 from app.core.config import settings
 from app.core.exceptions import FileTooLargeError
-from app.schemas.text_extraction import ExtractedTextRead
+from app.schemas.text_extraction import ExtractedTextRead, ReadingBlockRead
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -27,4 +27,25 @@ def extract_text(
         page_count=result.page_count,
         char_count=len(result.text),
         ocr_used=result.ocr_used,
+        source_text=result.source_text,
+        blocks=[
+            ReadingBlockRead(
+                id=block.id,
+                type=block.type,
+                text=block.text,
+                page_number=block.page_number,
+                heading_level=block.heading_level,
+                list_kind=block.list_kind,
+                rows=block.rows,
+                caption=block.caption,
+                image_src=block.image_src,
+                image_width=block.image_width,
+                image_height=block.image_height,
+                snapshot_kind=block.snapshot_kind,
+                source_bbox=block.source_bbox,
+            )
+            for block in result.blocks
+        ],
+        warnings=result.warnings,
+        skipped_ocr_pages=result.skipped_ocr_pages,
     )
