@@ -14,6 +14,7 @@ from app.repositories.user_repository import UserRepository
 from app.services.display_settings_service import DisplaySettingsService
 from app.services.user_service import UserService
 from app.services.text_extraction_service import TextExtractionService
+from app.services.summary_service import SummaryService
 
 DbSession = Annotated[Session, Depends(get_db)]
 
@@ -42,6 +43,12 @@ def get_text_extraction_service() -> TextExtractionService:
 TextExtractionServiceDep = Annotated[
     TextExtractionService, Depends(get_text_extraction_service)
 ]
+
+def get_summary_service() -> SummaryService:
+    return SummaryService(settings)
+
+
+SummaryServiceDep = Annotated[SummaryService, Depends(get_summary_service)]
 
 def get_current_user(
     db: DbSession,
