@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
+from pydantic import Field, model_validator
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "HCI Backend"
@@ -15,9 +15,30 @@ class Settings(BaseSettings):
     OCR_LANGUAGES: str = "vie+eng"
     TESSERACT_CMD: str | None = None
 
+    SUMMARY_USE_LLM: bool = False
+    SUMMARY_MAX_CHARS: int = 50_000
+    SUMMARY_MAX_SEGMENTS: int = 300
+    SUMMARY_MIN_CHARS: int = 300
+    SUMMARY_MAX_ITEMS: int = 8
+
+    SUMMARY_TIMEOUT_SECONDS: float = Field(30.0, gt=0)   
+    SUMMARY_RATE_LIMIT: int = Field(10, ge=1)              
+    SUMMARY_RATE_WINDOW_SECONDS: int = Field(600, ge=1)
+
+    LLM_API_KEY: str | None = None
+    LLM_MODEL: str = "gemini-3.1-flash-lite"
+    LLM_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta"
+    LLM_MAX_CONCURRENT: int = Field(2, ge=1)
 
     model_config = SettingsConfigDict(env_file=".env")
 
+
+    @model_validator(mode="after")
+    def _llm_needs_key(self) -> "Settings":
+        if self.SUMMARY_USE_LLM and not self.LLM_API_KEY:
+            raise ValueError("SUMMARY_USE_LLM=true nhưng chưa đặt LLM_API_KEY trong .env")
+        return self
+    
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.BACKEND_CORS_ORIGINS.split(",") if origin.strip()]

@@ -47,3 +47,22 @@ class TextExtractionError(AppError):
 class OcrUnavailableError(AppError):
     status_code = 503
     message = "OCR is not available on the server"
+
+class InvalidRequestError(AppError):
+    status_code = 422
+    message = "Invalid request"
+
+
+class PayloadTooLargeError(AppError):
+    status_code = 413
+    message = "Payload is too large"
+
+
+class SummaryUnavailableError(AppError):
+    status_code = 422
+    message = "Not enough content to summarize"
+
+
+class LLMUnavailableError(AppError):
+    status_code = 503
+    message = "LLM summarization is not available on the server"
