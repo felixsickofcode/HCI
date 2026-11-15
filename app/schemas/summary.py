@@ -20,7 +20,6 @@ class SegmentIn(CamelModel):
 class SummarizeRequest(CamelModel):
     document_id: str = Field(min_length=1, max_length=200)
     segments: list[SegmentIn] = Field(min_length=1)
-    max_items: int = Field(default=8, ge=1, le=10)
 
 
 class SummaryItem(CamelModel):
