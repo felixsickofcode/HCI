@@ -12,7 +12,7 @@ _STOPWORDS = frozenset(
 )
 
 _ABBREVIATIONS = frozenset(
-    "ts pgs gs ths ks bs tp tx mr mrs ms dr prof st vs tr ng tt".split()
+    "ts pgs gs ths ks bs tp tx mr mrs ms dr prof st vs tr ng tt al fig eq etc cf".split()
 )
 
 _BOUNDARY = re.compile(r"(?P<p>[.!?…]+[\"'”’)\]]*)(?P<ws>\s+)|(?P<nl>\n+)")
@@ -20,6 +20,16 @@ _WORD = re.compile(r"\w+", re.UNICODE)
 _LAST_WORD = re.compile(r"(\w+)$", re.UNICODE)
 
 _BULLETS = "•·▪◦‣"
+_TERMINAL = re.compile(r"[.!?…:][\"'”’)\]]*$")
+_SENTENCE_END = re.compile(r"[.!?…][\"'”’)\]]*$")
+_REFERENCES = re.compile(
+    r"^\s*(references|bibliography|tài liệu tham khảo|danh mục tài liệu tham khảo)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_CAPTION = re.compile(r"^(table|figure|fig\.|bảng|hình)\s*\d+", re.IGNORECASE)
+_NOISE = ("arxiv", "doi.org", "http")
+_HEADING_MAX_CHARS = 40
+_BLOCK_CHARS = 1500
 
 _MIN_CHARS = 20
 _MIN_TOKENS = 5
@@ -28,7 +38,8 @@ _MIN_ALPHA_RATIO = 0.6
 _REDUNDANT_JACCARD = 0.5
 _REDUNDANT_OVERLAP = 0.6
 _OVERLAP_MIN_TOKENS = 4
-_MIN_SCORE_RATIO = 0.35 
+_TARGET_COVERAGE = 0.6
+_MIN_GAIN_RATIO = 0.25
 
 
 @dataclass(frozen=True)
@@ -44,6 +55,7 @@ class _Candidate:
     segment_id: str
     text: str
     tokens: set[str]
+    block: int = 0
     score: float = 0.0
 
 
@@ -52,6 +64,17 @@ def split_sentences(text: str) -> list[str]:
     start = 0
     for m in _BOUNDARY.finditer(text):
         if m.group("nl"):
+            chunk = text[start:m.start("nl")].rstrip()
+            line_end = text.find("\n", m.end("nl"))
+            next_line = text[m.end("nl"):line_end if line_end != -1 else len(text)].strip()
+            if (
+                len(chunk) >= _HEADING_MAX_CHARS
+                and not _TERMINAL.search(chunk)
+                and next_line
+                and next_line[0] not in _BULLETS
+                and (len(next_line) >= _HEADING_MAX_CHARS or _TERMINAL.search(next_line))
+            ):
+                continue
             spans.append((start, m.start("nl")))
             start = m.end("nl")
             continue
@@ -106,47 +129,71 @@ def _overlap(a: set[str], b: set[str]) -> float:
     return len(a & b) / min(len(a), len(b))
 
 
+def _is_valid(sentence: str, tokens: list[str]) -> bool:
+    first = sentence[0]
+    starts_ok = first.isupper() or (
+        first in "\"'“‘" and len(sentence) > 1 and sentence[1].isupper()
+    )
+    lowered = sentence.lower()
+    return (
+        starts_ok
+        and bool(_SENTENCE_END.search(sentence))
+        and sentence.count("(") == sentence.count(")")
+        and sentence.count("[") == sentence.count("]")
+        and not _CAPTION.match(sentence)
+        and not any(n in lowered for n in _NOISE)
+        and _MIN_CHARS <= len(sentence) <= _MAX_CHARS
+        and len(tokens) >= _MIN_TOKENS
+        and _alpha_ratio(sentence) >= _MIN_ALPHA_RATIO
+    )
+
+
 def extractive_summarize(segments: list[tuple[str, str]]) -> list[ExtractedSentence]:
     candidates: list[_Candidate] = []
     freq: Counter[str] = Counter()
+    block = 0
     for seg_index, (segment_id, text) in enumerate(segments):
+        ref = _REFERENCES.search(text)
+        if ref:
+            text = text[:ref.start()]
+        block_chars = 0
         for sent_index, sentence in enumerate(split_sentences(text)):
+            if block_chars >= _BLOCK_CHARS:
+                block += 1
+                block_chars = 0
+            block_chars += len(sentence)
             tokens = _tokens(sentence)
-            if (
-                sentence.endswith(":")
-                or len(sentence) < _MIN_CHARS
-                or len(sentence) > _MAX_CHARS
-                or len(tokens) < _MIN_TOKENS
-                or _alpha_ratio(sentence) < _MIN_ALPHA_RATIO
-            ):
+            if not _is_valid(sentence, tokens):
                 continue
             content = _content_tokens(tokens)
             if not content:
                 continue
             freq.update(content)
-            candidates.append(
-                _Candidate(seg_index, sent_index, segment_id, sentence, content)
-            )
+            candidate = _Candidate(seg_index, sent_index, segment_id, sentence, content, block)
+            multiplier = 1.0
+            if sent_index == 0:
+                multiplier *= 1.2
+            if seg_index == 0:
+                multiplier *= 1.1
+            if len(content) < 8:
+                multiplier *= 0.7
+            elif len(content) > 40:
+                multiplier *= 0.8
+            candidate.score = multiplier
+            candidates.append(candidate)
+        block += 1
+        if ref:
+            break
     if not candidates:
         return []
 
-    for c in candidates:
-        raw = sum(freq[t] for t in c.tokens) / (len(c.tokens) ** 0.6)
-        if c.sent_index == 0:
-            raw *= 1.2 
-        if c.seg_index == 0:
-            raw *= 1.1
-        n = len(c.tokens)
-        if n < 8:
-            raw *= 0.7
-        elif n > 40:
-            raw *= 0.8
-        c.score = raw
-
-    ranked = sorted(candidates, key=lambda c: c.score, reverse=True)
-    floor = ranked[0].score * _MIN_SCORE_RATIO
+    total = sum(freq.values())
+    covered: set[str] = set()
     chosen: list[_Candidate] = []
-    used_segments: set[int] = set()
+
+    def value(c: _Candidate) -> float:
+        gain = sum(freq[t] for t in c.tokens - covered)
+        return gain / (len(c.tokens) ** 0.6) * c.score
 
     def redundant(c: _Candidate) -> bool:
         return any(
@@ -155,15 +202,31 @@ def extractive_summarize(segments: list[tuple[str, str]]) -> list[ExtractedSente
             for o in chosen
         )
 
-    for c in ranked:
-        if c.seg_index in used_segments or redundant(c):
-            continue
+    def take(c: _Candidate) -> None:
         chosen.append(c)
-        used_segments.add(c.seg_index)
-    for c in ranked:
-        if c in chosen or c.score < floor or redundant(c):
-            continue
-        chosen.append(c)
+        covered.update(c.tokens)
+
+    def coverage() -> float:
+        return sum(freq[t] for t in covered) / total
+
+    best_first = max(value(c) for c in candidates)
+
+    for block_id in sorted({c.block for c in candidates}):
+        pool = [c for c in candidates if c.block == block_id and not redundant(c)]
+        if pool:
+            take(max(pool, key=value))
+
+    taken = {id(c) for c in chosen}
+    remaining = [c for c in candidates if id(c) not in taken]
+    while remaining and coverage() < _TARGET_COVERAGE:
+        remaining = [c for c in remaining if not redundant(c)]
+        if not remaining:
+            break
+        best = max(remaining, key=value)
+        if value(best) < best_first * _MIN_GAIN_RATIO:
+            break
+        take(best)
+        remaining.remove(best)
 
     chosen.sort(key=lambda c: (c.seg_index, c.sent_index))
     return [ExtractedSentence(c.segment_id, c.text) for c in chosen]
