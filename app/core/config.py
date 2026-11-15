@@ -19,7 +19,6 @@ class Settings(BaseSettings):
     SUMMARY_MAX_CHARS: int = 50_000
     SUMMARY_MAX_SEGMENTS: int = 300
     SUMMARY_MIN_CHARS: int = 300
-    SUMMARY_MAX_ITEMS: int = 8
 
     SUMMARY_TIMEOUT_SECONDS: float = Field(30.0, gt=0)   
     SUMMARY_RATE_LIMIT: int = Field(10, ge=1)              

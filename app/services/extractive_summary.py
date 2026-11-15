@@ -4,7 +4,6 @@ import unicodedata
 from collections import Counter
 from dataclasses import dataclass
 
-
 _STOPWORDS = frozenset(
     """và của là có trong cho được các những một này đó để với khi từ không cũng như
     nhưng vì nên thì mà ở đã sẽ rất nhiều tại về theo bị do hay hoặc còn vậy thế đến ra
@@ -20,12 +19,16 @@ _BOUNDARY = re.compile(r"(?P<p>[.!?…]+[\"'”’)\]]*)(?P<ws>\s+)|(?P<nl>\n+)"
 _WORD = re.compile(r"\w+", re.UNICODE)
 _LAST_WORD = re.compile(r"(\w+)$", re.UNICODE)
 
+_BULLETS = "•·▪◦‣"
+
 _MIN_CHARS = 20
 _MIN_TOKENS = 5
 _MAX_CHARS = 500
-_MIN_ALPHA_RATIO = 0.6  
+_MIN_ALPHA_RATIO = 0.6 
 _REDUNDANT_JACCARD = 0.5
-_MIN_SCORE_RATIO = 0.35  
+_REDUNDANT_OVERLAP = 0.6
+_OVERLAP_MIN_TOKENS = 4
+_MIN_SCORE_RATIO = 0.35 
 
 
 @dataclass(frozen=True)
@@ -54,7 +57,11 @@ def split_sentences(text: str) -> list[str]:
             continue
         punct_start, punct_end = m.start("p"), m.end("p")
         if m.end() >= len(text):
-            continue  
+            continue 
+        if "\n" in m.group("ws"):
+            spans.append((start, punct_end))
+            start = m.end()
+            continue
         nxt = text[m.end()]
         if not (nxt.isupper() or nxt.isdigit() or nxt in "\"'“‘(["):
             continue
@@ -63,12 +70,13 @@ def split_sentences(text: str) -> list[str]:
             word = prev.group(1)
             if word.lower() in _ABBREVIATIONS or len(word) == 1:
                 continue
-            if word.isdigit() and len(word) <= 2: 
+            if word.isdigit() and len(word) <= 2:  
                 continue
         spans.append((start, punct_end))
         start = m.end()
     spans.append((start, len(text)))
-    return [text[a:b].strip() for a, b in spans if text[a:b].strip()]
+    cleaned = (text[a:b].strip().lstrip(_BULLETS).strip() for a, b in spans)
+    return [c for c in cleaned if c]
 
 
 def _tokens(sentence: str) -> list[str]:
@@ -92,19 +100,21 @@ def _jaccard(a: set[str], b: set[str]) -> float:
     return len(a & b) / len(a | b)
 
 
-def extractive_summarize(
-    segments: list[tuple[str, str]], max_items: int
-) -> list[ExtractedSentence]:
-    if max_items < 1:
-        return []
+def _overlap(a: set[str], b: set[str]) -> float:
+    if min(len(a), len(b)) < _OVERLAP_MIN_TOKENS:
+        return 0.0
+    return len(a & b) / min(len(a), len(b))
 
+
+def extractive_summarize(segments: list[tuple[str, str]]) -> list[ExtractedSentence]:
     candidates: list[_Candidate] = []
     freq: Counter[str] = Counter()
     for seg_index, (segment_id, text) in enumerate(segments):
         for sent_index, sentence in enumerate(split_sentences(text)):
             tokens = _tokens(sentence)
             if (
-                len(sentence) < _MIN_CHARS
+                sentence.endswith(":")
+                or len(sentence) < _MIN_CHARS
                 or len(sentence) > _MAX_CHARS
                 or len(tokens) < _MIN_TOKENS
                 or _alpha_ratio(sentence) < _MIN_ALPHA_RATIO
@@ -123,7 +133,7 @@ def extractive_summarize(
     for c in candidates:
         raw = sum(freq[t] for t in c.tokens) / (len(c.tokens) ** 0.6)
         if c.sent_index == 0:
-            raw *= 1.2  
+            raw *= 1.2 
         if c.seg_index == 0:
             raw *= 1.1
         n = len(c.tokens)
@@ -139,18 +149,18 @@ def extractive_summarize(
     used_segments: set[int] = set()
 
     def redundant(c: _Candidate) -> bool:
-        return any(_jaccard(c.tokens, o.tokens) > _REDUNDANT_JACCARD for o in chosen)
+        return any(
+            _jaccard(c.tokens, o.tokens) > _REDUNDANT_JACCARD
+            or _overlap(c.tokens, o.tokens) > _REDUNDANT_OVERLAP
+            for o in chosen
+        )
 
     for c in ranked:
-        if len(chosen) >= max_items:
-            break
-        if c.score < floor or c.seg_index in used_segments or redundant(c):
+        if c.seg_index in used_segments or redundant(c):
             continue
         chosen.append(c)
         used_segments.add(c.seg_index)
     for c in ranked:
-        if len(chosen) >= max_items:
-            break
         if c in chosen or c.score < floor or redundant(c):
             continue
         chosen.append(c)
