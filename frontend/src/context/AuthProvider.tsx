@@ -25,13 +25,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     getMe()
       .then((currentUser) => {
-        if (!active) return;
+        if (!active || tokenStore.get() !== stored) return;
         setUser(currentUser);
         setToken(stored);
       })
       .catch(() => {
+        if (!active || tokenStore.get() !== stored) return;
         tokenStore.clear();
-        if (!active) return;
         setUser(null);
         setToken(null);
       })
@@ -44,18 +44,49 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== 'token' && event.key !== null) return;
+      const stored = tokenStore.get();
+      // Clear the previous account immediately, before loading a different account.
+      setUser(null);
+      setToken(stored);
+      setIsLoading(Boolean(stored));
+      if (!stored) return;
+      getMe().then(currentUser => {
+        if (active && tokenStore.get() === stored) setUser(currentUser);
+      }).catch(() => {
+        if (!active || tokenStore.get() !== stored) return;
+        tokenStore.clear();
+        setToken(null);
+      }).finally(() => {
+        if (active && (tokenStore.get() === stored || tokenStore.get() === null)) setIsLoading(false);
+      });
+    };
+    window.addEventListener('storage', onStorage);
+    return () => { active = false; window.removeEventListener('storage', onStorage); };
+  }, []);
+
   const login = useCallback(async (email: string, password: string) => {
     const response = await loginRequest(email, password);
+    setUser(null);
+    setIsLoading(true);
     tokenStore.set(response.access_token);
     setToken(response.access_token);
     try {
       const currentUser = await getMe();
+      if (tokenStore.get() !== response.access_token) throw new DOMException('Account changed', 'AbortError');
       setUser(currentUser);
     } catch (error) {
-      tokenStore.clear();
-      setToken(null);
-      setUser(null);
+      if (tokenStore.get() === response.access_token) {
+        tokenStore.clear();
+        setToken(null);
+        setUser(null);
+      }
       throw error;
+    } finally {
+      if (tokenStore.get() === response.access_token || tokenStore.get() === null) setIsLoading(false);
     }
   }, []);
 
@@ -68,6 +99,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     tokenStore.clear();
     setToken(null);
     setUser(null);
+    setIsLoading(false);
   }, []);
 
   const value = useMemo(

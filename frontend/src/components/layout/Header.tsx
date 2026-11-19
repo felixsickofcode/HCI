@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { mockHeaderNavLinks } from '../../mocks';
-import { useAuth } from '../../context';
+import { useAuth, useDocument } from '../../context';
 
 export interface HeaderProps {
   className?: string;
@@ -24,6 +24,7 @@ export const Header: React.FC<HeaderProps> = ({ className = '' }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isLoading, logout } = useAuth();
+  const { document: readingDocument } = useDocument();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -85,14 +86,18 @@ export const Header: React.FC<HeaderProps> = ({ className = '' }) => {
           </nav>
         </div>
 
+        {/* Mobile entry: the desktop navigation is hidden below md. */}
+        <Link to="/vocabulary" aria-label="Từ khó của tôi" className="md:hidden rounded-full p-2 text-primary">
+          <span className="material-symbols-outlined" aria-hidden>bookmarks</span>
+        </Link>
         {/* Right actions */}
         <div className="flex items-center gap-2 sm:gap-3">
-          <Link
+          {readingDocument && location.pathname !== '/vocabulary' && <Link
             to="/reading"
             className="hidden sm:inline-flex items-center justify-center px-4 py-2 text-sm font-label font-medium rounded-xl text-primary hover:bg-primary/5 transition-all select-none"
           >
             Đọc tiếp
-          </Link>
+          </Link>}
 
           {isLoading ? (
             <div className="h-9 w-9 animate-pulse rounded-full bg-surface-container" />
