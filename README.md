@@ -1,351 +1,169 @@
-# HCI Backend: Trợ lý đọc hiểu bao trùm đa hồ sơ cho tiếng Việt
+# LexiEase · Trợ lý đọc tiếng Việt
 
-Backend (FastAPI + PostgreSQL) của bài tập lớn môn **Tương tác người – máy (HCI)**:
-*Multi-Profile Inclusive Reading Assistant for Vietnamese*.
+LexiEase là ứng dụng web của đồ án **Tương tác người – máy (HCI)**, thiết kế cho người gặp khó khăn khi đọc tiếng Việt, trong đó có người đọc mắc chứng khó đọc (dyslexia). Người dùng có thể dán văn bản hoặc mở tài liệu, chỉnh cách hiển thị, nghe đọc và lưu từ khó ngay tại dòng đang đọc.
 
-Ứng dụng web giúp đọc văn bản tiếng Việt dễ chịu hơn: chuyển bài viết thành giao diện đọc tập trung, hỗ trợ nhiều hồ sơ đọc (đọc nhẹ nhàng, học tiếng Việt, đọc nhanh, chữ lớn), tùy chỉnh hiển thị, đọc to và tra từ ngay tại chỗ. Đây là công cụ hỗ trợ đọc theo triết lý thiết kế phổ quát, **không có chức năng chẩn đoán hay can thiệp y khoa**.
+Repo gồm **frontend React + TypeScript** trong `frontend/` và **backend FastAPI + PostgreSQL** ở thư mục gốc.
 
-> Repo này hiện chứa **phần backend**. Frontend (React + TailwindCSS) đã nằm trong repo.
+> **Chọn đúng phiên bản khi chạy demo.** README này mô tả nhánh `feature/fr07-vocabulary` tại `ecc1085` kèm bản cập nhật `fr07-hci.patch`. Nếu chỉ lấy nhánh FR07, bạn sẽ thấy giao diện lưu từ cũ. Nhánh `main` tại `aa74e75` có API tóm tắt FR-08. Hai phiên bản có tập chức năng khác nhau.
 
-## Mục lục
+## Chạy lại dự án đã cài
 
-1. [Công nghệ](#1-công-nghệ)
-2. [Trạng thái chức năng](#2-trạng-thái-chức-năng)
-3. [Cấu trúc thư mục](#3-cấu-trúc-thư-mục)
-4. [Cài đặt và chạy](#4-cài-đặt-và-chạy)
-5. [Cơ sở dữ liệu và migration](#5-cơ-sở-dữ-liệu-và-migration)
-6. [API hiện có](#6-api-hiện-có)
-7. [Kiểm thử](#7-kiểm-thử)
-8. [Quy ước làm việc nhóm](#8-quy-ước-làm-việc-nhóm)
-9. [Việc còn tồn đọng và điểm cần chốt](#9-việc-còn-tồn-đọng-và-điểm-cần-chốt)
-10. [Khắc phục sự cố](#10-khắc-phục-sự-cố)
+Mở hai terminal **PowerShell** tại thư mục gốc `HCI`. PostgreSQL cần đang chạy. Nếu đây là lần đầu cài trên máy, xem mục **Cài đặt lần đầu** bên dưới.
 
----
+**Terminal 1 · Backend**
 
-## 1. Công nghệ
-
-| Thành phần | Công nghệ |
-|---|---|
-| Ngôn ngữ, framework | Python, FastAPI, Uvicorn |
-| Cơ sở dữ liệu | PostgreSQL (driver `psycopg` 3) |
-| ORM, migration | SQLAlchemy 2, Alembic |
-| Kiểm tra dữ liệu, cấu hình | Pydantic, pydantic-settings |
-| Băm mật khẩu | pwdlib (argon2) |
-| Kiểm thử | pytest, httpx (`TestClient` của FastAPI) |
-| Frontend (dự kiến) | React.js, TailwindCSS, Web Speech API cho đọc to |
-
-Đã chạy được với **Python 3.14 (Windows, 64-bit, cài từ python.org)** và **PostgreSQL 18**.
-
-## 2. Trạng thái chức năng
-
-Mã chức năng theo bảng yêu cầu của nhóm. Bảng dưới chỉ ghi các chức năng ưu tiên **M** (bắt buộc) và tình trạng **phía backend**. Mỗi người cập nhật cột trạng thái khi merge.
-
-| Mã    | Chức năng                                              | Backend                                                                              |
-| ----- | ------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| FR-01 | Đăng nhập để đồng bộ (hoặc dùng ẩn danh, lưu trên máy) | Chưa làm (xem [mục 9](#9-việc-còn-tồn-đọng-và-điểm-cần-chốt)). Đã có CRUD người dùng |
-| FR-02 | Nhập văn bản: dán, PDF, ảnh (OCR tiếng Việt)           | Chưa làm                                                                             |
-| FR-03 | Tùy chỉnh hiển thị và chế độ tập trung tô sáng dòng    | Gần như thuần frontend, backend không cần                                            |
-| FR-04 | Đọc thành tiếng tiếng Việt, tô sáng theo lời đọc       | Chưa làm                                                                             |
-| FR-05 | Lưu hồ sơ cài đặt và áp dụng cho mọi tài liệu          | **Xong**: API `display-settings` (xem [mục 6](#6-api-hiện-có))                       |
-
-Các chức năng ưu tiên S và C (giải thích từ khó, thư viện tài liệu, tóm tắt, phản hồi giọng đọc, hỏi đáp, câu hỏi kiểm tra hiểu, theo dõi tiến độ) làm sau.
-
-## 3. Cấu trúc thư mục
-
-```
-HCI/
-├── app/                              # toàn bộ code backend
-│   ├── main.py                       # tạo ứng dụng FastAPI, gắn router, bắt lỗi chung, /health
-│   ├── api/
-│   │   ├── deps.py                   # lắp ráp: phiên DB -> repository -> service; xác định người dùng hiện tại
-│   │   └── v1/
-│   │       ├── router.py             # gom các nhóm endpoint
-│   │       └── endpoints/
-│   │           ├── users.py          # /users
-│   │           └── display_settings.py   # /me/display-settings
-│   ├── schemas/                      # khuôn dữ liệu vào/ra (Pydantic), kiểm tra dải giá trị
-│   │   ├── user.py
-│   │   └── display_settings.py
-│   ├── services/                     # luật nghiệp vụ
-│   │   ├── user_service.py
-│   │   └── display_settings_service.py
-│   ├── repositories/                 # truy cập database, không chứa luật nghiệp vụ
-│   │   ├── user_repository.py
-│   │   └── display_settings_repository.py
-│   ├── models/                       # định nghĩa bảng (SQLAlchemy)
-│   │   ├── user.py
-│   │   └── display_settings.py
-│   ├── db/
-│   │   ├── base.py                   # lớp cha Base của mọi model
-│   │   └── session.py                # kết nối PostgreSQL, hàm get_db (mỗi yêu cầu một phiên)
-│   └── core/
-│       ├── config.py                 # đọc cấu hình từ .env
-│       ├── exceptions.py             # lỗi ứng dụng kèm mã HTTP
-│       └── security.py               # băm và kiểm tra mật khẩu
-├── alembic/                          # quản lý thay đổi cấu trúc database
-│   ├── env.py
-│   ├── script.py.mako                # khuôn file migration mới
-│   └── versions/                     # mỗi file là một bước migration
-├── tests/
-│   ├── conftest.py                   # dùng database riêng *_test, dọn dữ liệu sau mỗi test
-│   └── test_display_settings.py
-├── alembic.ini
-├── pytest.ini
-├── requirements.txt
-├── .env.example                      # mẫu cấu hình (copy thành .env)
-└── test_main.http                    # file gọi thử cũ của PyCharm (đã lỗi thời)
+```powershell
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
-### Kiến trúc 4 lớp
+**Terminal 2 · Giao diện web**
 
-Mỗi yêu cầu đi qua các lớp theo thứ tự, mỗi lớp một việc:
-
-```
-Trình duyệt / Swagger
-        │  HTTP + JSON
-        ▼
-  endpoints/*.py   nhận yêu cầu, trả phản hồi (không chứa luật)
-        │  (schemas/*.py kiểm tra dữ liệu vào; sai thì trả 422)
-        ▼
-  services/*.py    luật nghiệp vụ (trùng email? không tìm thấy? hash mật khẩu...)
-        ▼
-  repositories/*.py   đọc/ghi database
-        ▼
-  models/*.py  ->  PostgreSQL
+```powershell
+cd frontend
+npm run dev
 ```
 
-`api/deps.py` tự tạo và truyền các đối tượng xuống (dependency injection), nên endpoint không phải tự mở kết nối. Lỗi nghiệp vụ là các lớp con của `AppError` (`core/exceptions.py`), `main.py` chuyển chúng thành JSON `{"detail": "..."}` cùng mã HTTP tương ứng.
+Mở [giao diện web](http://localhost:5173) hoặc địa chỉ Vite in ở terminal. Backend có [Swagger UI để thử API](http://127.0.0.1:8000/docs) và [đường dẫn kiểm tra trạng thái](http://127.0.0.1:8000/health). Khi backend đã khởi động, `/health` trả về `{"status":"ok"}`.
 
-## 4. Cài đặt và chạy
+## Cài đặt lần đầu
 
-### 4.1. Cần cài trước
+Bộ công cụ đã dùng để kiểm thử bản FR07 gồm Python 3.12, PostgreSQL 16 và Node.js 24 với npm. Trên Windows, dùng Python 64-bit. Các lệnh bên dưới gọi trực tiếp Python trong môi trường ảo nên có thể chạy ngay cả khi PowerShell chặn `Activate.ps1`.
 
-- **Git**
-- **Python 3.12 trở lên, bản 64-bit từ [python.org](https://www.python.org/downloads/)** (tick *Add python.exe to PATH*). Không dùng Python đi kèm MSYS2/Cygwin, vì không cài được các thư viện dựng sẵn (như `psycopg-binary`).
-- **PostgreSQL 16 trở lên**. Nhớ mật khẩu tài khoản `postgres`.
+**1. Lấy mã nguồn FR07**
 
-### 4.2. Tạo database
+```powershell
+git clone --branch feature/fr07-vocabulary https://github.com/felixsickofcode/HCI.git
+cd HCI
+```
 
-Trong pgAdmin 4 hoặc `psql`, tạo một database trống tên `hci_db` (chỉ tạo database, **không tạo bảng bằng tay**):
+Nếu đã có repo trên máy, dùng `git fetch origin` và `git switch feature/fr07-vocabulary`. Để nâng bản demo gốc lên bản có lưu nhanh và hoàn tác, giải nén `FR07-HCI.zip`, chép `fr07-hci.patch` vào thư mục gốc repo, rồi chạy một lần:
+
+```powershell
+git switch -c feature/fr07-hci-update
+git apply --check fr07-hci.patch
+```
+
+Nếu bước kiểm tra thành công, chạy `git apply fr07-hci.patch`. Nếu mã nguồn đang dùng đã có `frontend/src/components/vocabulary/QuickSaveWord.tsx` và migration `af317c86e219`, tiếp tục bước 2.
+
+**2. Tạo database và cài backend**
+
+Trong pgAdmin hoặc `psql`, kết nối tới database `postgres` và chạy câu lệnh sau một lần nếu máy chưa có `hci_db`:
 
 ```sql
 CREATE DATABASE hci_db;
 ```
 
-### 4.3. Lấy mã nguồn và cài thư viện (Windows PowerShell)
+Quay lại PowerShell, tại thư mục chứa `requirements.txt`:
 
 ```powershell
-git clone https://github.com/felixsickofcode/HCI.git
-cd HCI
-
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-
-# Kiểm tra đang dùng đúng Python của venv (phải ra đường dẫn trong thư mục .venv\Scripts)
-python -c "import sys; print(sys.executable)"
-
-python -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-- Nếu PowerShell không cho chạy script kích hoạt: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
-- macOS/Linux: `python3 -m venv .venv`, `source .venv/bin/activate`, `cp .env.example .env`.
+Mở `.env` ở cùng cấp với `alembic.ini`. Điền mật khẩu PostgreSQL và thay giá trị mẫu của `SECRET_KEY` bằng một khóa riêng. Có thể tạo khóa bằng `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
 
-### 4.4. Cấu hình `.env`
+```dotenv
+DATABASE_URL=postgresql+psycopg://postgres:MAT_KHAU@localhost:5432/hci_db
+SECRET_KEY=THAY_BANG_KHOA_RIENG
+BACKEND_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+```
+
+**3. Cài frontend**
 
 ```powershell
-copy .env.example .env
+cd frontend
+npm ci
+cd ..
 ```
 
-Mở `.env` (nằm cùng thư mục với `alembic.ini`) và sửa:
+Sau đó chạy hai terminal như mục đầu. Trên macOS/Linux, tạo môi trường bằng `python3 -m venv .venv`, dùng `.venv/bin/python` thay cho `.\.venv\Scripts\python.exe` và sao chép cấu hình bằng `cp -n .env.example .env`.
 
-```
-DATABASE_URL=postgresql+psycopg://postgres:MAT_KHAU_CUA_BAN@localhost:5432/hci_db
-```
+**4. Bật OCR khi cần đọc ảnh hoặc PDF scan**
 
-Mật khẩu có ký tự đặc biệt (`@ : / # ? %`) phải mã hóa, ví dụ `@` thành `%40`. **Không commit file** `.env` (đã nằm trong `.gitignore`).
+Cài chương trình **Tesseract OCR** cùng dữ liệu ngôn ngữ `vie` và `eng`. Kiểm tra bằng `tesseract --list-langs`. Nếu đã cài trên Windows nhưng backend chưa tìm thấy chương trình, đặt đường dẫn thực tế trong `.env`, ví dụ `TESSERACT_CMD=C:/Program Files/Tesseract-OCR/tesseract.exe`, rồi khởi động lại backend. Dán văn bản và trích chữ từ PDF có lớp văn bản có thể dùng độc lập với OCR.
 
-### 4.5. Tạo bảng và chạy server
+## Chức năng theo phiên bản
 
-```powershell
-alembic upgrade head
-python -m uvicorn app.main:app --reload
-```
+| Mã | Chức năng | Có thể dùng ở đâu |
+|---|---|---|
+| FR-01 | Đăng ký, đăng nhập bằng JWT và sử dụng ứng dụng ở chế độ khách | Bản FR07 |
+| FR-02 | Dán tiếng Việt, trích chữ từ PDF, nhận dạng chữ trong ảnh PNG/JPEG/WebP hoặc PDF scan | Bản FR07. Mặc định tối đa 10 MB/tệp, 100 trang/PDF và 10 trang với PDF cần OCR |
+| FR-03 | Chỉnh phông, cỡ chữ, khoảng cách chữ, giãn dòng, độ rộng cột, màu nền và bật dòng tập trung | Màn hình đọc |
+| FR-04 | Đọc thành tiếng, chọn giọng và tốc độ. Tô sáng theo từ khi giọng đọc cung cấp vị trí từ đáng tin cậy | Màn hình đọc, qua Web Speech API của trình duyệt |
+| FR-05 | Lưu tùy chỉnh hiển thị trên trình duyệt và đồng bộ khi đăng nhập | Bản FR07 |
+| FR-06 | Giải thích từ theo ngữ cảnh | Chưa triển khai trong bản FR07. Người đọc có thể tự ghi nghĩa |
+| FR-07 | Thư viện từ cá nhân, tìm kiếm, lọc theo nguồn/ngày và phân trang | Nhánh FR07. Bản cập nhật bổ sung lưu nhanh, sửa ghi chú, hiện câu chứa từ, hoàn tác và quay về vị trí đọc |
+| FR-08 | Tóm tắt văn bản bằng phương pháp trích xuất câu | API `POST /api/v1/assist/summarize` có trên `main` tại `aa74e75`, yêu cầu đăng nhập |
+| FR-09 | Phản hồi giọng đọc của người dùng | Chưa triển khai trong bản FR07 |
 
-- `alembic upgrade head` tạo toàn bộ bảng theo các file migration.
-- Server chạy ở `http://127.0.0.1:8000`.
-- **Trang Swagger** để xem và gọi thử API: `http://127.0.0.1:8000/docs`
-- Kiểm tra sống: `http://127.0.0.1:8000/health` trả `{"status":"ok"}`.
+## Dùng thử thư viện từ khó
 
-> Nếu PowerShell báo `alembic`/`uvicorn` "is not recognized", hãy dùng dạng `python -m alembic ...` và `python -m uvicorn ...`, rồi kiểm tra lại bước kích hoạt venv (xem [mục 10](#10-khắc-phục-sự-cố)).
+1. Ở trang chủ, dán **“Em đang học sinh học. Em thích sinh học vì môn này giải thích cách cây lớn lên.”** rồi bấm **Đọc ngay**.
+2. Bôi chọn cụm **“sinh học”** trong **câu thứ hai**, bấm **Lưu “sinh học”**. Ứng dụng báo kết quả ngay tại bài. Bạn có thể đọc tiếp hoặc bấm **Thêm ghi chú**.
+3. Mở **Từ khó của tôi**. Thẻ từ hiển thị câu *“Em thích sinh học…”* và tô nổi đúng lần xuất hiện đã chọn. Dùng **Xem cả đoạn** để mở rộng, hoặc **Sửa ghi chú** nếu đã có ghi chú.
+4. Xóa một từ rồi bấm **Hoàn tác**. Lần xóa gần nhất của thư viện đang dùng có thể khôi phục cả sau khi tải lại trang, giữ nguyên ghi chú, nguồn và ngày lưu. Trong **Quản lý thư viện**, thao tác **Xóa toàn bộ** yêu cầu xác nhận số từ của toàn kho, kể cả các từ nằm ngoài bộ lọc, và xóa cả lượt hoàn tác.
+5. Bấm **Tiếp tục đọc** để quay về vị trí cuộn cũ nếu bài vẫn mở trong phiên. Sau khi tải lại trang, dùng **Mở văn bản** để chọn bài mới.
 
-## 5. Cơ sở dữ liệu và migration
+**Dữ liệu nằm ở đâu?** Khách lưu từ trong `localStorage` của trình duyệt đang dùng. Tài khoản lưu từ trên PostgreSQL theo từng người dùng. Đăng nhập không tự chuyển từ của khách sang tài khoản. Văn bản đang đọc được giữ trong phiên giao diện. Mỗi mục từ lưu đoạn ngữ cảnh và thông tin nguồn để có thể ôn lại sau khi đóng bài.
 
-Hiện có hai bảng:
+## Mã nguồn và API
 
-| Bảng | Nội dung |
+| Đường dẫn | Nội dung |
 |---|---|
-| `users` | Người dùng: email (duy nhất), họ tên, mật khẩu đã băm, trạng thái, thời điểm tạo/sửa |
-| `display_settings` | Cài đặt hiển thị đã lưu, **mỗi người một dòng**. Khóa chính là `user_id` (khóa ngoại tới `users.id`, xóa user thì xóa theo); cột `settings` kiểu JSONB |
+| [`frontend/src/screens/`](frontend/src/screens/) | Trang chủ, xác thực, màn hình đọc và thư viện |
+| [`frontend/src/components/vocabulary/`](frontend/src/components/vocabulary/) | Lưu nhanh, ghi chú và hiển thị ngữ cảnh |
+| [`frontend/src/hooks/useVocabulary.ts`](frontend/src/hooks/useVocabulary.ts) | Chọn kho khách hoặc tài khoản và cập nhật danh sách từ |
+| [`app/api/v1/endpoints/`](app/api/v1/endpoints/) | Các route FastAPI. Schema ở `app/schemas/`, nghiệp vụ ở `app/services/`, truy cập dữ liệu ở `app/repositories/` và model ở `app/models/` |
+| [`alembic/versions/`](alembic/versions/) | Migration cho `users`, `display_settings` và `vocabulary_entries`. Revision `af317c86e219` bổ sung hoàn tác |
+| [`tests/`](tests/) · [`frontend/e2e/`](frontend/e2e/) | Kiểm thử API trên PostgreSQL và kịch bản người dùng trên trình duyệt |
 
-Bảng `alembic_version` do Alembic tự tạo để nhớ database đang ở bước migration nào.
+Các đường dẫn trong bảng sau có tiền tố `/api/v1`. Với route riêng tư, đăng nhập để lấy `access_token` rồi gửi header `Authorization: Bearer <access_token>`. Swagger hiển thị schema, tham số và phản hồi của **đúng phiên bản backend đang chạy**.
 
-### Lệnh thường dùng
+| Phương thức | Đường dẫn | Công dụng |
+|---|---|---|
+| POST | `/auth/register`, `/auth/login` | Tạo tài khoản hoặc lấy token |
+| GET | `/auth/me` | Xem tài khoản đang đăng nhập |
+| POST | `/documents/extract-text` | Gửi tệp bằng `multipart/form-data`, trường `file`, nhận văn bản đã trích xuất |
+| GET / PUT / DELETE | `/me/display-settings` | Đọc, thay toàn bộ hoặc đặt lại cấu hình hiển thị của tài khoản |
+| GET / POST | `/me/vocabulary` | Liệt kê hoặc lưu từ. Lưu mới trả `201`, lưu lại cùng vị trí và ngữ cảnh trả `200` |
+| GET | `/me/vocabulary/sources` | Liệt kê nguồn để lọc thư viện |
+| PATCH | `/me/vocabulary/{entry_id}` | Cập nhật ghi chú bằng `{"meaning":"…"}`. Gửi `null` cho trường `meaning` để bỏ ghi chú |
+| DELETE | `/me/vocabulary/{entry_id}?undoable=true` | Xóa một từ và giữ lượt hoàn tác. Bỏ tham số `undoable=true` sẽ xóa trực tiếp |
+| POST | `/me/vocabulary/{entry_id}/restore` | Khôi phục từ vừa xóa của tài khoản |
+| DELETE | `/me/vocabulary?expectedTotal=N` | Xóa cả kho. Giao diện gửi tổng đã xác nhận, máy chủ trả `409` nếu số từ đã thay đổi |
+
+Nhóm route `/users` cũng hỗ trợ tạo tài khoản. Trên bản FR07, các thao tác đọc, sửa và xóa thông tin người dùng yêu cầu JWT và giới hạn trong tài khoản hiện tại.
+
+## Kiểm thử và làm việc nhóm
+
+Chạy backend test ở **thư mục gốc** với PostgreSQL đang hoạt động:
 
 ```powershell
-alembic current                                   # database đang ở bước nào
-alembic heads                                     # các "đầu" của chuỗi migration (phải đúng 1)
-alembic upgrade head                              # áp dụng mọi migration mới
-alembic downgrade -1                              # lùi một bước
-alembic revision --autogenerate -m "mô tả ngắn"   # sinh migration từ thay đổi trong models/
+.\.venv\Scripts\python.exe -m pytest
 ```
 
-### Quy tắc khi sửa cấu trúc database
+Bộ test tạo lại các bảng trong **database kiểm thử riêng** có tên kết thúc bằng `_test`, mặc định là `hci_db_test`. Dùng database dành riêng cho test. Nếu tài khoản PostgreSQL không có quyền tạo database, tạo trước database kiểm thử và cấp quyền trên đó.
 
-1. **Tạo model mới thì phải thêm một dòng import vào** `app/models/__init__.py`**.** Nếu quên, `--autogenerate` sinh ra migration rỗng mà không báo lỗi.
-2. **Luôn mở và đọc file migration vừa sinh** trước khi commit.
-3. **Trước khi tạo migration:** `git pull origin main`, rồi `alembic heads` phải ra đúng **một** đầu.
-4. **Hai người cùng tạo migration từ một bản gốc sẽ ra hai "đầu"** và `alembic upgrade head` báo `Multiple head revisions are present`. Người merge **sau** mở file migration của mình, đổi `down_revision` thành revision mới nhất của `main`, rồi chạy lại `alembic heads` cho đến khi chỉ còn một đầu. Hoặc dùng `alembic merge -m "merge heads" <rev_a> <rev_b>`.
-5. Mỗi người dùng **database riêng trên máy mình**. Khi đổi nhánh mà gặp `Can't locate revision ...`, cách nhanh nhất là xóa và tạo lại `hci_db` rồi `alembic upgrade head`.
-
-## 6. API hiện có
-
-Tiền tố chung: `/api/v1`. Xem chi tiết và gọi thử ở `/docs`.
-
-| Phương thức | Đường dẫn | Mô tả |
-|---|---|---|
-| GET | `/health` | Kiểm tra server sống |
-| GET | `/api/v1/users` | Danh sách người dùng (`skip` mặc định 0, `limit` 1–100, mặc định 20) |
-| POST | `/api/v1/users` | Tạo người dùng (201) |
-| GET | `/api/v1/users/{user_id}` | Xem một người dùng |
-| PATCH | `/api/v1/users/{user_id}` | Sửa một phần |
-| DELETE | `/api/v1/users/{user_id}` | Xóa (204) |
-| GET | `/api/v1/me/display-settings` | Lấy cài đặt hiển thị đã lưu (404 nếu chưa lưu) |
-| PUT | `/api/v1/me/display-settings` | Lưu (thay toàn bộ) cài đặt hiển thị |
-| DELETE | `/api/v1/me/display-settings` | Đặt lại mặc định = xóa bản đã lưu (luôn 204) |
-
-### Quy ước phản hồi lỗi
-
-| Mã | Khi nào | Dạng nội dung |
-|---|---|---|
-| 404 | Không tìm thấy (`User not found`, `Display settings not saved yet`) | `{"detail": "..."}` |
-| 409 | Email đã đăng ký (`Email already registered`) | `{"detail": "..."}` |
-| 422 | Dữ liệu sai định dạng hoặc ngoài dải cho phép | Danh sách lỗi chuẩn của FastAPI |
-
-### Người dùng (`users`)
-
-Tạo người dùng gửi `{"email": "...", "full_name": "...", "password": "..."}` (mật khẩu 8–128 ký tự). Phản hồi không bao giờ chứa mật khẩu.
-
-### Cài đặt hiển thị (`me/display-settings`)
-
-**Xác định người dùng (TẠM THỜI, chờ FR-01):** hiện đọc id từ header `X-User-Id`. Cách này **không an toàn** (ai cũng giả danh được), chỉ dùng khi phát triển. Header thiếu hoặc không phải số thì 422; id không tồn tại thì 404. Khi FR-01 xong chỉ cần thay thân hàm `get_current_user_id` trong `app/api/deps.py`, endpoint và URL giữ nguyên.
-
-Ví dụ lưu (`PUT /api/v1/me/display-settings`), các trường **không gửi sẽ lấy giá trị mặc định**:
-
-```json
-{
-  "display": {
-    "fontFamily": "lexend",
-    "fontSize": 24,
-    "lineHeight": 1.8,
-    "letterSpacing": 0.08,
-    "theme": "cream",
-    "columnWidth": 60,
-    "focus": { "enabled": true, "dimOpacity": 0.6, "followPointer": false }
-  }
-}
-```
-
-Phản hồi có thêm `version` và `updatedAt`:
-
-```json
-{ "version": 1, "updatedAt": "2026-10-28T11:30:00Z", "display": { "...": "như trên" } }
-```
-
-| Trường | Giá trị cho phép | Mặc định |
-|---|---|---|
-| `fontFamily` | `lexend`, `arial`, `verdana`, `opendyslexic` | `lexend` |
-| `fontSize` (px) | số nguyên 16 – 32 | 20 |
-| `lineHeight` (lần) | 1,5 – 2,5 | 1,8 |
-| `letterSpacing` (em) | 0 – 0,2 | 0,08 |
-| `theme` | `cream`, `softGray`, `dark` | `cream` |
-| `columnWidth` (ký tự) | số nguyên 30 – 80 | 60 |
-| `focus.enabled` | `true` / `false` | `false` |
-| `focus.dimOpacity` | 0,5 – 0,8 | 0,6 |
-| `focus.followPointer` | `true` / `false` | `false` |
-
-Lưu ý: JSON của `display-settings` dùng **camelCase**; PUT là **thay toàn bộ**, không phải sửa một phần.
-
-## 7. Kiểm thử
+Chạy các kiểm tra frontend trong `frontend/`:
 
 ```powershell
-python -m pytest
+npm test
+npm run lint
+npm run build
+npx playwright install chromium
+npm run test:e2e
 ```
 
-- Cần PostgreSQL đang chạy.
-- Test dùng database riêng tên `<tên database của bạn>_test` (ví dụ `hci_db_test`), **tự tạo nếu chưa có**. Dữ liệu phát triển của bạn không bị đụng tới. Tài khoản trong `.env` cần quyền tạo database (tài khoản `postgres` có sẵn quyền này).
-- Có thể chỉ định database test khác bằng biến môi trường `TEST_DATABASE_URL` (tên database **phải kết thúc bằng** `_test`, nếu không test từ chối chạy).
-- Sau mỗi test, mọi bảng được dọn sạch nên các test độc lập nhau.
-- Khi thêm tính năng mới, viết test trong `tests/test_<tên_tính_năng>.py`, dùng fixture `client` và `create_user` trong `conftest.py`.
+Khi đóng góp, tách nhánh theo chức năng, dùng commit dạng `feat(fr07): …` hoặc `fix(reader): …` và mở pull request vào `main` để một thành viên khác review. Nếu sửa model, thêm migration tương ứng và kiểm tra bằng `python -m alembic heads`. Giữ thông tin kết nối và khóa JWT trong `.env` trên máy phát triển.
 
-## 8. Quy ước làm việc nhóm
+## Khắc phục sự cố
 
-### Git
-
-- Không làm trực tiếp trên `main`. Mỗi chức năng một nhánh: `feature/<mã-fr>-<tên-ngắn>`, ví dụ `feature/fr-05-settings-api`.
-- Trước khi tách nhánh: `git pull origin main`. Trong lúc làm: thường xuyên `git fetch origin` rồi `git merge origin/main` vào nhánh của mình để tránh xung đột lớn về sau.
-- Commit theo dạng `loại(phạm-vi): mô tả ngắn`, với loại là `feat`, `fix`, `docs`, `test`, `chore`, `refactor`. Ví dụ: `feat(display-settings): add per-user display settings API`.
-- Mở Pull Request vào `main` và nhờ ít nhất một bạn review chéo trước khi merge.
-- Trước khi commit chạy `git status` và chắc chắn **không có** `.env` trong danh sách.
-
-### Các file chung dễ xung đột
-
-`app/api/deps.py`, `app/api/v1/router.py`, `app/core/exceptions.py`, `app/models/__init__.py` và chuỗi migration trong `alembic/versions/` đều do nhiều người cùng sửa. Báo trong nhóm trước khi sửa lớn, và khi gộp xung đột thì **giữ cả hai phía**.
-
-### Thêm một tính năng backend mới (theo khuôn đang có)
-
-1. `app/models/<ten>.py` và thêm một dòng import vào `app/models/__init__.py`
-2. Migration (`alembic revision --autogenerate`), đọc lại, kiểm tra `alembic heads`
-3. `app/schemas/<ten>.py` (dải giá trị, mặc định)
-4. `app/repositories/<ten>_repository.py` (chỉ đọc/ghi DB)
-5. `app/services/<ten>_service.py` (luật nghiệp vụ, ném lỗi từ `core/exceptions.py`)
-6. `app/api/deps.py` (hàm lắp ráp service) và `app/api/v1/endpoints/<ten>.py`
-7. Đăng ký router trong `app/api/v1/router.py`
-8. `tests/test_<ten>.py`, chạy `python -m pytest`
-
-## 9. Việc còn tồn đọng và điểm cần chốt
-
-| #   | Vấn đề                                                                                                                       | Trạng thái | Ghi chú                                                                                                                                       |
-| --- | ------------------------------------------------------------------------------------------------------------------------------ | --- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | ~~Chưa có đăng nhập (FR-01)~~                                                                                                  | ✅ Đã xong | FR-01 đã merge vào `main`: đăng ký/đăng nhập bằng JWT thật (`/api/v1/auth/register`, `/api/v1/auth/login`). `display-settings` đã chuyển từ header tạm `X-User-Id` sang xác thực `Authorization: Bearer <token>`. |
-| 2   | **Cam kết quyền riêng tư.** Bản đề xuất cam kết cài đặt chỉ lưu trên trình duyệt. API `display-settings` lưu trên máy chủ      | ⬜ Chưa chốt | Chỉ dùng khi người dùng đăng nhập (tùy chọn); chế độ ẩn danh vẫn chỉ lưu trên máy (LocalStorage). Cần nhóm xác nhận và ghi lại trong báo cáo    |
-| 3   | ~~Chưa cấu hình CORS~~                                                                                                         | ✅ Đã xong | `app/main.py` đã thêm `CORSMiddleware`, danh sách nguồn lấy từ `BACKEND_CORS_ORIGINS` trong `.env` (mặc định đã cho phép `http://localhost:5173`) |
-| 4   | ~~`requirements.txt` mã hóa UTF-16~~                                                                                           | ✅ Đã xong | File hiện là UTF-8 thường, gộp nhánh không còn bị coi là file nhị phân nữa                                                                      |
-| 5   | `requirements.txt` **thiếu** `pydantic-settings`, `pwdlib`, `pyjwt`, dù `app/core/config.py` và `app/core/security.py` đang import các thư viện này | ⬜ Chưa xong | Cài sẵn trên máy mỗi người nên chưa ai để ý; máy sạch (`pip install -r requirements.txt`) sẽ lỗi `ModuleNotFoundError`. Cần `pip install pydantic-settings "pwdlib[argon2]" pyjwt` rồi thêm đúng version vào file |
-| 6   | `test_main.http` **lỗi thời** (gọi `/` và `/hello/User`, hai route này không còn tồn tại; route hiện tại là `/health`)         | ⬜ Chưa xong | Cập nhật lại các request mẫu hoặc xóa file này                                                                                                 |
-| 7   | **Tên trường JSON chưa thống nhất**: `users` dùng snake_case (`full_name`), `display-settings` dùng camelCase (`fontSize`)    | ✅ Đã xong | Thống nhất dùng camelCase cho toàn bộ API qua CamelModel, ngoại trừ chuẩn OAuth2 (access_token) giữ nguyên                                        |
-| 8   | ~~Chưa có thư mục `frontend/`~~                                                                                                | ✅ Đã xong | FE (Vite + React + TailwindCSS) đã được gộp vào `frontend/` trong cùng repo, không còn tách repo riêng                                         |
-| 9   | **Chưa quyết định có lưu văn bản người dùng nhập trên máy chủ không** (liên quan FR-02, FR-07)                                 | ⬜ Chưa chốt | Đề xuất giai đoạn đầu **không lưu**: máy chủ chỉ trích xuất và trả về văn bản, không ghi vào DB và không ghi nội dung vào log                  |
-
-## 10. Khắc phục sự cố
-
-| Thông báo | Nguyên nhân và cách sửa |
+| Hiện tượng | Cách kiểm tra |
 |---|---|
-| `'alembic' is not recognized`, `'uvicorn' is not recognized` | Chưa kích hoạt venv đúng, hoặc chưa cài thư viện. Dùng `python -m alembic ...` / `python -m uvicorn ...` và kiểm tra `python -c "import sys; print(sys.executable)"` phải ra đường dẫn trong `.venv\Scripts` của dự án |
-| `No matching distribution found for psycopg-binary` | Python đang dùng không phải bản Windows chuẩn của python.org (ví dụ của MSYS2, hoặc venv của dự án khác mà terminal tự kích hoạt). Xóa `.venv`, tạo lại bằng Python python.org và dùng đường dẫn đầy đủ tới `python.exe` |
-| `ModuleNotFoundError: No module named 'pydantic_settings'` | `python -m pip install pydantic-settings` |
-| `ValidationError ... DATABASE_URL Field required` | Chưa có `.env`, hoặc `.env` không nằm cùng thư mục với `alembic.ini`, hoặc chạy lệnh từ thư mục khác |
-| `password authentication failed for user "postgres"` | Sai mật khẩu trong `.env` (nhớ mã hóa ký tự đặc biệt) |
-| `database "hci_db" does not exist` | Chưa tạo database (mục 4.2) |
-| `connection refused` / `could not connect to server` | PostgreSQL chưa chạy: mở *Services* trên Windows, tìm dịch vụ `postgresql-x64-...` và Start; hoặc sai cổng |
-| `Multiple head revisions are present` | Hai migration cùng nối vào một bản gốc, xem [mục 5](#5-cơ-sở-dữ-liệu-và-migration) quy tắc 4 |
-| `Can't locate revision identified by '...'` | Database còn dấu vết migration từ nhánh khác; xóa và tạo lại database rồi `alembic upgrade head` |
-| `pytest`: `permission denied to create database` | Tài khoản trong `.env` không có quyền tạo database; tự tạo `hci_db_test` bằng pgAdmin |
-| `pytest`: `No module named 'app'` | Chạy `python -m pytest` từ thư mục gốc repo (nơi có `pytest.ini`) |
-| Cổng 8000 đã bận | `python -m uvicorn app.main:app --reload --port 8001` |
-
-
-## FR-07 — Thư viện từ khó cá nhân
-
-Đã có lưu từ được chọn trong bài đọc, thư viện riêng theo JWT hoặc localStorage cho khách, tìm/lọc/phân trang và xóa. Xem [hướng dẫn cài đặt, API và kiểm thử FR-07](docs/FR07.md).
-
-Sau khi cập nhật code, chạy `python -m alembic upgrade head`, rồi `npm ci` trong `frontend`. Các route GET/PATCH/DELETE `/users` nay yêu cầu xác thực và giới hạn chính chủ; xem tài liệu FR-07 trước khi dùng ví dụ CRUD user cũ trong README.
+| Backend báo thiếu `DATABASE_URL` hoặc không kết nối được | Chạy từ thư mục có `alembic.ini`. Kiểm tra `.env`, dịch vụ PostgreSQL, tên database, mật khẩu và cổng |
+| `Can't locate revision` khi đổi nhánh | Đối chiếu `python -m alembic current`, `python -m alembic heads` và nhánh Git. Nếu hai nhánh có lịch sử migration khác nhau, có thể dùng database phát triển riêng cho từng nhánh để giữ dữ liệu cũ |
+| Dán văn bản được nhưng tải ảnh báo `503` | Kiểm tra `TESSERACT_CMD` và hai ngôn ngữ `vie`, `eng` bằng `tesseract --list-langs` |
+| Giao diện mở được nhưng gọi API lỗi | Mở `/health` trên cổng backend. Nếu chạy backend trên cổng khác, đặt `VITE_API_URL` trong `frontend/.env.local`. Nếu Vite đổi cổng, thêm đúng địa chỉ frontend vào `BACKEND_CORS_ORIGINS`. Khởi động lại dịch vụ sau khi đổi cấu hình |
+| Có thư viện nhưng chưa thấy **Sửa ghi chú** hoặc **Hoàn tác** | Kiểm tra đã áp dụng bản cập nhật FR07 cho cả frontend và backend, rồi chạy `python -m alembic upgrade head` bằng Python của dự án |

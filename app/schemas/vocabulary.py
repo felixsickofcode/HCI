@@ -79,7 +79,28 @@ class VocabularyQuery(CamelModel):
         return self
 
 
+class VocabularyNote(CamelModel):
+    model_config = ConfigDict(extra="forbid")
+    meaning: str | None = Field(max_length=2000)
+
+    @field_validator("meaning")
+    @classmethod
+    def valid_note(cls, value):
+        if value is None:
+            return None
+        if "\x00" in value or len(value.encode("utf-16-le")) > 4000:
+            raise ValueError("Ghi chú không hợp lệ hoặc vượt quá 2.000 ký tự")
+        return value.strip() or None
+
+
+class RemovedWord(CamelModel):
+    id: int
+    term: str
+
+
 class VocabularyPage(CamelModel):
+    library_total: int
+    last_removed: RemovedWord | None
     items: list[VocabularyRead]
     total: int
     skip: int

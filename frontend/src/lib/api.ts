@@ -49,7 +49,7 @@ function errorMessage(detail: unknown, fallback: string): string {
   return fallback;
 }
 
-export async function apiFetch<T>(path: string, init?: RequestInit, prefix = true): Promise<T> {
+export async function apiRequest(path: string, init?: RequestInit, prefix = true): Promise<Response> {
   const headers = new Headers(init?.headers);
   const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
   if (!isFormData && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
@@ -70,6 +70,11 @@ export async function apiFetch<T>(path: string, init?: RequestInit, prefix = tru
     throw new ApiError(message, res.status);
   }
 
+  return res;
+}
+
+export async function apiFetch<T>(path: string, init?: RequestInit, prefix = true): Promise<T> {
+  const res = await apiRequest(path, init, prefix);
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }

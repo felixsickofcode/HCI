@@ -1,8 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { SaveVocabularyDialog } from '../../components/vocabulary/SaveVocabularyDialog';
-import { readVocabularySelection } from '../../lib/vocabulary-selection';
-import type { VocabularyDraft } from '../../lib/vocabulary';
+import { QuickSaveWord } from '../../components/vocabulary/QuickSaveWord';
 import { Link, Navigate } from 'react-router-dom';
 import { AudioPlayerCapsule, ManuscriptCard, ReadingText } from '../../components/common';
 import { useDocument } from '../../context';
@@ -10,7 +8,7 @@ import {
   useDisplaySettings, THEMES, FONT_STACKS, LIMITS,
 } from '../../context/DisplaySettingsProvider';
 import { countWords, readingMinutes, toParagraphs } from '../../lib/document';
-import type { DocumentSource } from '../../lib/document';
+import type { DocumentSource, ReadingDocument } from '../../lib/document';
 import type { FontFamily, ThemeName } from '../../lib/api';
 import booksIllustration from '../../assets/book_illustration.jpg';
 import {
@@ -22,6 +20,8 @@ import {
   SpeechController,
 } from '../../lib/speech';
 import type { BoundaryReliability, ReadingSegment, SpeechBoundaryEvent, SpeechStatus } from '../../lib/speech';
+
+const readingOffsets = new WeakMap<ReadingDocument, number>();
 
 const SOURCE_LABEL: Record<DocumentSource, string> = {
   paste: 'Văn bản dán',
@@ -90,10 +90,6 @@ export const MinimalReadingView: React.FC = () => {
   const [selectedVoiceURI, setSelectedVoiceURI] = useState(() => pickPreferredVoice(getSpeechVoices())?.voiceURI || '');
   const [rate, setRate] = useState<number>(1);
   const [speechError, setSpeechError] = useState('');
-  const [wordDraft, setWordDraft] = useState<VocabularyDraft | null>(null);
-  const [selectionError, setSelectionError] = useState('');
-  const closeWordDialog = useCallback(() => setWordDraft(null), []);
-
   useEffect(() => {
     const controller = new SpeechController();
     speechRef.current = controller;
@@ -144,6 +140,12 @@ export const MinimalReadingView: React.FC = () => {
 
   // ----- Thước đọc bám dòng -----
   const mainRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const main = mainRef.current;
+    if (!main || !doc) return;
+    main.scrollTop = readingOffsets.get(doc) ?? 0;
+    return () => { readingOffsets.set(doc, main.scrollTop); };
+  }, [doc]);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [rulerY, setRulerY] = useState(0);
   const lh = s.fontSize * s.lineHeight;
@@ -162,7 +164,7 @@ export const MinimalReadingView: React.FC = () => {
   useEffect(() => {
     if (!s.focus.enabled) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      if (e.shiftKey || e.ctrlKey || e.metaKey || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return;
       const tag = (e.target as HTMLElement).tagName;
       if (document.querySelector('dialog[open]') || ['INPUT', 'SELECT', 'TEXTAREA'].includes(tag)) return;
       e.preventDefault();
@@ -174,16 +176,6 @@ export const MinimalReadingView: React.FC = () => {
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.focus.enabled, lh]);
-
-  const saveSelectedWord = () => {
-    if (!bodyRef.current || !doc) return;
-    try {
-      const draft = readVocabularySelection(bodyRef.current, doc);
-      if (!draft) { setSelectionError('Hãy bôi chọn một từ hoặc cụm từ trong bài trước khi lưu.'); return; }
-      setSelectionError('');
-      setWordDraft(draft);
-    } catch (error) { setSelectionError((error as Error).message); }
-  };
 
   const settingsPanel = (
     <aside className="flex flex-col w-[340px] max-w-[92vw] h-full rounded-3xl shadow-sm border border-black/5 bg-[#FFFDF8] overflow-hidden">
@@ -330,7 +322,6 @@ export const MinimalReadingView: React.FC = () => {
       className="font-body antialiased h-screen flex overflow-hidden relative isolate selection:bg-tertiary-fixed selection:text-on-tertiary-fixed"
       style={{ backgroundColor: theme.bg, color: theme.fg }}
     >
-      {wordDraft && wordDraft.sourceDocumentId === doc.id && <SaveVocabularyDialog draft={wordDraft} onClose={closeWordDialog} />}
       {/* Sidebar thương hiệu và điều hướng (chỉ desktop) */}
       <aside className="hidden lg:flex flex-col w-56 xl:w-60 h-screen shrink-0 bg-[#FCF8F1] border-r border-[#EDE5DA] px-4 py-6 overflow-hidden">
         <div className="shrink-0">
@@ -510,14 +501,7 @@ export const MinimalReadingView: React.FC = () => {
                 </div>
 
                 <div className="sticky top-3 z-20 mb-6 rounded-xl border border-current/10 p-3 text-sm shadow-sm" style={{ backgroundColor: theme.bg, color: theme.fg }}>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p>Bôi chọn từ/cụm từ muốn ôn lại, rồi bấm lưu.</p>
-                    <button type="button" onPointerDown={e => e.preventDefault()} onClick={saveSelectedWord}
-                      className="rounded-full bg-primary px-4 py-2 text-on-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
-                      Lưu từ đã chọn
-                    </button>
-                  </div>
-                  {selectionError && <p role="alert" className="mt-2 text-error">{selectionError}</p>}
+                  <QuickSaveWord key={doc.id} doc={doc} body={bodyRef} />
                 </div>
                 {/* Nội dung bài đọc: theo cài đặt hiển thị */}
                 <div

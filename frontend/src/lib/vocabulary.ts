@@ -1,4 +1,4 @@
-import { ApiError, apiFetch } from './api';
+import { ApiError, apiFetch, apiRequest } from './api';
 import type { DocumentSource } from './document';
 
 export interface VocabularyDraft {
@@ -26,7 +26,11 @@ export interface VocabularyFilters {
   skip?: number;
   limit?: number;
 }
-export interface VocabularyPage { items: VocabularyEntry[]; total: number; skip: number; limit: number }
+export interface SaveResult { entry: VocabularyEntry; created: boolean }
+export interface VocabularyPage {
+  libraryTotal: number;
+  lastRemoved: Pick<VocabularyEntry, 'id' | 'term'> | null;
+  items: VocabularyEntry[]; total: number; skip: number; limit: number }
 export interface VocabularySource { sourceDocumentId: string; sourceTitle: string }
 export const VOCABULARY_KEY = 'lexiease:vocabulary:guest:v1';
 export const VOCABULARY_CHANGED = 'lexiease:vocabulary-changed';
@@ -66,29 +70,37 @@ function identity(draft: VocabularyDraft): string {
     draft.segmentId ?? null, draft.start ?? null, draft.end ?? null]);
 }
 
-export function readGuestVocabulary(): VocabularyEntry[] {
+export class CorruptGuestShelfError extends Error {}
+
+interface GuestShelf {
+  entries: VocabularyEntry[];
+  lastRemoved: VocabularyEntry | null;
+}
+export function readGuestShelf(): GuestShelf {
   let raw: string | null;
   try { raw = localStorage.getItem(VOCABULARY_KEY); }
   catch { throw new Error('Trình duyệt đang chặn bộ nhớ. Hãy cho phép lưu dữ liệu trang này.'); }
-  if (!raw) return [];
+  if (!raw) return { entries: [], lastRemoved: null };
   try {
     const value = JSON.parse(raw);
     if (value.version !== 1 || !Array.isArray(value.entries) || value.entries.length > MAX_GUEST_ENTRIES) throw new Error();
     const ids = new Set<string>();
-    for (const entry of value.entries) {
+    for (const entry of [...value.entries, ...(value.lastRemoved == null ? [] : [value.lastRemoved])]) {
       validateDraft(entry);
       if (typeof entry.id !== 'string' || !entry.id || ids.has(entry.id) ||
           typeof entry.createdAt !== 'string' || !Number.isFinite(Date.parse(entry.createdAt))) throw new Error();
       ids.add(entry.id);
     }
-    return value.entries;
+    return { entries: value.entries, lastRemoved: value.lastRemoved ?? null };
   } catch {
-    throw new Error('Không đọc được thư viện trên máy. Dữ liệu được giữ nguyên; bạn có thể xóa thư viện này để bắt đầu lại.');
+    throw new CorruptGuestShelfError('Không đọc được thư viện trên máy. Dữ liệu được giữ nguyên; bạn có thể xóa thư viện này để bắt đầu lại.');
   }
 }
 
-function writeGuestVocabulary(entries: VocabularyEntry[]): void {
-  try { localStorage.setItem(VOCABULARY_KEY, JSON.stringify({ version: 1, entries })); }
+export function readGuestVocabulary() { return readGuestShelf().entries; }
+
+function writeGuestShelf(shelf: GuestShelf): void {
+  try { localStorage.setItem(VOCABULARY_KEY, JSON.stringify({ version: 1, ...shelf })); }
   catch { throw new Error('Chưa lưu được: bộ nhớ trình duyệt đã đầy hoặc bị chặn.'); }
 }
 
@@ -97,24 +109,54 @@ export async function mutateGuest<T>(action: () => T): Promise<T> {
   if (typeof navigator !== 'undefined' && navigator.locks) return navigator.locks.request(VOCABULARY_KEY, action);
   return action();
 }
-export function saveGuestVocabulary(draft: VocabularyDraft): VocabularyEntry {
+export function quickSaveGuest(draft: VocabularyDraft): SaveResult {
   validateDraft(draft);
-  const entries = readGuestVocabulary();
+  const { entries, lastRemoved } = readGuestShelf();
   const existing = entries.find(entry => identity(entry) === identity(draft));
-  if (existing) return existing;
+  if (existing) return { entry: existing, created: false };
   if (entries.length >= MAX_GUEST_ENTRIES) throw new Error('Thư viện đã có 1.000 mục. Hãy xóa bớt từ trước khi lưu thêm.');
   const entry = { ...draft, meaning: draft.meaning?.trim() || null, example: draft.example?.trim() || null,
     id: crypto.randomUUID(), createdAt: new Date().toISOString() };
-  writeGuestVocabulary([entry, ...entries]);
+  writeGuestShelf({ entries: [entry, ...entries],
+    lastRemoved: lastRemoved && identity(lastRemoved) === identity(draft) ? null : lastRemoved });
+  return { entry, created: true };
+}
+
+export function saveGuestVocabulary(draft: VocabularyDraft) { return quickSaveGuest(draft).entry; }
+
+export function updateGuestNote(id: VocabularyEntry['id'], meaning: string | null) {
+  const shelf = readGuestShelf();
+  const entry = shelf.entries.find(word => word.id === id);
+  if (!entry) throw new Error('Không tìm thấy từ đã lưu.');
+  entry.meaning = meaning?.trim() || null;
+  validateDraft(entry);
+  writeGuestShelf(shelf);
   return entry;
 }
-export function deleteGuestVocabulary(id?: string | number): void {
+
+export function restoreGuestWord(id: VocabularyEntry['id']) {
+  const shelf = readGuestShelf();
+  if (shelf.entries.some(entry => entry.id === id)) return;
+  if (shelf.lastRemoved?.id !== id) throw new Error('Từ này không còn để hoàn tác.');
+  if (shelf.entries.length >= MAX_GUEST_ENTRIES) throw new Error('Thư viện đã đầy.');
+  writeGuestShelf({ entries: [...shelf.entries, shelf.lastRemoved], lastRemoved: null });
+}
+
+export function deleteGuestVocabulary(id?: string | number, expectedTotal?: number): void {
   if (id === undefined) {
+    if (expectedTotal !== undefined && readGuestVocabulary().length !== expectedTotal)
+      throw new Error('Số từ đã thay đổi. Hãy mở lại xác nhận xóa.');
     try { localStorage.removeItem(VOCABULARY_KEY); }
     catch { throw new Error('Không thể xóa dữ liệu trên trình duyệt này.'); }
-  } else writeGuestVocabulary(readGuestVocabulary().filter(entry => entry.id !== id));
+    return;
+  }
+  const shelf = readGuestShelf();
+  if (shelf.lastRemoved?.id === id) return;
+  const entry = shelf.entries.find(word => word.id === id);
+  if (!entry) throw new Error('Không tìm thấy từ đã lưu.');
+  writeGuestShelf({ entries: shelf.entries.filter(word => word.id !== id), lastRemoved: entry });
 }
-export function filterGuestVocabulary(entries: VocabularyEntry[], filters: VocabularyFilters): VocabularyPage {
+export function filterGuestVocabulary(entries: VocabularyEntry[], filters: VocabularyFilters, lastRemoved: VocabularyEntry | null = null): VocabularyPage {
   const q = normalizeTerm(filters.q ?? '');
   const filtered = entries.filter(entry => (!q || normalizeTerm(entry.term).includes(q)) &&
     (!filters.sourceDocumentId || entry.sourceDocumentId === filters.sourceDocumentId) &&
@@ -122,7 +164,7 @@ export function filterGuestVocabulary(entries: VocabularyEntry[], filters: Vocab
     (!filters.to || Date.parse(entry.createdAt) < Date.parse(filters.to)))
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || String(b.id).localeCompare(String(a.id)));
   const skip = filters.skip ?? 0, limit = filters.limit ?? 20;
-  return { items: filtered.slice(skip, skip + limit), total: filtered.length, skip, limit };
+  return { libraryTotal: entries.length, lastRemoved, items: filtered.slice(skip, skip + limit), total: filtered.length, skip, limit };
 }
 export function guestSources(entries: VocabularyEntry[]): VocabularySource[] {
   return [...new Map(entries.filter(e => e.sourceDocumentId).map(e => [e.sourceDocumentId!, {
@@ -140,11 +182,21 @@ export const fetchVocabulary = (query: string, token: string, signal: AbortSigna
   apiFetch<VocabularyPage>(`${endpoint}?${query}`, { headers: auth(token), signal });
 export const fetchSources = (token: string, signal: AbortSignal) =>
   apiFetch<VocabularySource[]>(`${endpoint}/sources`, { headers: auth(token), signal });
-export const saveVocabulary = (draft: VocabularyDraft, token: string, signal: AbortSignal) =>
-  apiFetch<VocabularyEntry>(endpoint, { method: 'POST', headers: auth(token), body: JSON.stringify(draft), signal });
-export const deleteVocabulary = (token: string, signal: AbortSignal, id?: string | number) =>
-  apiFetch<void>(id === undefined ? endpoint : `${endpoint}/${encodeURIComponent(id)}`,
-    { method: 'DELETE', headers: auth(token), signal });
+export async function saveVocabulary(draft: VocabularyDraft, token: string, signal: AbortSignal): Promise<SaveResult> {
+  const response = await apiRequest(endpoint, { method: 'POST', headers: auth(token), body: JSON.stringify(draft), signal });
+  return { entry: await response.json(), created: response.status === 201 };
+}
+export const updateNote = (id: VocabularyEntry['id'], meaning: string | null, token: string, signal: AbortSignal) =>
+  apiFetch<VocabularyEntry>(`${endpoint}/${encodeURIComponent(id)}`, {
+    method: 'PATCH', headers: auth(token), body: JSON.stringify({ meaning }), signal,
+  });
+export const restoreWord = (id: VocabularyEntry['id'], token: string, signal: AbortSignal) =>
+  apiFetch<VocabularyEntry>(`${endpoint}/${encodeURIComponent(id)}/restore`, { method: 'POST', headers: auth(token), signal });
+export function deleteVocabulary(token: string, signal: AbortSignal, id?: string | number, expectedTotal?: number) {
+  const target = id === undefined ? endpoint : `${endpoint}/${encodeURIComponent(id)}?undoable=true`;
+  const path = expectedTotal === undefined ? target : `${target}?expectedTotal=${expectedTotal}`;
+  return apiFetch<void>(path, { method: 'DELETE', headers: auth(token), signal });
+}
 
 export function vocabularyError(error: unknown): string {
   if (error instanceof ApiError && error.status === 401) return 'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại để tiếp tục.';

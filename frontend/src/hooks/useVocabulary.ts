@@ -2,11 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/auth-context';
 import { tokenStore } from '../lib/api';
 import {
-  VOCABULARY_CHANGED, VOCABULARY_KEY, deleteGuestVocabulary, deleteVocabulary,
+  CorruptGuestShelfError, VOCABULARY_CHANGED, VOCABULARY_KEY, deleteGuestVocabulary, deleteVocabulary,
   fetchSources, fetchVocabulary, filterGuestVocabulary, guestSources, mutateGuest,
-  queryString, readGuestVocabulary, saveGuestVocabulary, saveVocabulary, vocabularyError,
+  queryString, readGuestShelf, quickSaveGuest, restoreGuestWord, restoreWord, updateGuestNote, updateNote, saveVocabulary, vocabularyError,
 } from '../lib/vocabulary';
-import type { VocabularyDraft, VocabularyEntry, VocabularyFilters, VocabularyPage, VocabularySource } from '../lib/vocabulary';
+import type { SaveResult, VocabularyDraft, VocabularyEntry, VocabularyFilters, VocabularyPage, VocabularySource } from '../lib/vocabulary';
 
 export function useVocabulary(filters?: VocabularyFilters) {
   const { user, token, isLoading } = useAuth();
@@ -14,12 +14,12 @@ export function useVocabulary(filters?: VocabularyFilters) {
   const scope = !ready ? 'pending' : user ? `user:${user.id}:${token}` : 'guest';
   const query = filters === undefined ? undefined : queryString(filters);
   const [revision, setRevision] = useState(0);
-  const key = `${scope}|${query}|${revision}`;
-  const [loaded, setLoaded] = useState<{ key: string; page?: VocabularyPage; sources?: VocabularySource[]; error?: string }>();
+  const key = JSON.stringify([scope, query]);
+  const [loaded, setLoaded] = useState<{ key: string; corruptShelf?: boolean; page?: VocabularyPage; sources?: VocabularySource[]; error?: string }>();
   const [mutation, setMutation] = useState<{ scope: string; busy: boolean; error?: string }>();
   const requests = useRef(new Set<AbortController>());
   const busy = useRef(false);
-  const refresh = useCallback(() => { setRevision(value => value + 1); setMutation(undefined); }, []);
+  const refresh = useCallback(() => { setRevision(value => value + 1); setMutation(undefined); }, [setRevision]);
 
   useEffect(() => {
     const controllers = requests.current;
@@ -47,21 +47,21 @@ export function useVocabulary(filters?: VocabularyFilters) {
           fetchVocabulary(query, token, controller.signal), fetchSources(token, controller.signal),
         ]);
         else {
-          const entries = readGuestVocabulary();
+          const { entries, lastRemoved } = readGuestShelf();
           const params = new URLSearchParams(query);
           const localFilters: VocabularyFilters = Object.fromEntries(params);
           localFilters.skip = Number(params.get('skip') ?? 0);
           localFilters.limit = Number(params.get('limit') ?? 20);
-          page = filterGuestVocabulary(entries, localFilters);
+          page = filterGuestVocabulary(entries, localFilters, lastRemoved);
           sources = guestSources(entries);
         }
         if (!controller.signal.aborted) setLoaded({ key, page, sources });
       } catch (error) {
-        if (!controller.signal.aborted) setLoaded({ key, error: vocabularyError(error) });
+        if (!controller.signal.aborted) setLoaded({ key, error: vocabularyError(error), corruptShelf: error instanceof CorruptGuestShelfError });
       }
     }, 180);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [key, query, ready, token]);
+  }, [key, query, ready, token, revision]);
 
   const mutate = useCallback(async <T,>(operation: (signal: AbortSignal, assertScope: () => void) => Promise<T>): Promise<T | null> => {
     if (!ready || busy.current) return null;
@@ -90,20 +90,30 @@ export function useVocabulary(filters?: VocabularyFilters) {
     }
   }, [ready, scope, token]);
 
-  const save = useCallback((draft: VocabularyDraft) => mutate<VocabularyEntry>(async (signal, assertScope) => {
+  const save = useCallback((draft: VocabularyDraft) => mutate<SaveResult>(async (signal, assertScope) => {
     if (token) return saveVocabulary(draft, token, signal);
-    return mutateGuest(() => { assertScope(); return saveGuestVocabulary(draft); });
+    return mutateGuest(() => { assertScope(); return quickSaveGuest(draft); });
   }), [mutate, token]);
-  const remove = useCallback((id?: string | number) => mutate(async (signal, assertScope) => {
-    if (token) await deleteVocabulary(token, signal, id);
-    else await mutateGuest(() => { assertScope(); deleteGuestVocabulary(id); });
+  const edit = useCallback((id: VocabularyEntry['id'], meaning: string | null) => mutate(async (signal, assertScope) => {
+    if (token) return updateNote(id, meaning, token, signal);
+    return mutateGuest(() => { assertScope(); return updateGuestNote(id, meaning); });
+  }), [mutate, token]);
+  const restore = useCallback((id: VocabularyEntry['id']) => mutate(async (signal, assertScope) => {
+    if (token) await restoreWord(id, token, signal);
+    else await mutateGuest(() => { assertScope(); restoreGuestWord(id); });
+    return true;
+  }), [mutate, token]);
+  const remove = useCallback((id?: string | number, expectedTotal?: number) => mutate(async (signal, assertScope) => {
+    if (token) await deleteVocabulary(token, signal, id, expectedTotal);
+    else await mutateGuest(() => { assertScope(); deleteGuestVocabulary(id, expectedTotal); });
     return true;
   }), [mutate, token]);
 
   const current = loaded?.key === key ? loaded : undefined;
   return {
-    scope, ready, signedIn: !!user, save, remove, refresh,
+    scope, ready, signedIn: !!user, save, edit, remove, restore, refresh,
     page: current?.page, sources: current?.sources ?? [],
+    corruptShelf: current?.corruptShelf === true,
     loading: !ready || (query !== undefined && !current),
     error: (mutation?.scope === scope ? mutation.error : undefined) || current?.error,
     busy: mutation?.scope === scope && mutation.busy,
