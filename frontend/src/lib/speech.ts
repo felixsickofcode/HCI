@@ -2,6 +2,8 @@ export interface ReadingSegment {
   id: string;
   text: string;
   kind: 'paragraph' | 'quote';
+  /** UTF-16 offset of this excerpt in the original block. */
+  sourceOffset?: number;
 }
 
 export type SpeechStatus =
@@ -82,6 +84,7 @@ export class SpeechController {
   private fallbackTimer: ReturnType<typeof setTimeout> | null = null;
   private voicesHandler: (() => void) | null = null;
   private voicesRetryTimer: ReturnType<typeof setInterval> | null = null;
+  private generation = 0;
 
   attachCallbacks(callbacks: SpeechCallbacks) {
     this.callbacks = { ...this.callbacks, ...callbacks };
@@ -184,6 +187,7 @@ export class SpeechController {
 
   stop() {
     if (!isSpeechSupported()) return;
+    this.generation += 1;
     this.manualStop = true;
     this.clearKeepAlive();
     this.clearFallbackTimer();
@@ -202,7 +206,7 @@ export class SpeechController {
     const fallbackIndex = this.segmentIndex;
     const fallbackOffset =
       this.lastBoundary && this.lastBoundary.segmentIndex === this.segmentIndex
-        ? Math.max(0, this.lastBoundary.charIndex)
+        ? Math.max(0, this.lastBoundary.charIndex - (this.segments[this.segmentIndex].sourceOffset ?? 0))
         : 0;
     this.speak({
       segments: this.segments,
@@ -233,15 +237,18 @@ export class SpeechController {
 
     const segmentIndexAtStart = this.segmentIndex;
     const segmentIdAtStart = segment.id;
+    const generation = this.generation;
 
     utterance.onstart = () => {
+      if (generation !== this.generation) return;
       this.setStatus('speaking');
       this.startKeepAlive();
       this.scheduleFallbackCheck(() => utteranceEnded);
     };
 
     utterance.onboundary = (event: SpeechSynthesisEvent) => {
-      const charIndex = event.charIndex + safeOffset;
+      if (generation !== this.generation) return;
+      const charIndex = event.charIndex + safeOffset + (segment.sourceOffset ?? 0);
       const charLength = event.charLength ?? 0;
       const eventName = (event as SpeechSynthesisEvent & { name?: unknown }).name;
       const isWordBoundary =
@@ -265,14 +272,17 @@ export class SpeechController {
     };
 
     utterance.onpause = () => {
+      if (generation !== this.generation) return;
       if (!this.manualStop) this.setStatus('paused');
     };
 
     utterance.onresume = () => {
+      if (generation !== this.generation) return;
       if (!this.manualStop) this.setStatus('speaking');
     };
 
     utterance.onend = () => {
+      if (generation !== this.generation) return;
       markEnded();
       this.clearKeepAlive();
       this.clearFallbackTimer();
@@ -281,6 +291,7 @@ export class SpeechController {
     };
 
     utterance.onerror = (event: SpeechSynthesisErrorEvent) => {
+      if (generation !== this.generation) return;
       markEnded();
       this.clearKeepAlive();
       this.clearFallbackTimer();
@@ -368,6 +379,7 @@ export class SpeechController {
 
   private cancelUtterances() {
     if (!isSpeechSupported()) return;
+    this.generation += 1;
     this.manualStop = false;
     this.clearKeepAlive();
     this.clearFallbackTimer();

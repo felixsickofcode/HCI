@@ -33,7 +33,7 @@ PostgreSQL được cấu hình bằng `DATABASE_URL`. `users` lưu tài khoản
 
 `frontend/src/main.tsx` mount `App` trong các provider auth, display settings và document. `App.tsx` định tuyến `/`, `/reading`, `/auth`, `/login`, `/register`; các path khác redirect về `/`. `src/lib/api.ts` là client fetch chung, lấy base URL từ `VITE_API_URL` và token từ `localStorage` key `token`.
 
-Trang chủ nhận văn bản dán hoặc upload PDF/ảnh qua `POST /api/v1/documents/extract-text`. `DocumentProvider` giữ `ReadingDocument` trong bộ nhớ: file gốc, source text, block gốc, block đang sửa và cảnh báo. `text` được dẫn xuất từ block để dùng cho bộ đếm và TTS. Refresh sẽ mất tài liệu hiện tại.
+Trang chủ nhận văn bản dán hoặc upload PDF/ảnh qua `POST /api/v1/documents/extract-text`. `DocumentProvider` giữ `ReadingDocument` trong bộ nhớ: file gốc, blocks và cảnh báo. `text` được dẫn xuất từ block để dùng cho bộ đếm và TTS; tính năng chỉnh bố cục đã bị gỡ. Refresh sẽ mất tài liệu hiện tại.
 
 ## Pipeline tài liệu và trình đọc
 
@@ -53,9 +53,9 @@ flowchart LR
   Provider --> Original[Viewer file gốc]
 ```
 
-Parser hiện tại không dùng Docling hay LLM. `app/services/layout_pdf.py` xử lý tọa độ/font, tách cột theo khoảng trắng, lọc phần lặp ở mép trang và tạo snapshot PNG của bảng/ảnh. Chữ trong vùng snapshot không được render lại ở paragraph. Snapshot có text thay thế cho TTS/sao chép, nhưng font bên trong ảnh dùng zoom riêng. Lỗi parser được trả về rõ ràng thay vì fallback text phá bố cục.
+Parser hiện tại không dùng Docling hay LLM. `app/services/layout_pdf.py` xử lý tọa độ/font, tách cột theo khoảng trắng, lọc phần lặp ở mép trang và tạo snapshot PNG của bảng/ảnh. Chữ trong vùng snapshot không được render lại ở paragraph. Snapshot có text thay thế cho TTS/sao chép, nhưng font bên trong ảnh dùng cửa sổ phóng to riêng. Lỗi parser được trả về rõ ràng thay vì fallback text phá bố cục.
 
-`MinimalReadingView` mặc định mở “Trang đọc”: mục lục theo heading, font/cỡ/giãn dòng/giãn chữ/cột/theme và focus mode. `LayoutEditor` cho sửa/tách/gộp/đổi thứ tự khối chữ; `OriginalDocumentView` dùng object URL của file để đối chiếu và thu hồi URL khi đổi tài liệu. Xem hợp đồng, giới hạn và lệnh QA ở [module trình đọc](modules/document-reader.md).
+`MinimalReadingView` mặc định mở “Trang đọc”: mục lục theo heading, font/cỡ/giãn dòng/giãn chữ/cột/theme và focus mode. `OriginalDocumentView` dùng object URL của file để đối chiếu và thu hồi URL khi đổi tài liệu. Ảnh snapshot phóng to bằng cửa sổ lightbox giữa màn hình với nền mờ. Xem hợp đồng, giới hạn và lệnh QA ở [module trình đọc](modules/document-reader.md).
 
 ## Phụ thuộc ngoài
 

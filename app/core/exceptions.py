@@ -66,3 +66,32 @@ class SummaryUnavailableError(AppError):
 class LLMUnavailableError(AppError):
     status_code = 503
     message = "LLM summarization is not available on the server"
+
+class AssistInputError(AppError):
+    status_code = 422
+    message = "Vùng chọn không hợp lệ"
+
+
+class AssistTooLargeError(AppError):
+    status_code = 413
+    message = "Đoạn văn hoặc cụm từ quá dài"
+
+
+class AssistRateLimitError(AppError):
+    status_code = 429
+    message = "Đã hết lượt giải nghĩa trong giờ này"
+
+
+class AssistProviderError(AppError):
+    status_code = 502
+    message = "Dịch vụ giải nghĩa trả về kết quả không hợp lệ"
+
+
+class AssistUnavailableError(AppError):
+    status_code = 503
+    message = "Dịch vụ giải nghĩa chưa sẵn sàng"
+
+
+class AssistTimeoutError(AppError):
+    status_code = 504
+    message = "Dịch vụ giải nghĩa phản hồi quá lâu"

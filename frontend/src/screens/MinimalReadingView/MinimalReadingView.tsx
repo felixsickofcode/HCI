@@ -1,9 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { QuickSaveWord } from '../../components/vocabulary/QuickSaveWord';
 import { Link, Navigate } from 'react-router-dom';
 import { AudioPlayerCapsule, ManuscriptCard, ReadingText } from '../../components/common';
-import { useDocument } from '../../context';
+import { useAuth, useDocument } from '../../context';
 import {
   useDisplaySettings, THEMES, FONT_STACKS, LIMITS,
 } from '../../context/DisplaySettingsProvider';
@@ -20,8 +19,11 @@ import {
   SpeechController,
 } from '../../lib/speech';
 import type { BoundaryReliability, ReadingSegment, SpeechBoundaryEvent, SpeechStatus } from '../../lib/speech';
-import { LayoutEditor } from './LayoutEditor';
 import { OriginalDocumentView } from './OriginalDocumentView';
+import { useWordExplanation } from '../../hooks/useWordExplanation';
+import { useSaveSelectedWord } from '../../hooks/useSaveSelectedWord';
+import { WordExplanationPopover } from '../../components/reading/WordExplanationPopover';
+import type { PopoverCloseReason } from '../../components/reading/WordExplanationPopover';
 
 const SOURCE_LABEL: Record<DocumentSource, string> = {
   paste: 'Văn bản dán',
@@ -70,11 +72,11 @@ const Slider = (p: {
 );
 
 export const MinimalReadingView: React.FC = () => {
-  const { document: doc, clearDocument, updateBlocks, restoreSource } = useDocument();
+  const { document: doc, clearDocument } = useDocument();
+  const { user } = useAuth();
   const { settings: s, update, reset } = useDisplaySettings();
   const [panelOpen, setPanelOpen] = useState(() => window.innerWidth >= 1024);
   const [tab, setTab] = useState<Tab>('Giao diện');
-  const [editorOpen, setEditorOpen] = useState(false);
   const [viewSelection, setViewSelection] = useState<{ documentId: string; mode: ViewMode } | null>(null);
   const theme = THEMES[s.theme];
   const hasOriginal = Boolean(doc?.originalFile && (doc.source === 'pdf' || doc.source === 'image'));
@@ -84,6 +86,9 @@ export const MinimalReadingView: React.FC = () => {
   const showSettingsPanel = viewMode === 'reading' && panelOpen;
 
   const blocks = useMemo(() => doc?.blocks ?? [], [doc?.blocks]);
+  const { selection: wordSelection, result: wordResult, loading: wordLoading,
+    error: wordError, needsLogin: wordNeedsLogin, choose: chooseWord, explain: explainWord, clear: clearWord } = useWordExplanation(doc?.id, blocks);
+  const wordSave = useSaveSelectedWord(doc, wordSelection, explainWord);
   const toc = useMemo(() => blocks.filter((block) => block.type === 'heading'), [blocks]);
   const segments: ReadingSegment[] = useMemo(
     () =>
@@ -106,6 +111,7 @@ export const MinimalReadingView: React.FC = () => {
   const [selectedVoiceURI, setSelectedVoiceURI] = useState(() => pickPreferredVoice(getSpeechVoices())?.voiceURI || '');
   const [rate, setRate] = useState<number>(1);
   const [speechError, setSpeechError] = useState('');
+  const [readingExcerpt, setReadingExcerpt] = useState(false);
 
   useEffect(() => {
     const controller = new SpeechController();
@@ -144,8 +150,27 @@ export const MinimalReadingView: React.FC = () => {
   const selectedVoice = voices.find((voice) => voice.voiceURI === selectedVoiceURI) ?? pickPreferredVoice(voices);
   const startReading = () => {
     setSpeechError('');
+    setReadingExcerpt(false);
+    setActiveBoundary(null);
     setCurrentSegmentIndex(0);
     speechRef.current?.speak({ segments, rate, voice: selectedVoice });
+  };
+  const readSelection = () => {
+    if (!wordSelection || !isSpeechSupported()) return;
+    const block = blocks.find((item) => item.id === wordSelection.segmentId);
+    if (!block || block.text.slice(wordSelection.start, wordSelection.end) !== wordSelection.selectedText) return;
+    setSpeechError('');
+    setReadingExcerpt(true);
+    setActiveBoundary(null);
+    setCurrentSegmentIndex(0);
+    speechRef.current?.speak({
+      segments: [{
+        id: block.id, text: wordSelection.selectedText, sourceOffset: wordSelection.start,
+        kind: block.type === 'quote' ? 'quote' : 'paragraph',
+      }],
+      rate, voice: selectedVoice,
+    });
+    clearWord();
   };
   const cycleRate = () => {
     const nextRate = SPEECH_SPEEDS[(SPEECH_SPEEDS.indexOf(rate as typeof SPEECH_SPEEDS[number]) + 1) % SPEECH_SPEEDS.length];
@@ -158,6 +183,22 @@ export const MinimalReadingView: React.FC = () => {
   // ----- Thước đọc bám dòng -----
   const mainRef = useRef<HTMLElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const closeWord = useCallback((reason: PopoverCloseReason = 'restore-focus') => {
+    if (reason === 'restore-focus' && wordSelection) {
+      const segment = [...(mainRef.current?.querySelectorAll<HTMLElement>('[data-segment-id]') ?? [])]
+        .find((element) => element.dataset.segmentId === wordSelection.segmentId);
+      const token = [...(segment?.querySelectorAll<HTMLElement>('[data-token-start]') ?? [])]
+        .find((element) => Number(element.dataset.tokenEnd) > wordSelection.start);
+      token?.focus();
+    }
+    clearWord();
+  }, [clearWord, wordSelection]);
+  useEffect(() => { clearWord(); }, [user?.id, clearWord]);
+  useEffect(() => {
+    const main = mainRef.current;
+    main?.addEventListener('scroll', clearWord);
+    return () => main?.removeEventListener('scroll', clearWord);
+  }, [clearWord]);
   const [rulerY, setRulerY] = useState(0);
   const lh = s.fontSize * s.lineHeight;
 
@@ -177,7 +218,7 @@ export const MinimalReadingView: React.FC = () => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
       const tag = (e.target as HTMLElement).tagName;
-      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(tag)) return;
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(tag) || (e.target as HTMLElement).closest('[role="dialog"]')) return;
       e.preventDefault();
       const dir = e.key === 'ArrowDown' ? 1 : -1;
       setRulerY((y) => clampY(y + dir * lh));
@@ -418,6 +459,7 @@ export const MinimalReadingView: React.FC = () => {
                   onClick={() => {
                     speechRef.current?.stop();
                     setActiveBoundary(null);
+                    clearWord();
                     setViewSelection({ documentId: doc.id, mode: 'original' });
                   }}
                   className={`rounded-lg px-2.5 py-1.5 transition-colors ${viewMode === 'original' ? 'bg-primary text-on-primary' : 'text-on-surface hover:bg-black/5'}`}
@@ -434,15 +476,6 @@ export const MinimalReadingView: React.FC = () => {
                 </button>
               </div>
             )}
-            {viewMode === 'reading' && <button
-              type="button"
-              onClick={() => setEditorOpen(true)}
-              aria-label="Chỉnh bố cục văn bản"
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-label font-medium tracking-wide bg-white/75 border border-black/5 hover:bg-white text-on-surface transition-colors"
-            >
-              <span className="material-symbols-outlined text-[17px]">edit_note</span>
-              <span className="hidden sm:inline">Chỉnh bố cục</span>
-            </button>}
             {viewMode === 'reading' && !panelOpen && (
               <button
                 type="button"
@@ -464,24 +497,6 @@ export const MinimalReadingView: React.FC = () => {
             <div className="fixed inset-0 bg-black/20 z-[60]" onClick={() => setPanelOpen(false)} />
             <div className="fixed top-0 right-0 h-full z-[70] py-0">{settingsPanel}</div>
           </div>,
-          document.body,
-        )}
-
-        {editorOpen && viewMode === 'reading' && doc && createPortal(
-          <LayoutEditor
-            document={doc}
-            onClose={() => setEditorOpen(false)}
-            onChange={(nextBlocks) => {
-              speechRef.current?.stop();
-              setActiveBoundary(null);
-              updateBlocks(nextBlocks);
-            }}
-            onRestore={() => {
-              speechRef.current?.stop();
-              setActiveBoundary(null);
-              restoreSource();
-            }}
-          />,
           document.body,
         )}
 
@@ -570,7 +585,7 @@ export const MinimalReadingView: React.FC = () => {
                     rate={rate}
                     errorMessage={speechError}
                     progressLabel={speechStatus === 'speaking' || speechStatus === 'paused'
-                      ? `${Math.min(currentSegmentIndex + 1, segments.length)}/${segments.length} đoạn`
+                      ? readingExcerpt ? 'Phần đã chọn' : `${Math.min(currentSegmentIndex + 1, segments.length)}/${segments.length} đoạn`
                       : undefined}
                     onPlay={startReading}
                     onPause={() => speechRef.current?.pause()}
@@ -602,11 +617,10 @@ export const MinimalReadingView: React.FC = () => {
                   </nav>
                 )}
 
-                <div className="sticky top-3 z-20 mb-6 rounded-xl border border-current/10 p-3 text-sm shadow-sm" style={{ backgroundColor: theme.bg, color: theme.fg }}>
-                  <QuickSaveWord key={doc.id} doc={doc} body={bodyRef} />
-                </div>
-
                 {/* Nội dung bài đọc: theo cài đặt hiển thị */}
+                <p className="mb-3 text-xs font-label text-on-surface-variant">
+                  Bôi chọn nội dung trong một đoạn để nghe phần đó. Chọn từ hoặc cụm từ để giải nghĩa hoặc lưu từ. Bàn phím: Tab tới đoạn, Enter vào từ, dùng ←/→ rồi Enter để chọn.
+                </p>
                 <div
                   ref={bodyRef}
                   onMouseMove={onBodyMouseMove}
@@ -638,6 +652,7 @@ export const MinimalReadingView: React.FC = () => {
                   <ReadingText
                     blocks={blocks}
                     activeBoundary={activeBoundary}
+                    onWordSelection={chooseWord}
                     className="font-body break-words"
                     style={{
                       fontFamily: FONT_STACKS[s.fontFamily],
@@ -646,6 +661,21 @@ export const MinimalReadingView: React.FC = () => {
                       letterSpacing: `${s.letterSpacing}em`,
                     }}
                   />
+                  {wordSelection && <WordExplanationPopover
+                    selection={wordSelection}
+                    result={wordResult}
+                    loading={wordLoading}
+                    error={wordError}
+                    needsLogin={wordNeedsLogin}
+                    signedIn={wordSave.signedIn}
+                    saveStatus={wordSave.status}
+                    saveError={wordSave.error}
+                    onExplain={explainWord}
+                    onSave={wordSave.save}
+                    onRead={readSelection}
+                    speechSupported={isSpeechSupported()}
+                    onClose={closeWord}
+                  />}
                 </div>
 
                 <div className="my-16 flex items-center justify-center gap-3 select-none opacity-60">

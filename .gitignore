@@ -38,3 +38,10 @@ Thumbs.db
 /output/reader-review/
 /pytest-cache-files-*/
 
+# Local PDF parser evaluation artifacts and private samples
+/output/pdf-evaluation/
+/sample_pdf/
+/benchmarks/pdf/local/
+/benchmarks/pdf/.venv*/
+/benchmarks/pdf/model-cache/
+

@@ -10,5 +10,8 @@ Phiên mới bắt đầu tại [handoff](handoff.md), sau đó đọc [kiến t
 | Cài đặt hiển thị | [Display settings](modules/display-settings.md) |
 | DB, migration và test DB | [Database/migrations](modules/database-migrations.md) |
 | Kế hoạch mở rộng trình bày văn bản | [Kế hoạch](text-presentation-plan.md) |
+| Ưu tiên hiện tại: đối chiếu pipeline PDF với PyMuPDF4LLM và Marker | [Kế hoạch đánh giá parser PDF](pdf-parser-evaluation-plan.md) |
+| Lệnh chạy harness PDF offline | [Benchmark README](../benchmarks/pdf/README.md) |
+| Kết quả benchmark và QA trực quan sơ bộ | [Kết quả PDF](pdf-parser-evaluation-results.md) |
 
 `handoff.md` có phần trạng thái hiện hành ở đầu và nhật ký lịch sử bên dưới. Khi quyết định cũ được thay thế, cập nhật phần hiện hành để phiên sau không dùng nhầm hướng cũ.

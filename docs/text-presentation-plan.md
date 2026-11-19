@@ -1,6 +1,8 @@
 # Kế hoạch triển khai trình bày văn bản
 
-Ngày lập: 2026-11-13. Trạng thái: bước 1–4 đã có trong code; chế độ xem PDF/ảnh gốc ở mục 8 cũng đã triển khai. Cần QA trên trình duyệt và tài liệu thật, rồi mới mở rộng Markdown/DOCX/LaTeX.
+Ngày lập: 2026-11-13. Cập nhật điều hướng 2026-11-14: bước 1–3 và chế độ xem PDF/ảnh gốc đã có; bước 4 chỉnh bố cục thủ công đã được gỡ theo yêu cầu người dùng. Các mô tả sửa/khôi phục bố cục bên dưới là kế hoạch lịch sử, không phải yêu cầu khôi phục tính năng.
+
+**Ưu tiên triển khai tiếp theo:** [đối chiếu pipeline PDF hiện tại với PyMuPDF4LLM và Marker](pdf-parser-evaluation-plan.md), đo chất lượng/hiệu năng và QA cùng renderer trước khi quyết định đổi parser. Chưa triển khai thử nghiệm hoặc LLM trong phiên lập kế hoạch này. Trạng thái hiện hành xem [handoff](handoff.md) và [module trình đọc](modules/document-reader.md).
 
 ## 1. Mục tiêu và phạm vi
 

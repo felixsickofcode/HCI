@@ -17,6 +17,8 @@ from app.services.text_extraction_service import TextExtractionService
 from app.repositories.vocabulary_repository import VocabularyRepository
 from app.services.vocabulary_service import VocabularyService
 from app.services.summary_service import SummaryService
+from app.services.llm_assist_service import LLMAssistService
+from app.services.llm_provider import GroqProvider
 
 DbSession = Annotated[Session, Depends(get_db)]
 
@@ -51,6 +53,18 @@ def get_summary_service() -> SummaryService:
 
 
 SummaryServiceDep = Annotated[SummaryService, Depends(get_summary_service)]
+
+_llm_assist_service = LLMAssistService(
+    GroqProvider(settings.GROQ_API_KEY, settings.GROQ_MODEL, settings.GROQ_TIMEOUT_SECONDS),
+    settings.ASSIST_HOURLY_LIMIT,
+)
+
+
+def get_llm_assist_service() -> LLMAssistService:
+    return _llm_assist_service
+
+
+LLMAssistServiceDep = Annotated[LLMAssistService, Depends(get_llm_assist_service)]
 
 def get_current_user(
     db: DbSession,

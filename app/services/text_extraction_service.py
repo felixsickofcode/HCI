@@ -1,15 +1,16 @@
+from __future__ import annotations
+
 import io
 import logging
-import re
+from contextlib import closing
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import pypdf
-import pypdfium2
 import pytesseract
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pypdf.errors import PyPdfError
 
-from app.core.config import Settings
 from app.core.exceptions import (
     OcrUnavailableError,
     TextExtractionError,
@@ -21,13 +22,16 @@ from app.services.text_blocks import (
     normalize_source_text,
     parse_blocks,
 )
+from app.services.pdf_rendering import open_pdf, render_page
 
-# min text layer length to consider a PDF page as having text
-MIN_TEXT_LAYER_CHARS = 10
+if TYPE_CHECKING:
+    from app.core.config import Settings
+
 # limit pixels
 MAX_IMAGE_PIXELS = 50_000_000
 #scale
 PDF_OCR_SCALE = 3.0
+OCR_TIMEOUT_SECONDS = 60
 
 Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 
@@ -97,26 +101,38 @@ class TextExtractionService:
             page_texts = [page.extract_text() or "" for page in reader.pages]
         except TextExtractionError:
             raise
-        except (PyPdfError, ValueError, KeyError, OSError):
+        except (PyPdfError, ValueError, KeyError, OSError, TypeError, IndexError):
             raise TextExtractionError("Could not read the PDF file") from None
 
-        pages_needing_ocr = [
-            index
-            for index, text in enumerate(page_texts)
-            if len(re.sub(r"\s", "", text)) < MIN_TEXT_LAYER_CHARS
-        ]
+        try:
+            from app.services.layout_pdf import parse_layout_pdf, pdf_ocr_page_indices
+
+            pages_needing_ocr = pdf_ocr_page_indices(data, page_texts)
+        except Exception:
+            logger.exception("PDF page inspection failed")
+            raise TextExtractionError("Could not read the PDF file") from None
         warnings: list[str] = []
         skipped_ocr_pages: list[int] = []
         ocr_used = False
+        ocr_pages: set[int] = set()
 
         if pages_needing_ocr:
-            allowed = pages_needing_ocr[: self.settings.MAX_OCR_PAGES]
+            limit = max(0, self.settings.MAX_OCR_PAGES)
+            allowed = pages_needing_ocr[:limit]
             skipped_ocr_pages = [
-                index + 1 for index in pages_needing_ocr[self.settings.MAX_OCR_PAGES :]
+                index + 1 for index in pages_needing_ocr[limit:]
             ]
+            for index in pages_needing_ocr:
+                page_texts[index] = ""
             if allowed:
                 for index, text in self._ocr_pdf_pages(data, allowed).items():
-                    page_texts[index] = text
+                    if text.strip():
+                        page_texts[index] = text
+                        ocr_pages.add(index)
+                    else:
+                        warnings.append(
+                            f"Không nhận diện được chữ ở trang {index + 1}; giữ hình ảnh gốc để đối chiếu."
+                        )
                 ocr_used = True
             if skipped_ocr_pages:
                 warnings.append(
@@ -126,13 +142,11 @@ class TextExtractionService:
                 )
 
         try:
-            from app.services.layout_pdf import parse_layout_pdf
-
-            blocks = parse_layout_pdf(data, skip_pages={index + 1 for index in pages_needing_ocr})
+            blocks = parse_layout_pdf(data, skip_pages={index + 1 for index in ocr_pages})
         except Exception:
             logger.exception("PDF geometry parsing failed")
             raise TextExtractionError("Không xử lý được bố cục PDF. Vui lòng thử lại hoặc chọn tệp khác.") from None
-        for index in pages_needing_ocr:
+        for index in sorted(ocr_pages):
             # OCR has no reliable layout coordinates; reflow its paragraph lines.
             for block in parse_blocks(page_texts[index], page_number=index + 1):
                 if block.type == "paragraph":
@@ -151,37 +165,31 @@ class TextExtractionService:
         )
 
     def _ocr_pdf_pages(self, data: bytes, page_indices: list[int]) -> dict[int, str]:
-        try:
-            pdf = pypdfium2.PdfDocument(data)
-        except Exception:
-            raise TextExtractionError("Could not read the PDF file") from None
-        try:
-            texts: dict[int, str] = {}
-            for index in page_indices:
-                try:
-                    page = pdf[index]
-                    image = page.render(scale=PDF_OCR_SCALE).to_pil()
-                    texts[index] = self._ocr(image)
-                except TextExtractionError:
-                    raise
-                except Exception:
-                    raise TextExtractionError(
-                        f"Could not render page {index + 1} for OCR"
-                    ) from None
-            return texts
-        finally:
-            pdf.close()
+        texts: dict[int, str] = {}
+        for index in page_indices:
+            try:
+                # Release PDFium and its lock before invoking the OCR process.
+                with open_pdf(data) as pdf, closing(pdf[index]) as page:
+                    image = render_page(page, scale=PDF_OCR_SCALE, max_pixels=MAX_IMAGE_PIXELS)
+            except Exception:
+                raise TextExtractionError(f"Could not render page {index + 1} for OCR") from None
+            with closing(image):
+                texts[index] = self._ocr(image)
+        return texts
 
     def _extract_image(self, data: bytes) -> ExtractionResult:
         try:
-            image = Image.open(io.BytesIO(data))
-            image.load()
+            with Image.open(io.BytesIO(data)) as original:
+                if original.width * original.height > MAX_IMAGE_PIXELS:
+                    raise TextExtractionError("Image dimensions are too large")
+                original.load()
+                image = ImageOps.exif_transpose(original)
         except (UnidentifiedImageError, Image.DecompressionBombError, OSError):
             raise TextExtractionError("Could not read the image file") from None
-        image = ImageOps.exif_transpose(image)  # ảnh chụp điện thoại hay bị xoay
-        return self._result(
-            [(self._ocr(image), None)], "image", None, True, [], []
-        )
+        with closing(image):
+            return self._result(
+                [(self._ocr(image), None)], "image", None, True, [], []
+            )
 
     def _ensure_languages(self) -> None:
         global _available_languages
@@ -202,13 +210,15 @@ class TextExtractionService:
 
     def _ocr(self, image: Image.Image) -> str:
         self._ensure_languages()
-        image = ImageOps.grayscale(image)
         try:
-            return pytesseract.image_to_string(image, lang=self.settings.OCR_LANGUAGES)
+            with ImageOps.grayscale(image) as grayscale:
+                return pytesseract.image_to_string(grayscale, lang=self.settings.OCR_LANGUAGES, timeout=OCR_TIMEOUT_SECONDS)
         except pytesseract.TesseractNotFoundError:
             raise OcrUnavailableError("Tesseract is not installed on the server") from None
         except pytesseract.TesseractError:
             raise TextExtractionError("OCR failed on this file") from None
+        except RuntimeError:
+            raise TextExtractionError("OCR timed out on this file") from None
 
     @staticmethod
     def _result(

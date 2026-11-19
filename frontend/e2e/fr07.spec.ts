@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 }]) {
-  test(`guest saves, filters, reloads and deletes a selected phrase (${viewport.width}px)`, async ({ page }) => {
+  test(`reader asks guests to sign in before saving an explained phrase (${viewport.width}px)`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.goto('/');
     await page.getByRole('textbox', { name: 'Văn bản cần đọc' }).fill('🌱 Em học sinh học. Sinh học thật thú vị.');
@@ -20,28 +20,8 @@ for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 
       const selection = window.getSelection()!;
       selection.removeAllRanges(); selection.addRange(range);
     });
-    await page.getByRole('button', { name: 'Lưu “sinh học”', exact: true }).click();
-    await expect(page.getByText('Đã lưu “sinh học”.')).toBeVisible();
-    await page.getByRole('button', { name: 'Thêm ghi chú' }).click();
-    await page.getByRole('textbox', { name: /Ghi chú cho/ }).fill('Môn học về sự sống');
-    await page.getByRole('button', { name: 'Lưu thay đổi' }).click();
-    await expect(page.getByRole('button', { name: 'Sửa ghi chú' })).toBeVisible();
-    await page.getByRole('link', { name: 'Từ khó của tôi', exact: true }).click();
-    await expect(page.getByRole('link', { name: 'Tiếp tục đọc' })).toHaveAttribute('href', '/reading');
-    await expect(page.getByRole('heading', { name: 'sinh học', exact: true })).toBeVisible();
-    await expect(page.getByText('Môn học về sự sống')).toBeVisible();
-    await page.reload();
-    await expect(page.getByRole('link', { name: 'Mở văn bản' })).toHaveAttribute('href', '/');
-    await expect(page.getByRole('heading', { name: 'sinh học', exact: true })).toBeVisible();
-    await page.getByRole('searchbox').fill('không có');
-    await expect(page.getByText('Chưa tìm thấy từ phù hợp')).toBeVisible();
-    await page.getByRole('button', { name: 'Bỏ bộ lọc' }).click();
-    await page.getByRole('button', { name: 'Xóa từ sinh học' }).click();
-    await page.getByRole('button', { name: 'Hoàn tác' }).click();
-    await expect(page.getByRole('heading', { name: 'sinh học', exact: true })).toBeVisible();
-    await page.getByText('Quản lý thư viện').click();
-    await page.getByRole('button', { name: 'Xóa toàn bộ thư viện', exact: true }).click();
-    await page.getByRole('button', { name: 'Xóa 1 từ', exact: true }).click();
-    await expect(page.getByText('Bắt đầu từ một từ bạn muốn nhớ')).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Giải nghĩa sinh học' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Đăng nhập để tiếp tục' })).toHaveAttribute('href', '/login');
+    await expect(page.getByText('Chọn từ hoặc cụm từ trong bài để lưu.')).toHaveCount(0);
   });
 }

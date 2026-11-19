@@ -29,9 +29,7 @@ export interface ReadingDocument {
   originalFile?: File;
   pageCount?: number | null;
   ocrUsed: boolean;
-  sourceText: string;
   blocks: ReadingBlock[];
-  sourceBlocks: ReadingBlock[];
   warnings: string[];
   skippedOcrPages: number[];
 }
@@ -164,79 +162,11 @@ function looksLikeHeading(text: string): boolean {
   return !SENTENCE_END.includes(clean[clean.length - 1]);
 }
 
-export function cloneBlocks(blocks: ReadingBlock[]): ReadingBlock[] {
-  return blocks.map((block) => ({
-    ...block,
-    rows: block.rows?.map((row) => [...row]),
-  }));
-}
-
 export function blocksToText(blocks: ReadingBlock[]): string {
   return blocks
     .filter((block) => block.text.trim())
     .map((block) => block.text)
     .join('\n\n');
-}
-
-export function updateBlock(
-  blocks: ReadingBlock[],
-  id: string,
-  changes: Partial<Pick<ReadingBlock, 'type' | 'text' | 'headingLevel' | 'listKind'>>,
-): ReadingBlock[] {
-  return blocks.map((block) => (block.id === id ? { ...block, ...changes } : block));
-}
-
-export function splitBlock(
-  blocks: ReadingBlock[],
-  id: string,
-  offset: number,
-): ReadingBlock[] {
-  const index = blocks.findIndex((block) => block.id === id);
-  if (index === -1) return blocks;
-  const block = blocks[index];
-  const safeOffset = Math.min(Math.max(offset, 0), block.text.length);
-  const before = block.text.slice(0, safeOffset).trimEnd();
-  const after = block.text.slice(safeOffset).trimStart();
-  if (!before || !after) return blocks;
-
-  const created: ReadingBlock = {
-    ...block,
-    id: newId(),
-    text: after,
-    ...(block.pageNumber ? { pageNumber: block.pageNumber } : {}),
-  };
-  const next = cloneBlocks(blocks);
-  next[index] = { ...block, text: before };
-  next.splice(index + 1, 0, created);
-  return next;
-}
-
-export function mergeBlockWithNext(blocks: ReadingBlock[], id: string): ReadingBlock[] {
-  const index = blocks.findIndex((block) => block.id === id);
-  if (index === -1 || index + 1 >= blocks.length) return blocks;
-  const current = blocks[index];
-  const following = blocks[index + 1];
-  const merged: ReadingBlock = {
-    ...current,
-    text: `${current.text}\n${following.text}`.trim(),
-  };
-  const next = cloneBlocks(blocks);
-  next.splice(index, 2, merged);
-  return next;
-}
-
-export function moveBlock(
-  blocks: ReadingBlock[],
-  id: string,
-  direction: 'up' | 'down',
-): ReadingBlock[] {
-  const index = blocks.findIndex((block) => block.id === id);
-  if (index === -1) return blocks;
-  const target = direction === 'up' ? index - 1 : index + 1;
-  if (target < 0 || target >= blocks.length) return blocks;
-  const next = cloneBlocks(blocks);
-  [next[index], next[target]] = [next[target], next[index]];
-  return next;
 }
 
 const WORDS_PER_MINUTE = 200;
@@ -263,9 +193,7 @@ export function buildPastedDocument(raw: string): ReadingDocument {
     text: blocksToText(blocks),
     source: 'paste',
     ocrUsed: false,
-    sourceText,
     blocks,
-    sourceBlocks: cloneBlocks(blocks),
     warnings: [],
     skippedOcrPages: [],
   };
@@ -298,9 +226,7 @@ export function buildFileDocument(
     originalFile: file,
     pageCount: result.pageCount,
     ocrUsed: result.ocrUsed,
-    sourceText: result.sourceText ?? result.text,
     blocks,
-    sourceBlocks: cloneBlocks(blocks),
     warnings: result.warnings ?? [],
     skippedOcrPages: result.skippedOcrPages ?? [],
   };

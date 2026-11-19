@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import type { ReadingBlock } from '../../lib/document';
 import type { SpeechBoundaryEvent } from '../../lib/speech';
+import type { WordSelection } from '../../lib/assist';
+import { clickedWord, selectedRange } from '../../lib/text-selection';
 import { SnapshotFigure } from './SnapshotFigure';
 
 export interface StaticHighlight {
@@ -15,6 +17,7 @@ export interface ReadingTextProps {
   figureSlot?: React.ReactNode;
   className?: string;
   style?: React.CSSProperties;
+  onWordSelection?: (selection: WordSelection) => void;
 }
 
 interface Token {
@@ -63,6 +66,7 @@ function renderInline(
   block: ReadingBlock,
   activeBoundary: SpeechBoundaryEvent | null,
   staticHighlights: StaticHighlight[] | undefined,
+  selectable: boolean,
 ): React.ReactNode {
   const tokens = tokenize(block.text);
   const highlights = findHighlightRanges(block.text, staticHighlights);
@@ -74,12 +78,20 @@ function renderInline(
       return <span key={tokenIndex}>{token.text}</span>;
     }
     const active = Boolean(isActiveBlock && activeBoundary && isOverlapping(token.offset, tokenEnd, activeBoundary));
+    const selectionProps = selectable ? {
+      'data-token-start': token.offset,
+      'data-token-end': tokenEnd,
+      tabIndex: -1,
+      role: 'button',
+      'aria-label': `Chọn ${token.text} để giải nghĩa`,
+    } : {};
     if (active) {
       return (
         <span
           key={tokenIndex}
           aria-current="true"
-          className="bg-tertiary-fixed text-on-tertiary-fixed rounded-sm px-0.5 outline outline-1 outline-tertiary"
+          className="bg-tertiary-fixed text-on-tertiary-fixed rounded-sm px-0.5 outline outline-1 outline-tertiary focus-visible:outline-2"
+          {...selectionProps}
         >
           {token.text}
         </span>
@@ -90,12 +102,12 @@ function renderInline(
     );
     if (highlight) {
       return (
-        <mark key={tokenIndex} className={highlight.className}>
+        <mark key={tokenIndex} className={`${highlight.className} focus-visible:outline-2 focus-visible:outline-primary`} {...selectionProps}>
           {token.text}
         </mark>
       );
     }
-    return <span key={tokenIndex}>{token.text}</span>;
+    return <span key={tokenIndex} className={selectable ? 'focus-visible:outline-2 focus-visible:outline-primary' : undefined} {...selectionProps}>{token.text}</span>;
   });
 }
 
@@ -106,7 +118,13 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
   figureSlot,
   className = '',
   style,
+  onWordSelection,
 }) => {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const selectionAttributes = (block: ReadingBlock) => onWordSelection &&
+    ['paragraph', 'heading', 'listItem', 'quote'].includes(block.type)
+    ? { 'data-segment-id': block.id, 'data-segment-text': block.text, 'data-block-type': block.type, tabIndex: 0 }
+    : {};
   const rendered: React.ReactNode[] = [];
   const visibleBlocks = blocks.filter((block) => block.text.trim().length > 0 || (block.type === 'snapshot' && block.imageSrc));
   let index = 0;
@@ -135,8 +153,8 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
           }`}
         >
           {items.map((item) => (
-            <li key={item.id} data-segment-id={item.id} className="whitespace-pre-line">
-              {renderInline(item, activeBoundary, staticHighlights[item.id])}
+            <li key={item.id} className="whitespace-pre-line" {...selectionAttributes(item)}>
+              {renderInline(item, activeBoundary, staticHighlights[item.id], Boolean(onWordSelection))}
             </li>
           ))}
         </ListTag>,
@@ -144,7 +162,7 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
       continue;
     }
 
-    const body = renderInline(block, activeBoundary, staticHighlights[block.id]);
+    const body = renderInline(block, activeBoundary, staticHighlights[block.id], Boolean(onWordSelection && ['paragraph', 'heading', 'listItem', 'quote'].includes(block.type)));
 
     if (block.type === 'snapshot' && block.imageSrc) {
       rendered.push(<SnapshotFigure key={block.id} block={block} textContent={body} />);
@@ -158,7 +176,7 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
         <HeadingTag
           key={block.id}
           id={`reader-${block.id}`}
-          data-segment-id={block.id}
+          {...selectionAttributes(block)}
           className={`font-semibold tracking-tight leading-snug whitespace-pre-line ${
             block.headingLevel === 3
               ? 'text-[1.15em] mt-8 mb-3'
@@ -176,7 +194,7 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
       rendered.push(
         <blockquote
           key={block.id}
-          data-segment-id={block.id}
+          {...selectionAttributes(block)}
           className="my-12 px-6 sm:px-8 py-5 bg-surface-container-low rounded-lg text-on-surface-variant italic text-lg sm:text-[1.3rem] leading-[1.9] whitespace-pre-line"
         >
           {body}
@@ -220,7 +238,7 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
     }
 
     rendered.push(
-      <p key={block.id} data-segment-id={block.id} className="mb-8 last:mb-4 whitespace-pre-line">
+      <p key={block.id} className="mb-8 last:mb-4 whitespace-pre-line" {...selectionAttributes(block)}>
         {body}
         {figureSlot && block.id === 'third-paragraph' ? (
           <span className="block">{figureSlot}</span>
@@ -231,7 +249,56 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
   }
 
   return (
-    <div className={`reading-body text-left ${className}`} style={style}>
+    <div
+      ref={rootRef}
+      className={`reading-body text-left ${className}`}
+      style={style}
+      onMouseUp={() => {
+        if (!rootRef.current || !onWordSelection) return;
+        const next = selectedRange(rootRef.current);
+        if (next) onWordSelection(next);
+      }}
+      onClick={(event) => {
+        if (!rootRef.current || !onWordSelection) return;
+        const next = clickedWord(event.target, rootRef.current);
+        if (next) onWordSelection(next);
+      }}
+      onKeyUp={() => {
+        if (!rootRef.current || !onWordSelection) return;
+        const next = selectedRange(rootRef.current);
+        if (next) onWordSelection(next);
+      }}
+      onKeyDown={(event) => {
+        if (!rootRef.current || !onWordSelection) return;
+        const target = event.target as HTMLElement;
+        const segment = target.closest<HTMLElement>('[data-segment-id]');
+        if (target === segment && (event.key === 'Enter' || event.key === ' ')) {
+          const first = segment?.querySelector<HTMLElement>('[data-token-start]');
+          if (first) {
+            event.preventDefault();
+            first.focus();
+          }
+          return;
+        }
+        if ((event.key === 'ArrowRight' || event.key === 'ArrowLeft') && target.hasAttribute('data-token-start') && segment) {
+          const tokens = [...segment.querySelectorAll<HTMLElement>('[data-token-start]')];
+          const index = tokens.indexOf(target);
+          const next = tokens[index + (event.key === 'ArrowRight' ? 1 : -1)];
+          if (next) {
+            event.preventDefault();
+            next.focus();
+          }
+          return;
+        }
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        window.getSelection()?.removeAllRanges();
+        const next = clickedWord(event.target, rootRef.current);
+        if (next) {
+          event.preventDefault();
+          onWordSelection(next);
+        }
+      }}
+    >
       {rendered}
     </div>
   );
