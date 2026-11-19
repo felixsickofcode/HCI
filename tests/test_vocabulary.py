@@ -28,7 +28,7 @@ def test_save_duplicate_and_read(client, create_user):
     assert duplicate.status_code == 200
     assert duplicate.json() == entry  # Saving again never silently overwrites the user's note.
     page = client.get(URL, headers=headers).json()
-    assert page == {"items": [entry], "total": 1, "skip": 0, "limit": 20}
+    assert page == {"items": [entry], "total": 1, "skip": 0, "limit": 20, "libraryTotal": 1, "lastRemoved": None}
 
 
 def test_same_word_different_context_is_separate(client, create_user):
@@ -130,3 +130,38 @@ def test_user_crud_cannot_bypass_vocabulary_privacy(client, create_user):
     with SessionLocal() as db:
         assert db.scalar(select(VocabularyEntry).where(VocabularyEntry.user_id == alice_id)) is None
     assert client.get(URL, headers=alice).status_code == 401
+
+
+def test_notes_and_persistent_undo_belong_to_owner(client, create_user):
+    _, alice = create_user()
+    _, bob = create_user()
+    original = client.post(URL, json=DRAFT, headers=alice).json()
+    path = f'{URL}/{original["id"]}'
+    assert client.patch(path, headers=bob, json={"meaning": "wrong"}).status_code == 404
+    assert client.patch(path, headers=alice, json={"meaning": "x\0x"}).status_code == 422
+    edited = client.patch(path, headers=alice, json={"meaning": "  Ghi chú mới  "}).json()
+    assert edited == {**original, "meaning": "Ghi chú mới"}
+    assert client.delete(path + "?undoable=true", headers=alice).status_code == 204
+    shelf = client.get(URL, headers=alice).json()
+    assert shelf["total"] == 0 and shelf["lastRemoved"] == {"id": original["id"], "term": DRAFT["term"]}
+    assert client.get(URL + "/sources", headers=alice).json() == []
+    assert client.post(path + "/restore", headers=bob).status_code == 404
+    assert client.get(URL, headers=bob).json()["lastRemoved"] is None
+    assert client.post(path + "/restore", headers=alice).json() == edited
+    assert client.patch(path, headers=alice, json={"meaning": " "}).json()["meaning"] is None
+
+
+def test_latest_undo_and_unfiltered_clear_guard(client, create_user):
+    _, headers = create_user()
+    def add(term):
+        return client.post(URL, headers=headers, json={"term": term, "contextText": term}).json()["id"]
+    first, second, third = (add(word) for word in ["một", "hai", "ba"])
+    for entry_id in [first, second, second]:
+        assert client.delete(f"{URL}/{entry_id}?undoable=true", headers=headers).status_code == 204
+    assert client.post(f"{URL}/{first}/restore", headers=headers).status_code == 404
+    page = client.get(URL, params={"q": "hai"}, headers=headers).json()
+    assert (page["total"], page["libraryTotal"], page["lastRemoved"]["id"]) == (0, 1, second)
+    assert client.delete(URL + "?expectedTotal=0", headers=headers).status_code == 409
+    assert client.get(URL, headers=headers).json()["items"][0]["id"] == third
+    assert client.delete(URL + "?expectedTotal=1", headers=headers).status_code == 204
+    assert client.post(f"{URL}/{second}/restore", headers=headers).status_code == 404

@@ -5,7 +5,7 @@ for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 
     await page.setViewportSize(viewport);
     await page.goto('/');
     await page.getByRole('textbox', { name: 'Văn bản cần đọc' }).fill('🌱 Em học sinh học. Sinh học thật thú vị.');
-    await page.getByRole('button', { name: 'Đọc ngay', exact: true }).click();
+    await page.getByRole('button', { name: /Đọc ngay/ }).click();
     await expect(page).toHaveURL(/\/reading$/);
     await page.locator('[data-segment-id="paragraph-0"]').evaluate(paragraph => {
       const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
@@ -20,23 +20,28 @@ for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 
       const selection = window.getSelection()!;
       selection.removeAllRanges(); selection.addRange(range);
     });
-    await page.getByRole('button', { name: 'Lưu từ đã chọn', exact: true }).click();
-    await expect(page.getByRole('dialog')).toContainText('sinh học');
-    await page.getByRole('textbox', { name: 'Nghĩa / ghi chú' }).fill('Môn học về sự sống');
-    await page.getByRole('button', { name: 'Lưu vào thư viện', exact: true }).click();
-    await page.getByRole('link', { name: 'Xem thư viện', exact: true }).click();
+    await page.getByRole('button', { name: 'Lưu “sinh học”', exact: true }).click();
+    await expect(page.getByText('Đã lưu “sinh học”.')).toBeVisible();
+    await page.getByRole('button', { name: 'Thêm ghi chú' }).click();
+    await page.getByRole('textbox', { name: /Ghi chú cho/ }).fill('Môn học về sự sống');
+    await page.getByRole('button', { name: 'Lưu thay đổi' }).click();
+    await expect(page.getByRole('button', { name: 'Sửa ghi chú' })).toBeVisible();
+    await page.getByRole('link', { name: 'Từ khó của tôi', exact: true }).click();
+    await expect(page.getByRole('link', { name: 'Tiếp tục đọc' })).toHaveAttribute('href', '/reading');
     await expect(page.getByRole('heading', { name: 'sinh học', exact: true })).toBeVisible();
     await expect(page.getByText('Môn học về sự sống')).toBeVisible();
     await page.reload();
+    await expect(page.getByRole('link', { name: 'Mở văn bản' })).toHaveAttribute('href', '/');
     await expect(page.getByRole('heading', { name: 'sinh học', exact: true })).toBeVisible();
     await page.getByRole('searchbox').fill('không có');
     await expect(page.getByText('Chưa tìm thấy từ phù hợp')).toBeVisible();
     await page.getByRole('button', { name: 'Bỏ bộ lọc' }).click();
     await page.getByRole('button', { name: 'Xóa từ sinh học' }).click();
-    await page.getByRole('button', { name: 'Giữ lại' }).click();
+    await page.getByRole('button', { name: 'Hoàn tác' }).click();
     await expect(page.getByRole('heading', { name: 'sinh học', exact: true })).toBeVisible();
+    await page.getByText('Quản lý thư viện').click();
     await page.getByRole('button', { name: 'Xóa toàn bộ thư viện', exact: true }).click();
-    await page.getByRole('button', { name: 'Xác nhận xóa', exact: true }).click();
+    await page.getByRole('button', { name: 'Xóa 1 từ', exact: true }).click();
     await expect(page.getByText('Bắt đầu từ một từ bạn muốn nhớ')).toBeVisible();
   });
 }

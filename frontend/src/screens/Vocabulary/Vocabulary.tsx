@@ -3,10 +3,13 @@ import { Link } from 'react-router-dom';
 import { Header } from '../../components/layout';
 import { useVocabulary } from '../../hooks/useVocabulary';
 import { dateBounds } from '../../lib/vocabulary';
-import type { VocabularyEntry, VocabularyFilters } from '../../lib/vocabulary';
+import { useDocument } from '../../context';
+import { WordContext } from '../../components/vocabulary/WordContext';
+import { WordNote } from '../../components/vocabulary/WordNote';
+import type { VocabularyFilters } from '../../lib/vocabulary';
 
-function DeleteConfirmation({ entry, busy, error, onDelete, onClose }: {
-  entry: VocabularyEntry | 'all'; busy: boolean; error?: string;
+function DeleteConfirmation({ total, signedIn, busy, error, onDelete, onClose }: {
+  total?: number; signedIn: boolean; busy: boolean; error?: string;
   onDelete: () => void; onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -17,20 +20,20 @@ function DeleteConfirmation({ entry, busy, error, onDelete, onClose }: {
     return () => { el?.close(); if (previous instanceof HTMLElement) previous.focus(); };
   }, []);
   return (
-    <dialog ref={dialog} onCancel={onClose} aria-labelledby="delete-word-title"
+    <dialog ref={dialog} onCancel={event => { if (busy) event.preventDefault(); else onClose(); }} aria-labelledby="delete-word-title"
       className="w-[calc(100%_-_2rem)] max-w-md rounded-3xl bg-[#FFFDF8] p-6 text-on-surface shadow-xl backdrop:bg-black/30">
       <h2 id="delete-word-title" className="text-lg font-semibold">
-        {entry === 'all' ? 'Xóa toàn bộ thư viện?' : `Xóa “${entry.term}”?`}
+        Xóa {total === undefined ? 'toàn bộ từ' : `toàn bộ ${total} từ`} trong thư viện {signedIn ? 'tài khoản' : 'trên thiết bị này'}?
       </h2>
       <p className="mt-3 text-sm leading-relaxed text-on-surface-variant">
-        {entry === 'all' ? 'Xóa mọi từ trong kho đang dùng, kể cả các từ ngoài bộ lọc hiện tại.' : 'Từ này sẽ được xóa khỏi kho đang dùng.'}
+        Mọi từ, kể cả từ ngoài bộ lọc và từ có thể hoàn tác, đều sẽ bị xóa.
         {' '}Thao tác này không thể hoàn tác.
       </p>
       {error && <p role="alert" className="mt-3 text-sm text-error">{error}</p>}
       <div className="mt-6 flex justify-end gap-3">
         <button autoFocus type="button" onClick={onClose} disabled={busy} className="rounded-full border px-5 py-2.5">Giữ lại</button>
         <button type="button" onClick={onDelete} disabled={busy} className="rounded-full bg-error px-5 py-2.5 text-on-error disabled:opacity-50">
-          {busy ? 'Đang xóa…' : 'Xác nhận xóa'}
+          {busy ? 'Đang xóa…' : total === undefined ? 'Xóa toàn bộ' : `Xóa ${total} từ`}
         </button>
       </div>
     </dialog>
@@ -38,12 +41,13 @@ function DeleteConfirmation({ entry, busy, error, onDelete, onClose }: {
 }
 
 export function Vocabulary() {
+  const { document: currentDoc } = useDocument();
   const [search, setSearch] = useState('');
   const [source, setSource] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [offset, setOffset] = useState({ scope: '', value: 0 });
-  const [confirmation, setConfirmation] = useState<{ scope: string; entry: VocabularyEntry | 'all' }>();
+  const [confirmation, setConfirmation] = useState<{ scope: string; total?: number }>();
   const [notice, setNotice] = useState<{ scope: string; text: string }>();
   let bounds: Pick<VocabularyFilters, 'from' | 'to'> = {};
   let dateError = '';
@@ -58,6 +62,7 @@ export function Vocabulary() {
       queueMicrotask(() => setOffset({ scope, value: page?.total ? Math.floor((page.total - 1) / 20) * 20 : 0 }));
     }
   }, [scope, offset.scope, offset.value, page]);
+  const canClear = library.corruptShelf || (page && (page.libraryTotal > 0 || !!page.lastRemoved));
   const resetPage = () => setOffset({ scope, value: 0 });
   const formatDate = (date: string) => new Date(date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const control = 'w-full rounded-xl border border-outline-variant/60 bg-[#FFFDF8] px-3 py-2.5 text-sm focus:outline-primary';
@@ -74,8 +79,8 @@ export function Vocabulary() {
               Những từ bạn chủ động lưu, cùng ngữ cảnh để đọc và ôn lại.
             </p>
           </div>
-          <Link to="/reading" className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm text-on-primary">
-            <span className="material-symbols-outlined text-lg" aria-hidden>auto_stories</span>Trở lại bài đọc
+          <Link to={currentDoc ? '/reading' : '/'} className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm text-on-primary">
+            <span className="material-symbols-outlined text-lg" aria-hidden>auto_stories</span>{currentDoc ? 'Tiếp tục đọc' : 'Mở văn bản'}
           </Link>
         </div>
 
@@ -108,8 +113,7 @@ export function Vocabulary() {
           </div>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
             <button type="button" onClick={() => { setSearch(''); setSource(''); setFrom(''); setTo(''); resetPage(); }} className="text-primary underline">Bỏ bộ lọc</button>
-            <button type="button" disabled={!ready || busy} onClick={() => setConfirmation({ scope, entry: 'all' })}
-              className="rounded-lg px-2 py-1 text-error hover:bg-error/5 disabled:opacity-40">Xóa toàn bộ thư viện</button>
+
           </div>
         </section>
 
@@ -121,6 +125,14 @@ export function Vocabulary() {
             {signedIn && <Link to="/login" state={{ from: '/vocabulary' }} className="underline">Đăng nhập lại</Link>}
           </div>
         </div>}
+        {page?.lastRemoved && <div className="mt-4 flex flex-wrap items-center gap-4 rounded-xl bg-surface-container-low p-3 text-sm">
+          <span role="status">Đã xóa “{page.lastRemoved.term}”.</span>
+          <button type="button" disabled={busy} className="font-semibold text-primary underline"
+            onClick={async () => {
+              const word = page.lastRemoved!;
+              if (await library.restore(word.id)) setNotice({ scope, text: `Đã khôi phục “${word.term}”.` });
+            }}>Hoàn tác</button>
+        </div>}
         {notice?.scope === scope && <p role="status" className="mt-4 text-sm text-primary">{notice.text}</p>}
         {!dateError && loading && <p role="status" className="py-12 text-center text-on-surface-variant">Đang tải thư viện…</p>}
         {!dateError && !loading && page && <>
@@ -129,7 +141,7 @@ export function Vocabulary() {
             <span className="material-symbols-outlined text-4xl text-tertiary" aria-hidden>bookmark_border</span>
             <h2 className="mt-4 text-xl font-headline">{search || source || from || to ? 'Chưa tìm thấy từ phù hợp' : 'Bắt đầu từ một từ bạn muốn nhớ'}</h2>
             <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-on-surface-variant">
-              Mở bài đọc, bôi chọn từ hoặc cụm từ rồi bấm “Lưu từ đã chọn”. Bạn có thể ghi thêm nghĩa theo cách hiểu của mình.
+              Mở bài đọc, bôi chọn từ hoặc cụm từ rồi bấm nút lưu. Bạn có thể ghi thêm nghĩa theo cách hiểu của mình.
             </p>
             <Link to="/" className="mt-6 inline-block rounded-full border border-primary/30 px-5 py-2.5 text-sm text-primary">Chọn văn bản để đọc</Link>
           </div> : <ul className="space-y-4">
@@ -139,19 +151,18 @@ export function Vocabulary() {
                   <h2 className="break-words font-headline text-xl font-semibold text-primary">{entry.term}</h2>
                   <p className="mt-2 text-xs text-on-surface-variant break-words">Lưu {formatDate(entry.createdAt)} · {entry.sourceTitle || 'Không có tên nguồn'}</p>
                 </div>
-                <button type="button" disabled={busy} onClick={() => setConfirmation({ scope, entry })} aria-label={`Xóa từ ${entry.term}`}
+                <button type="button" disabled={busy} onClick={async () => {
+                    if (await library.remove(entry.id)) setNotice(undefined);
+                  }} aria-label={`Xóa từ ${entry.term}`}
                   className="shrink-0 rounded-full p-2 text-on-surface-variant hover:bg-error/10 hover:text-error">
                   <span className="material-symbols-outlined text-xl" aria-hidden>delete</span>
                 </button>
               </div>
-              <p className={`mt-4 whitespace-pre-wrap break-words leading-relaxed ${entry.meaning ? '' : 'text-sm italic text-on-surface-variant'}`}>
-                {entry.meaning || 'Chưa ghi nghĩa. Hãy đọc lại từ trong ngữ cảnh bên dưới.'}
-              </p>
-              {entry.example && <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed"><strong>Ví dụ:</strong> {entry.example}</p>}
-              <details className="mt-4 text-sm text-on-surface-variant">
-                <summary className="cursor-pointer text-primary">Xem ngữ cảnh đã lưu</summary>
-                <blockquote className="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-surface-container-low p-4 leading-loose">{entry.contextText}</blockquote>
-              </details>
+              <WordContext entry={entry} />
+              {entry.meaning && <p className="mt-3 whitespace-pre-wrap break-words leading-relaxed">{entry.meaning}</p>}
+              <WordNote entry={entry} busy={!!busy} save={library.edit}
+                onSaved={() => setNotice({ scope, text: `Đã lưu ghi chú cho “${entry.term}”.` })} />
+              {entry.example && <p className="mt-2 whitespace-pre-wrap break-words text-sm"><strong>Ví dụ:</strong> {entry.example}</p>}
             </li>)}
           </ul>}
           {page.total > page.limit && <nav aria-label="Phân trang thư viện" className="mt-7 flex items-center justify-center gap-5 text-sm">
@@ -160,11 +171,18 @@ export function Vocabulary() {
             <button disabled={page.skip + page.limit >= page.total || busy} onClick={() => setOffset({ scope, value: page.skip + page.limit })} className="rounded-full border px-4 py-2 disabled:opacity-40">Trang sau</button>
           </nav>}
         </>}
-        {confirmation?.scope === scope && <DeleteConfirmation entry={confirmation.entry} busy={!!busy} error={error}
+        <details className="mt-8 border-t pt-4 text-sm">
+          <summary className="cursor-pointer font-medium">Quản lý thư viện</summary>
+          <p className="mt-3">Bạn có thể hoàn tác lần xóa một từ gần nhất.</p>
+          <button type="button" disabled={!ready || busy || !canClear}
+            onClick={() => { library.refresh(); setConfirmation({ scope, total: page?.libraryTotal }); }}
+            className="mt-2 rounded-lg px-2 py-1 text-error hover:bg-error/5 disabled:opacity-40">Xóa toàn bộ thư viện</button>
+        </details>
+        {confirmation?.scope === scope && <DeleteConfirmation total={confirmation.total} signedIn={signedIn} busy={!!busy} error={error}
           onClose={() => setConfirmation(undefined)} onDelete={async () => {
-            if (await library.remove(confirmation.entry === 'all' ? undefined : confirmation.entry.id)) {
+            if (await library.remove(undefined, confirmation.total)) {
               setConfirmation(undefined);
-              setNotice({ scope, text: confirmation.entry === 'all' ? 'Đã xóa thư viện đang dùng.' : 'Đã xóa từ khỏi thư viện.' });
+              setNotice({ scope, text: 'Đã xóa thư viện đang dùng.' });
               resetPage();
             }
           }} />}
