@@ -14,6 +14,8 @@ from app.repositories.user_repository import UserRepository
 from app.services.display_settings_service import DisplaySettingsService
 from app.services.user_service import UserService
 from app.services.text_extraction_service import TextExtractionService
+from app.repositories.vocabulary_repository import VocabularyRepository
+from app.services.vocabulary_service import VocabularyService
 
 DbSession = Annotated[Session, Depends(get_db)]
 
@@ -71,3 +73,10 @@ def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def get_vocabulary_service(db: DbSession) -> VocabularyService:
+    return VocabularyService(VocabularyRepository(db))
+
+
+VocabularyServiceDep = Annotated[VocabularyService, Depends(get_vocabulary_service)]

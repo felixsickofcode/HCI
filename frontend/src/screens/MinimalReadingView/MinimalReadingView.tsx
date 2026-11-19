@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { QuickSaveWord } from '../../components/vocabulary/QuickSaveWord';
 import { Link, Navigate } from 'react-router-dom';
 import { AudioPlayerCapsule, ManuscriptCard, ReadingText } from '../../components/common';
 import { useDocument } from '../../context';
@@ -405,6 +406,10 @@ export const MinimalReadingView: React.FC = () => {
           </Link>
 
           <div className="flex items-center gap-2">
+            <Link to="/vocabulary" className="lg:hidden inline-flex items-center gap-1 text-xs text-primary" aria-label="Từ khó của tôi">
+              <span className="material-symbols-outlined" aria-hidden>bookmarks</span>
+              <span className="hidden sm:inline">Từ khó của tôi</span>
+            </Link>
             {hasOriginal && (
               <div className="flex rounded-xl border border-black/10 bg-white/75 p-1 text-xs font-label" role="group" aria-label="Chế độ xem tài liệu">
                 <button
@@ -596,6 +601,10 @@ export const MinimalReadingView: React.FC = () => {
                     </ol>
                   </nav>
                 )}
+
+                <div className="sticky top-3 z-20 mb-6 rounded-xl border border-current/10 p-3 text-sm shadow-sm" style={{ backgroundColor: theme.bg, color: theme.fg }}>
+                  <QuickSaveWord key={doc.id} doc={doc} body={bodyRef} />
+                </div>
 
                 {/* Nội dung bài đọc: theo cài đặt hiển thị */}
                 <div

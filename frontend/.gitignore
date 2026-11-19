@@ -49,6 +49,8 @@ Thumbs.db:encryptable
 [Dd]esktop.ini
 
 # Testing & Coverage
+test-results/
+playwright-report/
 coverage/
 *.lcov
 .nyc_output/

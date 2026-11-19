@@ -135,7 +135,7 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
           }`}
         >
           {items.map((item) => (
-            <li key={item.id} className="whitespace-pre-line">
+            <li key={item.id} data-segment-id={item.id} className="whitespace-pre-line">
               {renderInline(item, activeBoundary, staticHighlights[item.id])}
             </li>
           ))}
@@ -158,6 +158,7 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
         <HeadingTag
           key={block.id}
           id={`reader-${block.id}`}
+          data-segment-id={block.id}
           className={`font-semibold tracking-tight leading-snug whitespace-pre-line ${
             block.headingLevel === 3
               ? 'text-[1.15em] mt-8 mb-3'
@@ -175,6 +176,7 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
       rendered.push(
         <blockquote
           key={block.id}
+          data-segment-id={block.id}
           className="my-12 px-6 sm:px-8 py-5 bg-surface-container-low rounded-lg text-on-surface-variant italic text-lg sm:text-[1.3rem] leading-[1.9] whitespace-pre-line"
         >
           {body}
@@ -218,7 +220,7 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
     }
 
     rendered.push(
-      <p key={block.id} className="mb-8 last:mb-4 whitespace-pre-line">
+      <p key={block.id} data-segment-id={block.id} className="mb-8 last:mb-4 whitespace-pre-line">
         {body}
         {figureSlot && block.id === 'third-paragraph' ? (
           <span className="block">{figureSlot}</span>
