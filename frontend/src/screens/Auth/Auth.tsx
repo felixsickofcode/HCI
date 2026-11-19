@@ -120,7 +120,7 @@ export const Auth: React.FC<AuthProps> = ({ initialMode = 'login' }) => {
     setError('');
     setPassword('');
     setConfirmPassword('');
-    navigate(nextMode === 'login' ? '/login' : '/register', { replace: true });
+    navigate(nextMode === 'login' ? '/login' : '/register', { replace: true, state: location.state });
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {

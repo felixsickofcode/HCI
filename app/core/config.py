@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "gemini-3.1-flash-lite"
     LLM_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta"
     LLM_MAX_CONCURRENT: int = Field(2, ge=1)
+    GROQ_API_KEY: str | None = None
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
+    GROQ_TIMEOUT_SECONDS: float = 20
+    ASSIST_HOURLY_LIMIT: int = 20
+
 
     model_config = SettingsConfigDict(env_file=".env")
 

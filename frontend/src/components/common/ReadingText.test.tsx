@@ -57,16 +57,26 @@ describe('ReadingText', () => {
     expect(screen.getByRole('cell', { name: 'Cần giải thích' })).toBeInTheDocument();
   });
 
-  it('hiển thị snapshot, phóng to và cho mở văn bản thay thế', () => {
+  it('hiển thị snapshot, mở cửa sổ phóng to và cho mở văn bản thay thế', () => {
     render(<ReadingText blocks={[{
       id: 's1', type: 'snapshot', text: 'Nội dung bảng', pageNumber: 2,
       imageSrc: 'data:image/png;base64,AAAA', imageWidth: 1000, imageHeight: 500,
       snapshotKind: 'table',
     }]} activeBoundary={null} />);
-    const image = screen.getByRole('img');
-    expect(image).toHaveAttribute('src', 'data:image/png;base64,AAAA');
+    const inlineImage = screen.getByRole('img');
+    expect(inlineImage).toHaveAttribute('src', 'data:image/png;base64,AAAA');
+
     fireEvent.click(screen.getByRole('button', { name: 'Phóng to bảng · trang 2' }));
-    expect(image).toHaveStyle({ width: '150%' });
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toBeInTheDocument();
+    const lightboxImage = dialog.querySelector('img');
+    expect(lightboxImage).toHaveStyle({ width: '100%' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Phóng ảnh lớn hơn' }));
+    expect(lightboxImage).toHaveStyle({ width: '150%' });
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByText('Văn bản để đọc và sao chép').closest('details')).toBeInTheDocument();
   });
 });

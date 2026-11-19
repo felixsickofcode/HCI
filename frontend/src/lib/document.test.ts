@@ -3,11 +3,7 @@ import {
   blocksToText,
   buildFileDocument,
   buildPastedDocument,
-  mergeBlockWithNext,
-  moveBlock,
   parseTextBlocks,
-  splitBlock,
-  updateBlock,
 } from './document';
 
 const file = new File([''], 'tai-lieu.pdf', { type: 'application/pdf' });
@@ -70,36 +66,6 @@ describe('parseTextBlocks', () => {
   });
 });
 
-describe('block editing', () => {
-  const blocks = parseTextBlocks('# Tiêu đề\n\nĐoạn một.\n\nĐoạn hai.');
-
-  it('tách khối tại vị trí con trỏ, giữ id khối gốc và cấp id mới cho khối tạo ra', () => {
-    const paragraph = blocks[1];
-    const result = splitBlock(blocks, paragraph.id, 4);
-
-    expect(result).toHaveLength(blocks.length + 1);
-    expect(result[1]).toMatchObject({ id: paragraph.id, text: 'Đoạn' });
-    expect(result[2].id).not.toBe(paragraph.id);
-    expect(result[2].text).toBe('một.');
-  });
-
-  it('gộp khối với khối kế và đổi thứ tự', () => {
-    const merged = mergeBlockWithNext(blocks, blocks[1].id);
-    expect(merged).toHaveLength(blocks.length - 1);
-    expect(merged[1].text).toContain('một.');
-    expect(merged[1].text).toContain('Đoạn hai.');
-
-    const moved = moveBlock(blocks, blocks[2].id, 'up');
-    expect(moved[1].text).toBe('Đoạn hai.');
-    expect(moved[2].text).toBe('Đoạn một.');
-  });
-
-  it('cập nhật loại và nội dung khối', () => {
-    const updated = updateBlock(blocks, blocks[1].id, { type: 'quote', text: 'Mới' });
-    expect(updated[1]).toMatchObject({ type: 'quote', text: 'Mới' });
-  });
-});
-
 describe('build documents', () => {
   it('giữ snapshot không có text và chỉ nhận PNG nội tuyến', () => {
     const result = buildFileDocument(file, {
@@ -107,16 +73,13 @@ describe('build documents', () => {
       blocks: [{ id: 'image-1', type: 'snapshot', text: '', imageSrc: 'data:image/png;base64,AAAA', snapshotKind: 'image' }],
     });
     expect(result.blocks[0].imageSrc).toBe('data:image/png;base64,AAAA');
-    expect(result.sourceBlocks[0].snapshotKind).toBe('image');
+    expect(result.blocks[0].snapshotKind).toBe('image');
   });
-  it('tạo sourceText bất biến và sourceBlocks từ văn bản dán', () => {
+  it('tạo document từ văn bản dán', () => {
     const document = buildPastedDocument('Đoạn một.\n\nĐoạn hai.');
     expect(document.text).toBe('Đoạn một.\n\nĐoạn hai.');
-    expect(document.sourceText).toBe('Đoạn một.\n\nĐoạn hai.');
-    expect(document.sourceBlocks).not.toBe(document.blocks);
-
-    document.blocks[0].text = 'Đã sửa';
-    expect(document.sourceBlocks[0].text).toBe('Đoạn một.');
+    expect(document.blocks).toHaveLength(2);
+    expect(document.source).toBe('paste');
   });
 
   it('dùng blocks từ API và fallback an toàn khi API cũ thiếu blocks', () => {
