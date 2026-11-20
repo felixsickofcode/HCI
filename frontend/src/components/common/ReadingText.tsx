@@ -90,7 +90,7 @@ function renderInline(
         <span
           key={tokenIndex}
           aria-current="true"
-          className="bg-tertiary-fixed text-on-tertiary-fixed rounded-sm px-0.5 outline outline-1 outline-tertiary focus-visible:outline-2"
+          className="bg-tertiary-fixed text-on-tertiary-fixed rounded-sm outline outline-1 outline-tertiary focus-visible:outline-2"
           {...selectionProps}
         >
           {token.text}

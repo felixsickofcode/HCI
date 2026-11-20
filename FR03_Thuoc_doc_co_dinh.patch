@@ -1,0 +1,671 @@
+diff --git a/app/schemas/display_settings.py b/app/schemas/display_settings.py
+index 5fb3dc2..6b2d17f 100644
+--- a/app/schemas/display_settings.py
++++ b/app/schemas/display_settings.py
+@@ -9,7 +9,7 @@ if TYPE_CHECKING:
+     from app.models.display_settings import UserDisplaySettings
+ 
+ # Tăng số này khi đổi cấu trúc cài đặt (xem mục 1.3 của tài liệu thiết kế FR-03).
+-DISPLAY_SETTINGS_VERSION = 1
++DISPLAY_SETTINGS_VERSION = 2
+ 
+ 
+ # class CamelModel(BaseModel):
+@@ -21,7 +21,8 @@ DISPLAY_SETTINGS_VERSION = 1
+ class FocusSettings(CamelModel):
+     enabled: bool = False
+     dim_opacity: float = Field(default=0.6, ge=0.5, le=0.8)
+-    follow_pointer: bool = False
++    follow_pointer: bool = False  # Accepted for previously saved settings.
++    line_count: Literal[1, 2, 3] = 1
+ 
+ 
+ class DisplaySettings(CamelModel):
+diff --git a/docs/handoff.md b/docs/handoff.md
+index 837a2e5..72e5b59 100644
+--- a/docs/handoff.md
++++ b/docs/handoff.md
+@@ -4,6 +4,7 @@ Cập nhật hiện hành: **2026-11-20**, múi giờ Asia/Bangkok. Agent đọc
+ 
+ ## Trạng thái hiện hành và ý định người dùng
+ 
++- **FR-03, thước đọc cố định (2026-11-20).** Trong **Hỗ trợ đọc**, người dùng chọn cửa sổ 1, 2 hoặc 3 dòng. Bấm ↑/↓, Dòng trước/sau, lăn chuột hoặc vuốt trong văn bản để dịch một dòng hiển thị. `FixedReadingRuler` đo dòng ngay trên các token của `ReadingText` để tính cả dòng tự ngắt, tiêu đề, trích dẫn và khoảng cách đoạn. Mục `focus.lineCount` được lưu ở trình duyệt và trong JSONB của tài khoản (schema v2, dữ liệu cũ mặc định 1). Đã kiểm tra PNG và PDF scan tiếng Việt qua Tesseract và giao diện tải tệp, chuyển Bản gốc/Trang đọc, chọn từ và đổi bề rộng/cỡ chữ. Pytest 129, Vitest 42 và Playwright FR-03 3 test đạt. Chạy lại kiểm thử giao diện từ `frontend/` bằng `npx playwright test e2e/fr03-ruler.spec.ts`.
+ - **Bàn giao remote 2026-11-20:** người dùng yêu cầu push cả `origin/feature/hong-quan` và `origin/main`. Đã fetch lại cả hai nhánh, xác nhận cả hai là tổ tiên của HEAD sau merge `f3896d3`, có thể cập nhật fast-forward không force. Phiên này đóng gói toàn bộ code/test/docs FR05–FR07, parser/benchmark và các thay đổi giao diện đã bàn giao; không đưa `.env`, PDF cá nhân, output QA/cache vào commit. Đích hai nhánh remote là cùng commit bàn giao (xem `git log -1`/remote refs để lấy hash). Kiểm tra bản kết hợp trước bàn giao: backend **126 passed**, frontend **42 passed**, lint/build pass; không chạy lại vì không đổi code sau kiểm tra. Các mục “chưa push” phía dưới ghi trạng thái lịch sử tại thời điểm thực hiện.
+ - **Merge main 2026-11-20:** theo yêu cầu người dùng, fetch `origin/main` tại `aa74e75` và merge vào `feature/hong-quan` bằng commit local `f3896d3`. Main mang FR-08 extractive summary. Xung đột merge tại deps/router được xử lý giữ cả vocabulary và summary; khôi phục thay đổi chưa commit có thêm xung đột deps/router/config/exceptions, đã giữ cả FR-06 Groq và FR-08. Toàn bộ 31 thay đổi tracked cùng 46 file untracked đã đối chiếu với stash: không thiếu file; chỉ bốn file tích hợp nói trên khác nội dung có chủ đích. Các thay đổi cũ vẫn chưa staged/chưa commit. Giữ stash `pre-main-merge-2026-11-20` (`119708b`) làm dự phòng. Kiểm tra sau merge: backend **126 passed** trên `_test`, frontend **42 passed**, lint/build pass, không còn unmerged paths. Chưa push.
+ - **FR-05 đọc phần chọn 2026-11-20:** popup chọn chữ có nút **Đọc phần đã chọn**, dùng được cho khách và tài khoản. Bôi chọn một phần hoặc toàn bộ chữ trong một block paragraph/heading/list/quote rồi bấm nút để đọc riêng phần đó; đọc xong dừng, không chuyển sang đoạn kế. Dùng lại giọng/tốc độ và tạm dừng/tiếp tục/dừng của `AudioPlayerCapsule`; tiến độ hiển thị “Phần đã chọn”. `ReadingSegment.sourceOffset` ánh xạ offset UTF-16 về block gốc để highlight/restart khi đổi giọng/tốc độ đúng chỗ. Generation của `SpeechController` bỏ sự kiện cũ sau khi chuyển bài đọc/vùng chọn hoặc dừng. Bấm phát ở player sau khi kết thúc vẫn đọc toàn bài. Chưa hỗ trợ bôi chọn xuyên nhiều block; chưa nghe thử âm thanh/QA browser thật. Frontend **42 passed**, lint/build (gồm typecheck) pass. Không cần DB/API mới.
+diff --git a/frontend/e2e/fr03-ruler.spec.ts b/frontend/e2e/fr03-ruler.spec.ts
+new file mode 100644
+index 0000000..eff9a1c
+--- /dev/null
++++ b/frontend/e2e/fr03-ruler.spec.ts
+@@ -0,0 +1,122 @@
++import { expect, test, type Page } from '@playwright/test';
++
++const text = [
++  '# Một buổi sáng',
++  'Mỗi sáng, em mở cửa sổ để nhìn ra vườn. '.repeat(7),
++  '- Một dòng trong danh sách.',
++  '> Mỗi người có một nhịp đọc riêng.',
++  'Đây là dòng cuối.',
++].join('\n\n');
++
++// Use the text fragments in the browser, independently of the ruler's line index.
++async function windowLines(page: Page) {
++  return page.locator('[data-reading-ruler]').evaluate(band => {
++    const window = band.getBoundingClientRect();
++    const positions: number[] = [];
++    for (const token of document.querySelectorAll('[data-token-start]')) {
++      for (const rect of token.getClientRects()) {
++        const center = rect.top + rect.height / 2;
++        if (!positions.some(y => Math.abs(y - center) < 1)) positions.push(center);
++      }
++    }
++    return {
++      top: window.top,
++      rows: positions.map((y, i) => y > window.top && y < window.bottom ? i : -1).filter(i => i >= 0),
++      total: positions.length,
++    };
++  });
++}
++
++for (const width of [1366, 390]) {
++  test(`fixed ruler advances one rendered line at a time (${width}px)`, async ({ page, context }) => {
++    await page.setViewportSize({ width, height: 850 });
++    await page.goto('/');
++    await page.getByRole('textbox', { name: 'Văn bản cần đọc' }).fill(text);
++    await page.getByRole('button', { name: /Đọc ngay/ }).click();
++    if (width === 390) await page.getByRole('button', { name: 'Mở cài đặt hiển thị' }).click();
++    await page.getByRole('button', { name: /Hỗ trợ đọc/ }).click();
++    const toggle = page.getByRole('switch', { name: 'Thước đọc cố định' });
++    await toggle.click();
++    await expect.poll(async () => (await windowLines(page)).rows).toEqual([0]);
++    for (const count of [2, 3]) {
++      await page.getByRole('button', { name: count + ' dòng', exact: true }).click();
++      await expect.poll(async () => (await windowLines(page)).rows).toEqual(count === 2 ? [0, 1] : [0, 1, 2]);
++    }
++    if (width === 390) await page.getByRole('button', { name: 'Đóng', exact: true }).click();
++    const next = page.getByRole('button', { name: '↓ Dòng sau' });
++    const prev = page.getByRole('button', { name: '↑ Dòng trước' });
++    const first = await windowLines(page);
++    await expect(prev).toBeDisabled();
++    await next.click();
++    await expect.poll(() => windowLines(page)).toEqual({ ...first, rows: [1, 2, 3] });
++    const column = await page.locator('[data-segment-id]').first().boundingBox();
++    const x = column!.x + 20;
++    await page.mouse.move(x, first.top + 10);
++    expect(await windowLines(page)).toEqual({ ...first, rows: [1, 2, 3] });
++    if (width === 390) {
++      const touch = await context.newCDPSession(page);
++      const touchAt = (y: number) => [{ x, y }];
++      await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touchAt(first.top + 100) });
++      for (const offset of [80, 50, 25]) {
++        await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: touchAt(first.top + offset) });
++      }
++      await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
++      await touch.detach();
++    } else {
++      await page.mouse.wheel(0, 120);
++    }
++    await expect.poll(async () => (await windowLines(page)).rows).toEqual([2, 3, 4]);
++    await prev.click();
++    await page.keyboard.press('ArrowDown');
++    await expect.poll(() => windowLines(page)).toEqual({ ...first, rows: [2, 3, 4] });
++    await page.keyboard.press('ArrowUp');
++    await expect.poll(async () => (await windowLines(page)).rows).toEqual([1, 2, 3]);
++    for (let row = 2; row <= first.total - 3; row++) {
++      await next.click();
++      expect(await windowLines(page)).toEqual({ ...first, rows: [row, row + 1, row + 2] });
++    }
++    await expect(next).toBeDisabled();
++    await prev.click();
++    await expect(next).toBeEnabled();
++  });
++}
++
++test('preserves the current word after reflow and leaves word selection usable', async ({ page }) => {
++  await page.setViewportSize({ width: 1366, height: 900 });
++  await page.addInitScript(() => {
++    localStorage.setItem('display-settings', JSON.stringify({ focus: { enabled: true, followPointer: true } }));
++  });
++  await page.goto('/');
++  await page.getByRole('textbox', { name: 'Văn bản cần đọc' }).fill(text);
++  await page.getByRole('button', { name: /Đọc ngay/ }).click();
++  await expect.poll(async () => (await windowLines(page)).rows).toEqual([0]);
++  const next = page.getByRole('button', { name: '↓ Dòng sau' });
++  await next.click();
++  await next.click();
++  const anchoredWord = await page.locator('[data-reading-ruler]').evaluate(band => {
++    const window = band.getBoundingClientRect();
++    const token = [...document.querySelectorAll<HTMLElement>('[data-token-start]')].find(item => {
++      const rect = item.getBoundingClientRect();
++      return rect.top + rect.height / 2 > window.top && rect.top + rect.height / 2 < window.bottom;
++    })!;
++    return { segment: token.closest<HTMLElement>('[data-segment-id]')!.dataset.segmentId, start: token.dataset.tokenStart };
++  });
++  const word = page.locator(`[data-segment-id="${anchoredWord.segment}"] [data-token-start="${anchoredWord.start}"]`);
++  await page.getByRole('button', { name: 'A+', exact: true }).click();
++  await page.setViewportSize({ width: 1170, height: 800 });
++  await expect.poll(() => word.evaluate(token => {
++    const band = document.querySelector('[data-reading-ruler]')!.getBoundingClientRect();
++    const { top, height } = token.getBoundingClientRect();
++    return top + height / 2 > band.top && top + height / 2 < band.bottom;
++  })).toBe(true);
++  await word.click();
++  await expect(page.getByRole('dialog', { name: /Giải nghĩa/ })).toBeVisible();
++  const before = await windowLines(page);
++  await page.keyboard.press('ArrowDown');
++  expect(await windowLines(page)).toEqual(before);
++  await page.keyboard.press('Escape');
++  await expect(page.getByRole('dialog')).toHaveCount(0);
++  await page.getByRole('button', { name: /Hỗ trợ đọc/ }).click();
++  await page.getByRole('switch', { name: 'Thước đọc cố định' }).click();
++  await expect(page.locator('[data-reading-ruler]')).toHaveCount(0);
++});
+diff --git a/frontend/src/components/common/ReadingText.tsx b/frontend/src/components/common/ReadingText.tsx
+index 4b912e4..9ec90ec 100644
+--- a/frontend/src/components/common/ReadingText.tsx
++++ b/frontend/src/components/common/ReadingText.tsx
+@@ -90,7 +90,7 @@ function renderInline(
+         <span
+           key={tokenIndex}
+           aria-current="true"
+-          className="bg-tertiary-fixed text-on-tertiary-fixed rounded-sm px-0.5 outline outline-1 outline-tertiary focus-visible:outline-2"
++          className="bg-tertiary-fixed text-on-tertiary-fixed rounded-sm outline outline-1 outline-tertiary focus-visible:outline-2"
+           {...selectionProps}
+         >
+           {token.text}
+diff --git a/frontend/src/context/DisplaySettingsProvider.tsx b/frontend/src/context/DisplaySettingsProvider.tsx
+index fed1c6d..8f31d4f 100644
+--- a/frontend/src/context/DisplaySettingsProvider.tsx
++++ b/frontend/src/context/DisplaySettingsProvider.tsx
+@@ -26,7 +26,7 @@ export const DEFAULTS: DisplaySettings = {
+   letterSpacing: 0.02,
+   theme: 'cream',
+   columnWidth: 60,
+-  focus: { enabled: false, dimOpacity: 0.6, followPointer: false },
++  focus: { enabled: false, dimOpacity: 0.6, followPointer: false, lineCount: 1 },
+ };
+ 
+ // Không dùng #FFFFFF. Tương phản chữ/nền đều > 12:1 (AAA).
+@@ -54,6 +54,11 @@ function sanitize(raw?: Partial<DisplaySettings> | null): DisplaySettings {
+   const r = { ...DEFAULTS, ...raw, focus: { ...DEFAULTS.focus, ...raw?.focus } };
+   return {
+     ...r,
++    focus: {
++      ...r.focus,
++      lineCount: r.focus.lineCount === 2 || r.focus.lineCount === 3 ? r.focus.lineCount : 1,
++      dimOpacity: clamp(r.focus.dimOpacity, [0.5, 0.8]),
++    },
+     fontFamily: r.fontFamily in FONT_STACKS ? r.fontFamily : DEFAULTS.fontFamily,
+     theme: r.theme in THEMES ? r.theme : DEFAULTS.theme,
+     fontSize: Math.round(clamp(r.fontSize, LIMITS.fontSize)),
+diff --git a/frontend/src/lib/api.ts b/frontend/src/lib/api.ts
+index f19869f..9cc051e 100644
+--- a/frontend/src/lib/api.ts
++++ b/frontend/src/lib/api.ts
+@@ -105,6 +105,7 @@ export interface FocusSettings {
+   enabled: boolean;
+   dimOpacity: number;
+   followPointer: boolean;
++  lineCount: 1 | 2 | 3;
+ }
+ 
+ export interface DisplaySettings {
+diff --git a/frontend/src/screens/MinimalReadingView/FixedReadingRuler.tsx b/frontend/src/screens/MinimalReadingView/FixedReadingRuler.tsx
+new file mode 100644
+index 0000000..cd80656
+--- /dev/null
++++ b/frontend/src/screens/MinimalReadingView/FixedReadingRuler.tsx
+@@ -0,0 +1,213 @@
++import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
++import type { FocusSettings } from '../../lib/api';
++
++interface VisualLine {
++  top: number;
++  bottom: number;
++  firstToken: HTMLElement;
++  fragment: number;
++}
++
++function measureLines(body: HTMLElement): VisualLine[] {
++  const origin = body.getBoundingClientRect().top;
++  const lines: VisualLine[] = [];
++  for (const block of body.querySelectorAll<HTMLElement>('[data-segment-id]')) {
++    const height = parseFloat(getComputedStyle(block).lineHeight);
++    for (const token of block.querySelectorAll<HTMLElement>('[data-token-start]')) {
++      // A long token can wrap across several lines. Spaces and OCR newlines have no stop of their own.
++      Array.from(token.getClientRects()).forEach((rect, fragment) => {
++        if (!rect.width || !rect.height) return;
++        const top = rect.top - origin + (rect.height - height) / 2;
++        if (lines.length && Math.abs(lines[lines.length - 1].top - top) < 1) return;
++        lines.push({ top, bottom: top + height, firstToken: token, fragment });
++      });
++    }
++  }
++  return lines;
++}
++
++function nearestLine(lines: VisualLine[], y: number) {
++  let low = 0;
++  let high = lines.length - 1;
++  while (low < high) {
++    const mid = Math.floor((low + high) / 2);
++    if (lines[mid].top < y) low = mid + 1;
++    else high = mid;
++  }
++  return low > 0 && y - lines[low - 1].top < lines[low].top - y ? low - 1 : low;
++}
++
++interface Props {
++  mainRef: RefObject<HTMLElement | null>;
++  bodyRef: RefObject<HTMLDivElement | null>;
++  lineCount: FocusSettings['lineCount'];
++  background: string;
++  opacity: number;
++}
++
++export function FixedReadingRuler({ mainRef, bodyRef, lineCount, background, opacity }: Props) {
++  const maskRef = useRef<HTMLDivElement>(null);
++  const bandRef = useRef<HTMLDivElement>(null);
++  const stepRef = useRef<(direction: number) => boolean>(() => false);
++  const [limits, setLimits] = useState({ first: true, last: false });
++
++  useLayoutEffect(() => {
++    const main = mainRef.current;
++    const body = bodyRef.current;
++    const mask = maskRef.current;
++    const band = bandRef.current;
++    if (!main || !body || !mask || !band) return;
++
++    let lines: VisualLine[] = [];
++    let current = 0;
++    let aligned = false;
++    const anchor = () => Math.round(main.clientHeight * 0.3);
++    const bodyOffset = () => body.getBoundingClientRect().top - main.getBoundingClientRect().top;
++    const lastStart = () => Math.max(0, lines.length - lineCount);
++
++    const paint = () => {
++      mask.hidden = !lines.length;
++      if (!lines.length) return;
++      const viewport = main.getBoundingClientRect();
++      const content = body.getBoundingClientRect();
++      const y = anchor() + viewport.top - content.top;
++      current = Math.min(nearestLine(lines, y), lastStart());
++      const first = lines[current];
++      const last = lines[Math.min(current + lineCount - 1, lines.length - 1)];
++      aligned = Math.abs(first.top - y) <= 1;
++      const inset = [content.top - viewport.top, viewport.right - content.right,
++        viewport.bottom - content.bottom, content.left - viewport.left];
++      mask.style.clipPath = 'inset(' + inset.map(value => Math.max(0, value) + 'px').join(' ') + ')';
++      band.style.top = anchor() + 'px';
++      band.style.height = (last.bottom - first.top) + 'px';
++      const atFirst = y <= lines[0].top + 1;
++      const atLast = y >= lines[lastStart()].top - 1;
++      setLimits(old => old.first === atFirst && old.last === atLast ? old : { first: atFirst, last: atLast });
++    };
++
++    const goTo = (index: number) => {
++      main.scrollTop += bodyOffset() + lines[index].top - anchor();
++      paint();
++    };
++
++    const measure = () => {
++      const previous = aligned ? lines[current] : undefined;
++      const initial = !lines.length;
++      lines = measureLines(body);
++      if (lines.length && (initial || previous)) {
++        // Keep the same word under the ruler when a font loads or the column reflows.
++        const rects = previous?.firstToken.getClientRects();
++        const rect = rects?.[Math.min(previous?.fragment ?? 0, rects.length - 1)];
++        const y = rect ? rect.top + rect.height / 2 - body.getBoundingClientRect().top : anchor() - bodyOffset();
++        const index = rect ? lines.findIndex(line => line.bottom > y) : nearestLine(lines, y);
++        goTo(Math.min(index < 0 ? lines.length - 1 : index, lastStart()));
++      } else paint();
++    };
++
++    const step = (direction: number) => {
++      if (!lines.length) return false;
++      const y = anchor() - bodyOffset();
++      let index = nearestLine(lines, y);
++      if ((lines[index].top - y) * direction <= 1) index += direction;
++      if (direction < 0 && y > lines[lastStart()].top + 1) index = lastStart();
++      if (index < 0 || index > lastStart()) return false;
++      goTo(index);
++      return true;
++    };
++    stepRef.current = step;
++
++    const onKey = (event: KeyboardEvent) => {
++      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
++      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
++      const target = event.target;
++      if (!(target instanceof HTMLElement) || document.querySelector('[role="dialog"]')) return;
++      const rulerControl = target.closest('[data-ruler-control], [data-ruler-switch]');
++      if (!rulerControl && target !== document.body &&
++          (!main.contains(target) || target.closest('input, select, textarea, button, a, [contenteditable="true"], [role="region"]'))) return;
++      if (step(event.key === 'ArrowDown' ? 1 : -1) || aligned) event.preventDefault();
++    };
++
++    // Retain native zoom, selections, horizontal pans, and scrolling outside the text.
++    const inText = (target: EventTarget | null) =>
++      target instanceof Element && body.contains(target) && !target.closest('figure, table, button, a, [role="dialog"]');
++    const canStep = (dy: number) => {
++      const y = anchor() - bodyOffset();
++      return lines.length > 0 && (dy > 0 ? y < lines[lastStart()].top - 1 : y > lines[0].top + 1);
++    };
++    let wheelDelta = 0;
++    let lastWheel = 0;
++    const onWheel = (event: WheelEvent) => {
++      if (event.ctrlKey || event.shiftKey || event.deltaY === 0 || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
++      if (!inText(event.target)) return;
++      const dy = event.deltaY;
++      if (!canStep(dy)) return;
++      if (!event.cancelable) return;
++      event.preventDefault();
++      if (event.timeStamp - lastWheel > 160 || Math.sign(wheelDelta) !== Math.sign(dy)) wheelDelta = 0;
++      wheelDelta += dy;
++      lastWheel = event.timeStamp;
++      if (event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL || Math.abs(wheelDelta) >= 32) {
++        step(Math.sign(dy));
++        wheelDelta = 0;
++      }
++    };
++
++    let touch: Touch | undefined;
++    let swiped = false;
++    const onTouchStart = (event: TouchEvent) => {
++      touch = event.touches.length === 1 && inText(event.target) ? event.touches[0] : undefined;
++      swiped = false;
++    };
++    const onTouchMove = (event: TouchEvent) => {
++      if (!touch || event.touches.length !== 1 || !event.cancelable || window.getSelection()?.type === 'Range') return;
++      const dy = touch.clientY - event.touches[0].clientY;
++      const dx = touch.clientX - event.touches[0].clientX;
++      if (Math.abs(dx) > Math.abs(dy) || (!swiped && !canStep(dy))) return;
++      event.preventDefault();
++      if (!swiped && Math.abs(dy) >= 24) swiped = step(Math.sign(dy));
++    };
++
++    measure();
++    const observer = new ResizeObserver(measure);
++    observer.observe(main);
++    observer.observe(body);
++    // A font or spacing change can move words without changing the block's total height.
++    const styleObserver = new MutationObserver(measure);
++    styleObserver.observe(body, { attributes: true, attributeFilter: ['style'] });
++    document.fonts.addEventListener('loadingdone', measure);
++    main.addEventListener('scroll', paint);
++    body.addEventListener('touchstart', onTouchStart, { passive: true });
++    body.addEventListener('touchmove', onTouchMove, { passive: false });
++    main.addEventListener('wheel', onWheel, { passive: false });
++    window.addEventListener('keydown', onKey);
++    return () => {
++      observer.disconnect();
++      styleObserver.disconnect();
++      document.fonts.removeEventListener('loadingdone', measure);
++      main.removeEventListener('scroll', paint);
++      body.removeEventListener('touchstart', onTouchStart);
++      body.removeEventListener('touchmove', onTouchMove);
++      main.removeEventListener('wheel', onWheel);
++      window.removeEventListener('keydown', onKey);
++      stepRef.current = () => false;
++    };
++  }, [mainRef, bodyRef, lineCount]);
++
++  return (
++    <>
++      <div ref={maskRef} aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
++        <div ref={bandRef} data-reading-ruler="" className="absolute inset-x-0 border-y border-current/30"
++          style={{ boxShadow: '0 0 0 100vmax ' + background, opacity }}
++        />
++      </div>
++      <div role="group" aria-label="Chuyển dòng" data-ruler-control=""
++        className="absolute bottom-3 right-3 z-20 flex gap-1 rounded-xl border border-current/20 p-1 shadow-sm"
++        style={{ backgroundColor: background }}>
++        <button type="button" disabled={limits.first} onClick={() => stepRef.current(-1)}
++          className="min-h-10 rounded-lg px-3 text-sm focus-visible:outline disabled:opacity-40">↑ Dòng trước</button>
++        <button type="button" disabled={limits.last} onClick={() => stepRef.current(1)}
++          className="min-h-10 rounded-lg px-3 text-sm focus-visible:outline disabled:opacity-40">↓ Dòng sau</button>
++      </div>
++    </>
++  );
++}
+diff --git a/frontend/src/screens/MinimalReadingView/MinimalReadingView.tsx b/frontend/src/screens/MinimalReadingView/MinimalReadingView.tsx
+index c20c6a6..94bded9 100644
+--- a/frontend/src/screens/MinimalReadingView/MinimalReadingView.tsx
++++ b/frontend/src/screens/MinimalReadingView/MinimalReadingView.tsx
+@@ -19,6 +19,7 @@ import {
+   SpeechController,
+ } from '../../lib/speech';
+ import type { BoundaryReliability, ReadingSegment, SpeechBoundaryEvent, SpeechStatus } from '../../lib/speech';
++import { FixedReadingRuler } from './FixedReadingRuler';
+ import { OriginalDocumentView } from './OriginalDocumentView';
+ import { useWordExplanation } from '../../hooks/useWordExplanation';
+ import { useSaveSelectedWord } from '../../hooks/useSaveSelectedWord';
+@@ -199,35 +200,8 @@ export const MinimalReadingView: React.FC = () => {
+     main?.addEventListener('scroll', clearWord);
+     return () => main?.removeEventListener('scroll', clearWord);
+   }, [clearWord]);
+-  const [rulerY, setRulerY] = useState(0);
+-  const lh = s.fontSize * s.lineHeight;
+-
+-  const clampY = (y: number) => {
+-    const h = bodyRef.current?.getBoundingClientRect().height ?? 0;
+-    return Math.min(Math.max(0, y), Math.max(0, h - lh));
+-  };
+-
+-  const onBodyMouseMove = (e: React.MouseEvent) => {
+-    if (!s.focus.enabled || !bodyRef.current) return;
+-    const top = bodyRef.current.getBoundingClientRect().top;
+-    setRulerY(clampY(e.clientY - top - lh / 2));
+-  };
+-
+-  useEffect(() => {
+-    if (!s.focus.enabled) return;
+-    const onKey = (e: KeyboardEvent) => {
+-      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+-      const tag = (e.target as HTMLElement).tagName;
+-      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(tag) || (e.target as HTMLElement).closest('[role="dialog"]')) return;
+-      e.preventDefault();
+-      const dir = e.key === 'ArrowDown' ? 1 : -1;
+-      setRulerY((y) => clampY(y + dir * lh));
+-      mainRef.current?.scrollBy({ top: dir * lh });
+-    };
+-    window.addEventListener('keydown', onKey);
+-    return () => window.removeEventListener('keydown', onKey);
+-    // eslint-disable-next-line react-hooks/exhaustive-deps
+-  }, [s.focus.enabled, lh]);
++  const rulerEnabled = s.focus.enabled && viewMode === 'reading'
++    && blocks.some((block) => ['paragraph', 'heading', 'quote', 'listItem'].includes(block.type) && block.text.trim());
+ 
+   const settingsPanel = (
+     <aside className="flex flex-col w-[340px] max-w-[92vw] h-full rounded-3xl shadow-sm border border-black/5 bg-[#FFFDF8] overflow-hidden">
+@@ -331,19 +305,34 @@ export const MinimalReadingView: React.FC = () => {
+             <h3 className="text-xs font-label font-bold uppercase tracking-wide text-on-surface-variant">Tính năng hỗ trợ</h3>
+ 
+             <button
+-              type="button" role="switch" aria-checked={s.focus.enabled}
++              type="button" role="switch" aria-label="Thước đọc cố định" aria-checked={s.focus.enabled} data-ruler-switch
+               onClick={() => update({ focus: { enabled: !s.focus.enabled } })}
+               className="w-full flex items-center gap-3 px-3 py-3 rounded-xl border border-black/10 hover:border-black/20 text-left"
+             >
+               <span className="material-symbols-outlined text-[18px] text-on-surface-variant shrink-0">view_day</span>
+               <span className="flex-1 min-w-0">
+-                <span className="block text-sm font-medium text-on-surface">Thước đọc bám dòng</span>
+-                <span className="block text-[11px] text-on-surface-variant mt-0.5">Làm mờ 70% các dòng xung quanh, dùng chuột hoặc phím ↑/↓.</span>
++                <span className="block text-sm font-medium text-on-surface">Thước đọc cố định</span>
++                <span className="block text-[11px] text-on-surface-variant mt-0.5">Dùng phím ↑/↓, lăn chuột hoặc vuốt trên văn bản để chuyển từng dòng.</span>
+               </span>
+               <span className={`relative shrink-0 w-10 h-6 rounded-full transition-colors ${s.focus.enabled ? 'bg-primary' : 'bg-black/15'}`}>
+                 <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${s.focus.enabled ? 'left-[18px]' : 'left-0.5'}`} />
+               </span>
+             </button>
++            {s.focus.enabled && (
++              <fieldset className="space-y-2" data-ruler-control>
++                <legend className="text-sm font-medium">Số dòng trong thước</legend>
++                <div className="flex gap-2">
++                  {([1, 2, 3] as const).map((count) => (
++                    <button key={count} type="button" aria-pressed={s.focus.lineCount === count}
++                      onClick={() => update({ focus: { lineCount: count } })}
++                      className="flex-1 rounded-lg border border-black/15 py-2 text-sm aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:font-semibold"
++                    >
++                      {count} dòng
++                    </button>
++                  ))}
++                </div>
++              </fieldset>
++            )}
+           </section>
+         )}
+ 
+@@ -502,7 +491,8 @@ export const MinimalReadingView: React.FC = () => {
+ 
+         {/* Hàng chứa vùng đọc (cuộn riêng) + panel desktop (cố định) */}
+         <div className="flex-1 min-h-0 flex overflow-hidden">
+-          <main ref={mainRef} className="flex-1 min-w-0 overflow-y-auto relative">
++          <div className="relative min-w-0 flex-1">
++          <main ref={mainRef} className="relative h-full overflow-y-auto" style={rulerEnabled ? { containerType: 'size', overflowAnchor: 'none' } : undefined}>
+             <div className="fixed inset-0 pointer-events-none -z-10 flex items-center justify-center">
+               <div className="w-[620px] h-[620px] rounded-full bg-tertiary-fixed/20 blur-[130px] opacity-70" />
+             </div>
+@@ -525,6 +515,7 @@ export const MinimalReadingView: React.FC = () => {
+                     fontSize: `${s.fontSize}px`,
+                   }}
+                 >
++                <div style={rulerEnabled ? { minHeight: '30cqh' } : undefined}>
+                 {/* Tiêu đề và thông tin bài */}
+                 <div className="mb-10 text-left">
+                   <div className="inline-block text-tertiary font-label text-xs tracking-[0.25em] uppercase font-semibold mb-3.5 bg-tertiary-fixed/30 px-3 py-1 rounded-full select-none">
+@@ -621,9 +612,9 @@ export const MinimalReadingView: React.FC = () => {
+                 <p className="mb-3 text-xs font-label text-on-surface-variant">
+                   Bôi chọn nội dung trong một đoạn để nghe phần đó. Chọn từ hoặc cụm từ để giải nghĩa hoặc lưu từ. Bàn phím: Tab tới đoạn, Enter vào từ, dùng ←/→ rồi Enter để chọn.
+                 </p>
++                </div>
+                 <div
+                   ref={bodyRef}
+-                  onMouseMove={onBodyMouseMove}
+                   className="reading-body text-left relative w-full"
+                   style={{
+                     fontFamily: FONT_STACKS[s.fontFamily],
+@@ -634,21 +625,6 @@ export const MinimalReadingView: React.FC = () => {
+                     color: theme.fg,
+                   }}
+                 >
+-                  {s.focus.enabled && (
+-                    <>
+-                      <div
+-                        aria-hidden
+-                        className="absolute left-0 right-0 top-0 z-10 pointer-events-none"
+-                        style={{ height: rulerY, backgroundColor: `${theme.bg}B3` }}
+-                      />
+-                      <div
+-                        aria-hidden
+-                        className="absolute left-0 right-0 bottom-0 z-10 pointer-events-none"
+-                        style={{ top: rulerY + lh, backgroundColor: `${theme.bg}B3` }}
+-                      />
+-                    </>
+-                  )}
+-
+                   <ReadingText
+                     blocks={blocks}
+                     activeBoundary={activeBoundary}
+@@ -678,6 +654,7 @@ export const MinimalReadingView: React.FC = () => {
+                   />}
+                 </div>
+ 
++                <div style={rulerEnabled ? { minHeight: '70cqh' } : undefined}>
+                 <div className="my-16 flex items-center justify-center gap-3 select-none opacity-60">
+                   <span className="w-8 h-[1px] bg-current" />
+                   <span className="text-xs font-serif text-tertiary">❦</span>
+@@ -695,6 +672,7 @@ export const MinimalReadingView: React.FC = () => {
+                   </Link>
+                 </footer>
+                 </div>
++                </div>
+               </ManuscriptCard>
+ 
+               <div className="mt-8 text-center text-xs font-label opacity-50 tracking-wider select-none">
+@@ -703,6 +681,12 @@ export const MinimalReadingView: React.FC = () => {
+             </div>
+             )}
+           </main>
++          {rulerEnabled && (
++            <FixedReadingRuler key={doc.id} mainRef={mainRef} bodyRef={bodyRef}
++              lineCount={s.focus.lineCount} background={theme.bg} opacity={s.focus.dimOpacity}
++            />
++          )}
++          </div>
+ 
+           {showSettingsPanel && <div className="hidden lg:block shrink-0 h-full py-6 pr-6">{settingsPanel}</div>}
+         </div>
+diff --git a/tests/test_display_settings.py b/tests/test_display_settings.py
+index 2921170..cfb0536 100644
+--- a/tests/test_display_settings.py
++++ b/tests/test_display_settings.py
+@@ -10,7 +10,7 @@ CUSTOM = {
+         "letterSpacing": 0.1,
+         "theme": "dark",
+         "columnWidth": 50,
+-        "focus": {"enabled": True, "dimOpacity": 0.7, "followPointer": True},
++        "focus": {"enabled": True, "dimOpacity": 0.7, "followPointer": True, "lineCount": 3},
+     }
+ }
+ 
+@@ -21,7 +21,7 @@ DEFAULTS = {
+     "letterSpacing": 0.02,
+     "theme": "cream",
+     "columnWidth": 60,
+-    "focus": {"enabled": False, "dimOpacity": 0.6, "followPointer": False},
++    "focus": {"enabled": False, "dimOpacity": 0.6, "followPointer": False, "lineCount": 1},
+ }
+ 
+ 
+@@ -58,7 +58,7 @@ def test_save_then_get_returns_same_settings(client, create_user):
+ 
+     saved = client.put(URL, json=CUSTOM, headers=headers)
+     assert saved.status_code == 200
+-    assert saved.json()["version"] == 1
++    assert saved.json()["version"] == 2
+     assert saved.json()["display"] == CUSTOM["display"]
+ 
+     fetched = client.get(URL, headers=headers)
+@@ -66,13 +66,29 @@ def test_save_then_get_returns_same_settings(client, create_user):
+     assert fetched.json() == saved.json()
+ 
+ 
++def test_read_legacy_focus_settings_defaults_to_one_line(client, create_user):
++    from app.db.session import SessionLocal
++    from app.models.display_settings import UserDisplaySettings
++
++    uid, headers = create_user()
++    with SessionLocal() as db:
++        db.add(UserDisplaySettings(
++            user_id=uid, schema_version=1,
++            settings={"focus": {"enabled": True, "followPointer": True}},
++        ))
++        db.commit()
++
++    focus = client.get(URL, headers=headers).json()["display"]["focus"]
++    assert focus["enabled"] and focus["lineCount"] == 1
++
++
+ def test_response_uses_camel_case_keys(client, create_user):
+     _, headers = create_user()
+     body = client.put(URL, json=CUSTOM, headers=headers).json()
+ 
+     assert set(body) == {"version", "updatedAt", "display"}
+     assert set(body["display"]) == set(DEFAULTS)
+-    assert set(body["display"]["focus"]) == {"enabled", "dimOpacity", "followPointer"}
++    assert set(body["display"]["focus"]) == set(DEFAULTS["focus"])
+ 
+ 
+ def test_missing_fields_fall_back_to_defaults(client, create_user):
+@@ -117,6 +133,8 @@ def test_saving_again_replaces_previous_settings(client, create_user):
+         {"letterSpacing": 0.21},
+         {"columnWidth": 29},
+         {"columnWidth": 81},
++        {"focus": {"lineCount": 0}},
++        {"focus": {"lineCount": 4}},
+         {"focus": {"dimOpacity": 0.49}},
+         {"focus": {"dimOpacity": 0.81}},
+         {"theme": "neon"},

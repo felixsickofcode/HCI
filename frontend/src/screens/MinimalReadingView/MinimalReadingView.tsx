@@ -19,6 +19,7 @@ import {
   SpeechController,
 } from '../../lib/speech';
 import type { BoundaryReliability, ReadingSegment, SpeechBoundaryEvent, SpeechStatus } from '../../lib/speech';
+import { FixedReadingRuler } from './FixedReadingRuler';
 import { OriginalDocumentView } from './OriginalDocumentView';
 import { useWordExplanation } from '../../hooks/useWordExplanation';
 import { useSaveSelectedWord } from '../../hooks/useSaveSelectedWord';
@@ -199,35 +200,8 @@ export const MinimalReadingView: React.FC = () => {
     main?.addEventListener('scroll', clearWord);
     return () => main?.removeEventListener('scroll', clearWord);
   }, [clearWord]);
-  const [rulerY, setRulerY] = useState(0);
-  const lh = s.fontSize * s.lineHeight;
-
-  const clampY = (y: number) => {
-    const h = bodyRef.current?.getBoundingClientRect().height ?? 0;
-    return Math.min(Math.max(0, y), Math.max(0, h - lh));
-  };
-
-  const onBodyMouseMove = (e: React.MouseEvent) => {
-    if (!s.focus.enabled || !bodyRef.current) return;
-    const top = bodyRef.current.getBoundingClientRect().top;
-    setRulerY(clampY(e.clientY - top - lh / 2));
-  };
-
-  useEffect(() => {
-    if (!s.focus.enabled) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-      const tag = (e.target as HTMLElement).tagName;
-      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(tag) || (e.target as HTMLElement).closest('[role="dialog"]')) return;
-      e.preventDefault();
-      const dir = e.key === 'ArrowDown' ? 1 : -1;
-      setRulerY((y) => clampY(y + dir * lh));
-      mainRef.current?.scrollBy({ top: dir * lh });
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [s.focus.enabled, lh]);
+  const rulerEnabled = s.focus.enabled && viewMode === 'reading'
+    && blocks.some((block) => ['paragraph', 'heading', 'quote', 'listItem'].includes(block.type) && block.text.trim());
 
   const settingsPanel = (
     <aside className="flex flex-col w-[340px] max-w-[92vw] h-full rounded-3xl shadow-sm border border-black/5 bg-[#FFFDF8] overflow-hidden">
@@ -331,19 +305,34 @@ export const MinimalReadingView: React.FC = () => {
             <h3 className="text-xs font-label font-bold uppercase tracking-wide text-on-surface-variant">Tính năng hỗ trợ</h3>
 
             <button
-              type="button" role="switch" aria-checked={s.focus.enabled}
+              type="button" role="switch" aria-label="Thước đọc cố định" aria-checked={s.focus.enabled} data-ruler-switch
               onClick={() => update({ focus: { enabled: !s.focus.enabled } })}
               className="w-full flex items-center gap-3 px-3 py-3 rounded-xl border border-black/10 hover:border-black/20 text-left"
             >
               <span className="material-symbols-outlined text-[18px] text-on-surface-variant shrink-0">view_day</span>
               <span className="flex-1 min-w-0">
-                <span className="block text-sm font-medium text-on-surface">Thước đọc bám dòng</span>
-                <span className="block text-[11px] text-on-surface-variant mt-0.5">Làm mờ 70% các dòng xung quanh, dùng chuột hoặc phím ↑/↓.</span>
+                <span className="block text-sm font-medium text-on-surface">Thước đọc cố định</span>
+                <span className="block text-[11px] text-on-surface-variant mt-0.5">Dùng phím ↑/↓, lăn chuột hoặc vuốt trên văn bản để chuyển từng dòng.</span>
               </span>
               <span className={`relative shrink-0 w-10 h-6 rounded-full transition-colors ${s.focus.enabled ? 'bg-primary' : 'bg-black/15'}`}>
                 <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${s.focus.enabled ? 'left-[18px]' : 'left-0.5'}`} />
               </span>
             </button>
+            {s.focus.enabled && (
+              <fieldset className="space-y-2" data-ruler-control>
+                <legend className="text-sm font-medium">Số dòng trong thước</legend>
+                <div className="flex gap-2">
+                  {([1, 2, 3] as const).map((count) => (
+                    <button key={count} type="button" aria-pressed={s.focus.lineCount === count}
+                      onClick={() => update({ focus: { lineCount: count } })}
+                      className="flex-1 rounded-lg border border-black/15 py-2 text-sm aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:font-semibold"
+                    >
+                      {count} dòng
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            )}
           </section>
         )}
 
@@ -502,7 +491,8 @@ export const MinimalReadingView: React.FC = () => {
 
         {/* Hàng chứa vùng đọc (cuộn riêng) + panel desktop (cố định) */}
         <div className="flex-1 min-h-0 flex overflow-hidden">
-          <main ref={mainRef} className="flex-1 min-w-0 overflow-y-auto relative">
+          <div className="relative min-w-0 flex-1">
+          <main ref={mainRef} className="relative h-full overflow-y-auto" style={rulerEnabled ? { containerType: 'size', overflowAnchor: 'none' } : undefined}>
             <div className="fixed inset-0 pointer-events-none -z-10 flex items-center justify-center">
               <div className="w-[620px] h-[620px] rounded-full bg-tertiary-fixed/20 blur-[130px] opacity-70" />
             </div>
@@ -525,6 +515,7 @@ export const MinimalReadingView: React.FC = () => {
                     fontSize: `${s.fontSize}px`,
                   }}
                 >
+                <div style={rulerEnabled ? { minHeight: '30cqh' } : undefined}>
                 {/* Tiêu đề và thông tin bài */}
                 <div className="mb-10 text-left">
                   <div className="inline-block text-tertiary font-label text-xs tracking-[0.25em] uppercase font-semibold mb-3.5 bg-tertiary-fixed/30 px-3 py-1 rounded-full select-none">
@@ -621,9 +612,9 @@ export const MinimalReadingView: React.FC = () => {
                 <p className="mb-3 text-xs font-label text-on-surface-variant">
                   Bôi chọn nội dung trong một đoạn để nghe phần đó. Chọn từ hoặc cụm từ để giải nghĩa hoặc lưu từ. Bàn phím: Tab tới đoạn, Enter vào từ, dùng ←/→ rồi Enter để chọn.
                 </p>
+                </div>
                 <div
                   ref={bodyRef}
-                  onMouseMove={onBodyMouseMove}
                   className="reading-body text-left relative w-full"
                   style={{
                     fontFamily: FONT_STACKS[s.fontFamily],
@@ -634,21 +625,6 @@ export const MinimalReadingView: React.FC = () => {
                     color: theme.fg,
                   }}
                 >
-                  {s.focus.enabled && (
-                    <>
-                      <div
-                        aria-hidden
-                        className="absolute left-0 right-0 top-0 z-10 pointer-events-none"
-                        style={{ height: rulerY, backgroundColor: `${theme.bg}B3` }}
-                      />
-                      <div
-                        aria-hidden
-                        className="absolute left-0 right-0 bottom-0 z-10 pointer-events-none"
-                        style={{ top: rulerY + lh, backgroundColor: `${theme.bg}B3` }}
-                      />
-                    </>
-                  )}
-
                   <ReadingText
                     blocks={blocks}
                     activeBoundary={activeBoundary}
@@ -678,6 +654,7 @@ export const MinimalReadingView: React.FC = () => {
                   />}
                 </div>
 
+                <div style={rulerEnabled ? { minHeight: '70cqh' } : undefined}>
                 <div className="my-16 flex items-center justify-center gap-3 select-none opacity-60">
                   <span className="w-8 h-[1px] bg-current" />
                   <span className="text-xs font-serif text-tertiary">❦</span>
@@ -695,6 +672,7 @@ export const MinimalReadingView: React.FC = () => {
                   </Link>
                 </footer>
                 </div>
+                </div>
               </ManuscriptCard>
 
               <div className="mt-8 text-center text-xs font-label opacity-50 tracking-wider select-none">
@@ -703,6 +681,12 @@ export const MinimalReadingView: React.FC = () => {
             </div>
             )}
           </main>
+          {rulerEnabled && (
+            <FixedReadingRuler key={doc.id} mainRef={mainRef} bodyRef={bodyRef}
+              lineCount={s.focus.lineCount} background={theme.bg} opacity={s.focus.dimOpacity}
+            />
+          )}
+          </div>
 
           {showSettingsPanel && <div className="hidden lg:block shrink-0 h-full py-6 pr-6">{settingsPanel}</div>}
         </div>
