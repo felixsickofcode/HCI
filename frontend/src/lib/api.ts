@@ -105,6 +105,7 @@ export interface FocusSettings {
   enabled: boolean;
   dimOpacity: number;
   followPointer: boolean;
+  lineCount: 1 | 2 | 3;
 }
 
 export interface DisplaySettings {
