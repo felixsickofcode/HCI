@@ -1,9 +1,81 @@
 # Handoff dự án HCI
 
-Cập nhật hiện hành: **2026-11-20**, múi giờ Asia/Bangkok. Agent đọc phần hiện hành trước; các mục dưới “Nhật ký lịch sử” ghi diễn tiến, có quyết định đã được thay thế. Cập nhật file này cuối mỗi phiên.
+Cập nhật hiện hành: **2026-11-23**, múi giờ Asia/Bangkok. Agent đọc phần hiện hành trước; các mục dưới “Nhật ký lịch sử” ghi diễn tiến, có quyết định đã được thay thế. Cập nhật file này cuối mỗi phiên.
 
 ## Trạng thái hiện hành và ý định người dùng
 
+- **Bước 3 Elkonin Bài 01 2026-11-23:**
+  - Hoàn thành riêng màn Bước 3 theo cấu trúc Stitch `bai01-4`.
+  - Cập nhật `bai-01.json` sang 4 bài tập `cà`, `cò`, `cổ`, `ca`; thêm component `ElkoninExercise` theo lưới ô âm/dấu, chip 100px, chip dấu 60px và footer ba nút.
+  - Nav con Bước 3 có 4 bài tập; bài đã đúng được đánh dấu.
+  - Hỗ trợ chọn chip rồi chọn ô, kéo thả và bàn phím/phím Tab; chỉ một âm phát tại một thời điểm.
+  - Kiểm tra: test 11/11 pass, `npx tsc -b` pass và `npm run lint` pass.
+
+- **Bước 2 Guided Blending Bài 01 2026-11-23:**
+  - Hoàn thành riêng màn Bước 2 theo Stitch `bai01-3`, thay bản ghép từng ví dụ bằng lưới 4 ô `ca`, `co`, `cô`, `cà`.
+  - Tái sử dụng dữ liệu `bai-01.json`, `usePhonicsAudio`, `AudioButton`, shell sidebar và thanh 4 bước.
+  - Mỗi ô có phép ghép, kết quả tô màu theo phụ âm/nguyên âm/dấu thanh và nút Nghe phát lần lượt từng âm rồi tiếng ghép.
+  - Không có nav con ở Bước 2; âm thanh không tự phát khi vào màn.
+  - Kiểm tra: test tập trung Bước 2 10/10 pass, `npx tsc -b` pass và `npm run lint` pass.
+
+- **Sidebar trái Bài 01 Phonics 2026-11-23:**
+  - Hoàn thành riêng phần sidebar của trang `/phonics/bai-01` theo spec Mục 8.2/8.4 và màn Stitch `bai01-1` đến `bai01-6`.
+  - Tái sử dụng `AppSidebar`, component thiết kế hiện có và logic auth; thêm dữ liệu độc lập tại `frontend/src/data/lessons/phonicsCurriculum.ts` cho đủ 28 bài/7 chương.
+  - Sidebar có Trang chủ, liên kết Hỗ trợ đọc tới `/reading`, tìm kiếm, Bài tiếp theo, accordion chương, trạng thái Bài 01 đang học, thông báo “Bài này sắp có” cho bài khác, avatar/tên/đăng xuất và nút thu gọn/mở rộng.
+  - Giữ nguyên thanh 4 bước, nav con, nội dung các bước và chân trang.
+  - Kiểm tra: test sidebar tập trung 9/9 pass, `npx tsc -b` pass và `npm run lint` pass.
+
+- **Tinh chỉnh hiển thị nét vẽ Vivus, nút Phát lại và cỡ chữ lớn Bước 1 2026-11-23:**
+  - **Kích thước chữ ở giữa màn hình:** Mở rộng khung vẽ SVG từ 230px lên tối đa `680px × 480px` (gấp gần 3 lần), tận dụng toàn bộ không gian 2/3 cột trái, hiển thị chữ to rõ nét ấn tượng trên lưới toạ độ chấm mờ tương ứng.
+  - **Sửa tính năng vẽ nét Vivus:** Tách hoàn toàn khuôn nét mờ (ghost guide background) sang layer SVG tĩnh riêng biệt, không để lẫn vào SVG của Vivus. SVG do Vivus quản lý chỉ chứa 100% các nét chính của chữ cái; kích hoạt chế độ tự động chạy hoạt hình (`start: 'autostart'`) khi vào màn hình hoặc chuyển tab âm để người học thấy ngay chuyển động đưa bút; khi bấm nút "Phát lại", gọi `stop().reset().play()` để phát âm thanh và vẽ lại từng nét dứt khoát từ đầu.
+  - **Nút "Phát lại":** Đổi nội dung từ "Nghe và vẽ lại" thành "Phát lại", thiết kế nhỏ gọn vừa đủ bao nội dung (`inline-flex`, padding gọn gàng, pill-rounded) căn giữa bên dưới chữ.
+  - **Điểm bắt đầu ①:** Thêm marker số 1 màu vàng cam viền trắng đặt chính xác tại toạ độ bắt đầu của nét thứ nhất.
+  - Kiểm tra chất lượng: `npx tsc -b` pass, `npm run lint` pass, `npm test` **51/51 passed**.
+
+- **Triển khai hoàn tất Bước 1 Bài 01 Phonics (Học đa giác quan) 2026-11-23:**
+  - Hoàn thành Bước B cho Bước 1 của trang Bài 01 (`/phonics/bai-01`) theo đặc tả [phonics-feature-spec.md](phonics-feature-spec.md) (Mục 8.5 Bước 1 & 8.8) và Design System [frontend/design/DESIGN.md](../frontend/design/DESIGN.md).
+  - Sử dụng layout từ Stitch `bai01-1` và `bai01-2` làm tham chiếu bố cục 2 cột (2/3 cột nét vẽ, 1/3 cột tuỳ chỉnh nét).
+  - Các component tạo mới:
+    + `frontend/src/components/phonics/Step1SubNav.tsx`: Thanh nav con 5 tab chuyển tự do giữa các âm `a`, `c`, `o`, `ô` và tab `Dấu thanh`, có chỉ báo tab đang chọn và chấm xanh đánh dấu tab đã xem.
+    + `frontend/src/components/phonics/StrokeCustomizerModal.tsx`: Bảng tuỳ chỉnh nét vẽ gồm 5 ô màu palette sắc xanh (`#094cb2`, `#0284c7`, `#0f2e5c`, `#3b82f6`, `#0d9488`), thanh trượt tốc độ (0.5x, 1.0x, 2.0x), thanh trượt độ dày nét (8px - 24px), menu 4 kiểu phông (`sans`, `script`, `italic`, `mono`), phím tắt Escape và nút hoàn tất.
+    + `frontend/src/components/phonics/ToneCardsDisplay.tsx`: Màn Dấu thanh (tab 5) gồm 4 thẻ thanh điệu trực quan (huyền, sắc, hỏi, nặng) với ký hiệu, tên dấu, từ ví dụ (`cà`, `cá`, `cỏ`, `cọ`) và nút nghe phát âm thanh.
+  - Các component và dữ liệu cập nhật:
+    + `frontend/src/data/phonics/glyphData.ts`: Bổ sung 4 kiểu font (`sans`, `script`, `italic`, `mono`) cùng các alias tương thích ngược (`lexend`, `arial`, `verdana`).
+    + `frontend/src/components/phonics/StrokeGuide.tsx`: Tối ưu Vivus `oneByOne`, 1 nút duy nhất "Nghe và vẽ lại" (phím Space kích hoạt), an toàn với `prefers-reduced-motion` và JSDOM test runner.
+    + `frontend/src/components/phonics/LessonStepper.tsx`: Bố cục 4 bước chuẩn ngang kiểu Stitch có badge và trạng thái bước.
+    + `frontend/src/screens/PhonicsPractice/PhonicsPracticeView.tsx`: Tích hợp toàn diện Bước 1, mở/đóng tuỳ chỉnh nét, footer điều hướng tuần tự qua 5 tab, phím Enter chuyển tab tiếp theo.
+  - Kiểm tra chất lượng frontend:
+    + `npx tsc -b`: Không lỗi type.
+    + `npm run lint`: Pass 100%.
+    + `npm test`: **51/51 tests passed** (13 test suites).
+
+- **Đồng bộ thiết kế Stitch Bài 01 và Design System 2026-11-23:** đã tải 6 màn hình Bài 01 từ project Stitch HCI (`projects/8818153691167113130`) gồm 6 file HTML và 6 ảnh screenshot PNG vào `frontend/design/` (`bai01-1` đến `bai01-6`). Đã chốt giữ nguyên tài liệu tiếng Việt [frontend/design/DESIGN.md](frontend/design/DESIGN.md) trong repo làm chuẩn cho màu sắc, phông chữ, bo góc, đổ bóng; bố cục sidebar, thanh 4 bước, nav con và chân trang sẽ theo 6 màn Stitch đã tải. Dừng tại đây, chưa viết code. Không sửa đổi dữ liệu trên Stitch.
+
+- **Sửa trạng thái khởi tạo Vivus 2026-11-21:** phát hiện nguyên nhân bức vẽ trống là `onReady` gọi `reset()` khi khởi tạo. Đã đổi thành `finish()` để chữ hiển thị đầy đủ khi vào màn. Nút Vẽ lại mới gọi `reset().play()` và chạy từng nét theo thư viện Vivus. Chromium xác nhận lúc vào offset `0px/0px`, sau khi bấm Vẽ lại 300ms offset trở lại `65px/54px`, sau 2.2s hoàn tất `0px/0px`.
+
+- **Khôi phục engine Vivus cho StrokeGuide 2026-11-21:** đã dùng lại `vivus` thay cho animation dash-offset thủ công. `start: manual`, `onReady` reset instance và reduced-motion dùng `finish()`; nút Vẽ lại gọi `reset().play()`, không phát âm. Thêm đồng bộ prop `symbol` bằng state derivation để trang đổi a/c/o/ô không giữ text cũ. Chromium xác nhận máy thường: offset nét ban đầu `89px/54px`, sau 300ms `65px/54px`, sau 2.2s `0px/0px`; chế độ reduced-motion vào màn là `0px/0px`. Test 49/49, lint/build pass.
+
+- **Sửa cuối luồng mô phỏng viết tay 2026-11-21:** đã gỡ nút Xóa nét khỏi `StrokeGuide`; nút Vẽ lại tự reset mọi dash offset rồi chạy lại từng `<path>`. Gỡ Vivus khỏi component này để tránh race/reset không đáng tin; dùng `stroke-dasharray`, `stroke-dashoffset` và `requestAnimationFrame` trực tiếp. Khi render, chuỗi nét được đưa ẩn rồi được khởi tạo sau một frame. Chromium xác nhận `clearCount=0`, lúc ban đầu offsets `[87.7026px,52.9997px]`, sau 300ms nét đầu xuống `62.8564px`, sau 2.2s cả hai bằng `0px`.
+
+- **Chỉ tập trung mô phỏng viết tay 2026-11-21:** đã xóa hẳn nút Nghe và callback âm thanh khỏi `StrokeGuide`; component chỉ còn chữ/chọn font/tốc độ/dày/màu/Vẽ lại/Xóa nét. Gỡ Vivus khỏi component, dùng `stroke-dasharray/stroke-dashoffset` và `requestAnimationFrame` tuần tự từng `<path>`. Font map đồng nhất Lexend/Arial/Verdana. Chromium xác nhận hai nét riêng: lúc vào offset `[87.7026px, 52.9997px]`, sau 300ms nét thứ nhất xuống `59.936px`, nét thứ hai chưa tới. Test/lint/build pass; các nút Nghe còn thấy trong khối chữ chính là nút âm thanh riêng của màn, không thuộc `StrokeGuide`.
+
+- **Khắc phục thao tác vẽ thực 2026-11-21:** loại bỏ nhánh `finish()` tự động khỏi luồng thường; mỗi path được gán `stroke-dasharray`/`stroke-dashoffset` ngay khi render. Vẽ lại chạy animation `requestAnimationFrame` tuần tự từng `<path>`, kết thúc offset 0; Xóa nét đặt toàn bộ offset về độ dài path. Chromium 1366×768 xác nhận vào màn `[85.6081px, 42.6246px]`, sau 200ms `[67.071px, 42.6246px]` (nét thứ nhất bắt đầu vẽ, nét thứ hai chưa tới), sau 2.2s `[0px, 0px]`. Thêm guard khi jsdom không có `SVGPathElement.getTotalLength`. Test 48/48, lint/build pass.
+
+- **Tách hành động vẽ và âm thanh 2026-11-21:** fix đúng lỗi “Vẽ lại phát âm” và “nét tự hiện đầy đủ”. Khởi tạo Vivus bằng `start: manual`, `onReady` reset instance; chỉ reduced-motion mới hoàn tất toàn nét tĩnh. Nút “Vẽ lại” chỉ `reset().play()`, không gọi `onPlaySound`; nút “Nghe”/nghe chậm mới phát âm thanh. Test Chrome 1366×768: vào màn stroke offset 87px, sau 100ms 78px, sau 700ms 31px, sau 1.5s 0px; tức nét chạy từng nét. Test 48/48, lint/build pass.
+
+- **Làm lại mô phỏng viết tay theo ví dụ Vivus 2026-11-21:** thay đoạn React marker tự dựng bằng mô hình SVG path riêng của từng nhịp theo code đính kèm. Mỗi ký tự được chuyển thành `<path transform=translate(...)>`, tự tính `viewBox`, khởi tạo một instance `Vivus` với `type: oneByOne`, `animTimingFunction: LINEAR`, `start: manual`. Lúc vào màn finish để hiển thị toàn nét, “Vẽ lại” dùng `reset().play()`, “Xóa nét” dùng `reset()`. Giữ bộ Lexend/Arial/Verdana, bỏ gia tốc tuỳ chỉnh, giữ tốc độ/dày/màu. Chromium 1366×768 xác nhận strokeDashoffset thay đổi sau “Vẽ lại” và thay đổi khi “Xóa nét”; WAV im lặng vẫn HTTP 200.
+
+- **Hiệu ứng viết tay và âm thanh tạm 2026-11-21:** đã sửa vòng đời Vivus bằng `onReady/reset/play`, bật marker ngón tay theo tiến trình đường SVG và dùng gia tốc tuyến tính. Chromium 1366×768 xác nhận bấm “Vẽ lại” thay đổi `strokeDashoffset`, marker ngón tay xuất hiện; “Xóa nét” reset instance. Âm thanh Bài 01 trỏ tạm về `/assets/audio/silence.wav`, file im lặng 16.044 byte đã được đặt trong `frontend/public/assets/audio/`; HTTP/Vite probe trả 200 và không còn thông báo thiếu file cho dữ liệu Bài 01. Kiểm tra: test 47/47, lint/build pass.
+
+- **Sửa mô phỏng viết tay Vivus 2026-11-21:** thay bộ glyph lỗi trước đó bằng ba bộ nét riêng cho Lexend, Arial và Verdana; bỏ tuỳ chỉnh gia tốc; mặc định dùng `Vivus.LINEAR` và `pathTimingFunction: LINEAR`. Nút “Vẽ lại” reset và phát Vivus, “Xóa nét” reset toàn bộ nét, marker hình ngón tay chạy theo độ dài SVG theo tiến trình. Chế độ reduced-motion vẫn hiện nét tĩnh. Kiểm tra: `npm test` 47/47 pass, `npm run lint` pass, `npm run build` pass; probe Vite `/phonics/bai-01` pass. Glyph vẫn `verified: false` đến khi giáo viên xác nhận hình dạng và thứ tự nét.
+
+- **Bài Bài 01 Phonics Mục 8 2026-11-21:** đã triển khai FE bài `/phonics/bai-01` và trạng thái “Bài này sắp có” cho 27 bài còn lại. Sidebar hiện liệt kê đủ 28 bài theo 7 chương. Trang dùng dữ liệu viết cứng `src/data/lessons/bai-01.json`, 4 bước Mục 8.4–8.5, 5 màn Bước 1, 4 ví dụ ghép, Elkonin 3 giai đoạn tương tác và 4 câu độc lập. Thêm module glyph tạm và Vivus.js; âm/hình khẩu hình vẫn là placeholder và thiếu file sẽ hiện thông báo nhẹ thay vì làm vỡ trang. Dữ liệu glyph `verified: false`, thứ tự nét chưa được chuyên môn xác nhận. Đã thêm test route hai trạng thái. Kiểm tra: `npm test` 45/45 pass, `npm run lint` pass, `npm run build` pass. Chưa chạy Playwright hoặc QA 1366×768/zoom 200% bằng mắt.
+
+- **Sửa môi trường trích xuất PDF 2026-11-20:** phát hiện `.venv` của backend thiếu `pdfplumber` dù `requirements.txt` đã khai báo `pdfplumber==0.11.9`; đã cài gói này cùng dependency phụ bằng `.venv\Scripts\python.exe -m pip install pdfplumber==0.11.9`. Xác minh import thành công và endpoint thật tại cổng 8000 trả HTTP 200 với 1 trang/3 block từ fixture `benchmarks/pdf/fixtures/simple.pdf`; 39 test parser/service bộ `test_text_blocks`, `test_layout_pdf`, `test_text_extraction_service` đều pass. Giữ quy tắc cài package đúng interpreter đang chạy Uvicorn.
+
+- **Sửa conflict frontend 2026-11-20:** hợp nhất cấu hình Vitest/Storybook bị nối đôi trong `frontend/vite.config.ts`, khôi phục import cho các route vocabulary/phonics/PDF trong `frontend/src/App.tsx`, cập nhật story `ReadingText` sang prop `blocks`, và đồng bộ các dev dependency Storybook/Vitest/Testing Library vào `frontend/package.json` với lockfile. `npm run build` và `npm run lint` pass; frontend chưa có script `test` nên lệnh test không chạy được.
+- **Sửa lỗi thông báo trích xuất tệp 2026-11-20:** `toExtractErrorMessage` phân biệt PDF có mật khẩu, tệp không có chữ và tệp hỏng thay vì gom mọi HTTP 422 vào một thông báo chung; thêm test hồi quy và bổ sung `jsdom` cho môi trường Vitest. `npx vitest run src/lib/document.test.ts`: **8 passed**; build/lint pass.
+- **Bổ sung lệnh Storybook 2026-11-20:** thêm `storybook`, `build-storybook` và `test` vào `frontend/package.json`; `npm run build-storybook` và `npm run lint` pass. Output `storybook-static/` đã được ignore.
 - **Bàn giao remote 2026-11-20:** người dùng yêu cầu push cả `origin/feature/hong-quan` và `origin/main`. Đã fetch lại cả hai nhánh, xác nhận cả hai là tổ tiên của HEAD sau merge `f3896d3`, có thể cập nhật fast-forward không force. Phiên này đóng gói toàn bộ code/test/docs FR05–FR07, parser/benchmark và các thay đổi giao diện đã bàn giao; không đưa `.env`, PDF cá nhân, output QA/cache vào commit. Đích hai nhánh remote là cùng commit bàn giao (xem `git log -1`/remote refs để lấy hash). Kiểm tra bản kết hợp trước bàn giao: backend **126 passed**, frontend **42 passed**, lint/build pass; không chạy lại vì không đổi code sau kiểm tra. Các mục “chưa push” phía dưới ghi trạng thái lịch sử tại thời điểm thực hiện.
 - **Merge main 2026-11-20:** theo yêu cầu người dùng, fetch `origin/main` tại `aa74e75` và merge vào `feature/hong-quan` bằng commit local `f3896d3`. Main mang FR-08 extractive summary. Xung đột merge tại deps/router được xử lý giữ cả vocabulary và summary; khôi phục thay đổi chưa commit có thêm xung đột deps/router/config/exceptions, đã giữ cả FR-06 Groq và FR-08. Toàn bộ 31 thay đổi tracked cùng 46 file untracked đã đối chiếu với stash: không thiếu file; chỉ bốn file tích hợp nói trên khác nội dung có chủ đích. Các thay đổi cũ vẫn chưa staged/chưa commit. Giữ stash `pre-main-merge-2026-11-20` (`119708b`) làm dự phòng. Kiểm tra sau merge: backend **126 passed** trên `_test`, frontend **42 passed**, lint/build pass, không còn unmerged paths. Chưa push.
 - **FR-05 đọc phần chọn 2026-11-20:** popup chọn chữ có nút **Đọc phần đã chọn**, dùng được cho khách và tài khoản. Bôi chọn một phần hoặc toàn bộ chữ trong một block paragraph/heading/list/quote rồi bấm nút để đọc riêng phần đó; đọc xong dừng, không chuyển sang đoạn kế. Dùng lại giọng/tốc độ và tạm dừng/tiếp tục/dừng của `AudioPlayerCapsule`; tiến độ hiển thị “Phần đã chọn”. `ReadingSegment.sourceOffset` ánh xạ offset UTF-16 về block gốc để highlight/restart khi đổi giọng/tốc độ đúng chỗ. Generation của `SpeechController` bỏ sự kiện cũ sau khi chuyển bài đọc/vùng chọn hoặc dừng. Bấm phát ở player sau khi kết thúc vẫn đọc toàn bài. Chưa hỗ trợ bôi chọn xuyên nhiều block; chưa nghe thử âm thanh/QA browser thật. Frontend **42 passed**, lint/build (gồm typecheck) pass. Không cần DB/API mới.
