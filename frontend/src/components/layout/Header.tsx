@@ -68,7 +68,6 @@ export const Header: React.FC<HeaderProps> = ({ className = '' }) => {
                 link.path === '/'
                   ? location.pathname === '/'
                   : location.pathname.startsWith(link.path);
-
               return (
                 <Link
                   key={link.label}

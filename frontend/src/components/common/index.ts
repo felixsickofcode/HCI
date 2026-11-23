@@ -4,3 +4,4 @@ export * from './Card';
 export * from './Badge';
 export * from './AudioPlayerCapsule';
 export * from './ReadingText';
+export * from './FeedbackBanner';
