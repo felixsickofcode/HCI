@@ -27,8 +27,6 @@ class EmailAlreadyExistsError(ConflictError):
 class DisplaySettingsNotFoundError(NotFoundError):
     message = "Display settings not saved yet"
 
-
-
 class UnsupportedFileTypeError(AppError):
     status_code = 415
     message = "Unsupported file type. Only PDF, PNG, JPEG and WebP are accepted"

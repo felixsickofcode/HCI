@@ -1,0 +1,79 @@
+{
+  "id": "am-m",
+  "title": "Âm m",
+  "sound": {
+    "symbol": "m",
+    "upper": "M",
+    "type": "consonant",
+    "readAs": "mờ",
+    "audio": {
+      "normal": "/assets/audio/m/phoneme.mp3",
+      "slow": "/assets/audio/m/phoneme-slow.mp3"
+    },
+    "tip": "Khép môi lại và nói \"mmm\", cảm nhận môi rung nhẹ.",
+    "strokes": {
+      "viewBox": "0 0 200 200",
+      "verified": false,
+      "paths": [
+        {
+          "order": 1,
+          "d": "M 50 70 L 50 150",
+          "label": "Nét 1",
+          "startPoint": { "x": 50, "y": 70 },
+          "arrow": { "x": 50, "y": 115, "angle": 90 }
+        },
+        {
+          "order": 2,
+          "d": "M 50 96 C 50 68, 100 68, 100 96 L 100 150",
+          "label": "Nét 2",
+          "startPoint": { "x": 50, "y": 96 },
+          "arrow": { "x": 100, "y": 125, "angle": 90 }
+        },
+        {
+          "order": 3,
+          "d": "M 100 96 C 100 68, 150 68, 150 96 L 150 150",
+          "label": "Nét 3",
+          "startPoint": { "x": 100, "y": 96 },
+          "arrow": { "x": 150, "y": 125, "angle": 90 }
+        }
+      ]
+    }
+  },
+  "keyword": {
+    "word": "mèo",
+    "leadSymbol": "m",
+    "image": "/assets/images/m/meo.svg",
+    "audio": "/assets/audio/m/meo.mp3"
+  },
+  "listenAndChoose": [
+    { "target": "m", "options": ["m", "n", "u"] },
+    { "target": "m", "options": ["u", "m", "a"] },
+    { "target": "m", "options": ["n", "a", "m"] }
+  ],
+  "blending": [
+    {
+      "word": "ma",
+      "parts": [
+        { "symbol": "m", "type": "consonant", "audio": "/assets/audio/m/phoneme.mp3" },
+        { "symbol": "a", "type": "vowel", "audio": "/assets/audio/a/phoneme.mp3" }
+      ],
+      "audio": "/assets/audio/words/ma.mp3"
+    },
+    {
+      "word": "mo",
+      "parts": [
+        { "symbol": "m", "type": "consonant", "audio": "/assets/audio/m/phoneme.mp3" },
+        { "symbol": "o", "type": "vowel", "audio": "/assets/audio/o/phoneme.mp3" }
+      ],
+      "audio": "/assets/audio/words/mo.mp3"
+    },
+    {
+      "word": "me",
+      "parts": [
+        { "symbol": "m", "type": "consonant", "audio": "/assets/audio/m/phoneme.mp3" },
+        { "symbol": "e", "type": "vowel", "audio": "/assets/audio/e/phoneme.mp3" }
+      ],
+      "audio": "/assets/audio/words/me.mp3"
+    }
+  ]
+}
