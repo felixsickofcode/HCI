@@ -62,8 +62,15 @@ export default {
         "on-error": "#ffffff",
         "on-error-container": "#93000a",
 
-        // Paper
+        // Paper & Warm Parchment
         "paper-cream": "#FAF7F2",
+        "parchment-floor": "#FAF8F5",
+        "parchment-sidebar": "#F7F5F0",
+        "parchment-border": "#E8E4DD",
+        "parchment-hover": "#EFECE6",
+        "parchment-active": "#F0ECE1",
+        "stone-dark": "#1C1917",
+        "blue-link": "#1D4ED8",
       },
       fontFamily: {
         headline: ["'Noto Serif'", "serif"],
