@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from app.models.display_settings import UserDisplaySettings
 
 # Tăng số này khi đổi cấu trúc cài đặt (xem mục 1.3 của tài liệu thiết kế FR-03).
-DISPLAY_SETTINGS_VERSION = 1
+DISPLAY_SETTINGS_VERSION = 2
 
 
 # class CamelModel(BaseModel):
@@ -21,7 +21,8 @@ DISPLAY_SETTINGS_VERSION = 1
 class FocusSettings(CamelModel):
     enabled: bool = False
     dim_opacity: float = Field(default=0.6, ge=0.5, le=0.8)
-    follow_pointer: bool = False
+    follow_pointer: bool = False  # Accepted for previously saved settings.
+    line_count: Literal[1, 2, 3] = 1
 
 
 class DisplaySettings(CamelModel):

@@ -10,7 +10,7 @@ CUSTOM = {
         "letterSpacing": 0.1,
         "theme": "dark",
         "columnWidth": 50,
-        "focus": {"enabled": True, "dimOpacity": 0.7, "followPointer": True},
+        "focus": {"enabled": True, "dimOpacity": 0.7, "followPointer": True, "lineCount": 3},
     }
 }
 
@@ -21,7 +21,7 @@ DEFAULTS = {
     "letterSpacing": 0.02,
     "theme": "cream",
     "columnWidth": 60,
-    "focus": {"enabled": False, "dimOpacity": 0.6, "followPointer": False},
+    "focus": {"enabled": False, "dimOpacity": 0.6, "followPointer": False, "lineCount": 1},
 }
 
 
@@ -58,12 +58,28 @@ def test_save_then_get_returns_same_settings(client, create_user):
 
     saved = client.put(URL, json=CUSTOM, headers=headers)
     assert saved.status_code == 200
-    assert saved.json()["version"] == 1
+    assert saved.json()["version"] == 2
     assert saved.json()["display"] == CUSTOM["display"]
 
     fetched = client.get(URL, headers=headers)
     assert fetched.status_code == 200
     assert fetched.json() == saved.json()
+
+
+def test_read_legacy_focus_settings_defaults_to_one_line(client, create_user):
+    from app.db.session import SessionLocal
+    from app.models.display_settings import UserDisplaySettings
+
+    uid, headers = create_user()
+    with SessionLocal() as db:
+        db.add(UserDisplaySettings(
+            user_id=uid, schema_version=1,
+            settings={"focus": {"enabled": True, "followPointer": True}},
+        ))
+        db.commit()
+
+    focus = client.get(URL, headers=headers).json()["display"]["focus"]
+    assert focus["enabled"] and focus["lineCount"] == 1
 
 
 def test_response_uses_camel_case_keys(client, create_user):
@@ -72,7 +88,7 @@ def test_response_uses_camel_case_keys(client, create_user):
 
     assert set(body) == {"version", "updatedAt", "display"}
     assert set(body["display"]) == set(DEFAULTS)
-    assert set(body["display"]["focus"]) == {"enabled", "dimOpacity", "followPointer"}
+    assert set(body["display"]["focus"]) == set(DEFAULTS["focus"])
 
 
 def test_missing_fields_fall_back_to_defaults(client, create_user):
@@ -117,6 +133,8 @@ def test_saving_again_replaces_previous_settings(client, create_user):
         {"letterSpacing": 0.21},
         {"columnWidth": 29},
         {"columnWidth": 81},
+        {"focus": {"lineCount": 0}},
+        {"focus": {"lineCount": 4}},
         {"focus": {"dimOpacity": 0.49}},
         {"focus": {"dimOpacity": 0.81}},
         {"theme": "neon"},
