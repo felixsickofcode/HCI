@@ -1,0 +1,100 @@
+{
+  "id": "bai-01",
+  "number": 1,
+  "title": "Âm và chữ",
+  "estimatedMinutes": 40,
+  "source": {
+    "book": "Tiếng Việt 1 Cánh Diều",
+    "lessons": [1, 2, 4, 5]
+  },
+  "step1": {
+    "minutes": 12,
+    "sounds": [
+      {
+        "symbol": "a",
+        "type": "vowel",
+        "readAs": "a",
+        "audio": {
+          "normal": "/assets/audio/silence.wav",
+          "slow": "/assets/audio/silence.wav"
+        },
+        "mouth": {
+          "image": "",
+          "note": "Mở miệng rộng."
+        }
+      },
+      {
+        "symbol": "c",
+        "type": "consonant",
+        "readAs": "cờ",
+        "audio": {
+          "normal": "/assets/audio/silence.wav",
+          "slow": "/assets/audio/silence.wav"
+        },
+        "mouth": {
+          "image": "",
+          "note": "Cuống lưỡi chạm vòm miệng phía sau."
+        }
+      },
+      {
+        "symbol": "o",
+        "type": "vowel",
+        "readAs": "o",
+        "audio": {
+          "normal": "/assets/audio/silence.wav",
+          "slow": "/assets/audio/silence.wav"
+        },
+        "mouth": {
+          "image": "",
+          "note": "Tròn môi."
+        }
+      },
+      {
+        "symbol": "ô",
+        "type": "vowel",
+        "readAs": "ô",
+        "audio": {
+          "normal": "/assets/audio/silence.wav",
+          "slow": "/assets/audio/silence.wav"
+        },
+        "mouth": {
+          "image": "",
+          "note": "Tròn môi, miệng khép hơn chữ o."
+        }
+      }
+    ],
+    "tones": [
+      { "name": "huyền", "example": "cà", "audio": "/assets/audio/silence.wav" },
+      { "name": "sắc", "example": "cá", "audio": "/assets/audio/silence.wav" },
+      { "name": "hỏi", "example": "cỏ", "audio": "/assets/audio/silence.wav" },
+      { "name": "nặng", "example": "cọ", "audio": "/assets/audio/silence.wav" }
+    ]
+  },
+  "step2": {
+    "minutes": 8,
+    "examples": [
+      { "parts": ["c", "a"], "result": "ca", "audio": "/assets/audio/silence.wav" },
+      { "parts": ["c", "o"], "result": "co", "audio": "/assets/audio/silence.wav" },
+      { "parts": ["c", "ô"], "result": "cô", "audio": "/assets/audio/silence.wav" },
+      { "base": "ca", "tone": "huyền", "result": "cà", "audio": "/assets/audio/silence.wav" }
+    ]
+  },
+  "step3": {
+    "minutes": 12,
+    "items": [
+      { "word": "cà", "audio": "/assets/audio/silence.wav", "consonant": "c", "vowel": "a", "tone": "huyền", "chips": ["o", "a", "ô", "c"] },
+      { "word": "cò", "audio": "/assets/audio/silence.wav", "consonant": "c", "vowel": "o", "tone": "huyền", "chips": ["a", "c", "ô", "o"] },
+      { "word": "cổ", "audio": "/assets/audio/silence.wav", "consonant": "c", "vowel": "ô", "tone": "hỏi", "chips": ["o", "ô", "c", "a"] },
+      { "word": "ca", "audio": "/assets/audio/silence.wav", "consonant": "c", "vowel": "a", "tone": null, "chips": ["ô", "c", "a", "o"] }
+    ]
+  },
+  "step4": {
+    "minutes": 8,
+    "items": [
+      { "heard": "/ca/", "tone": "sắc", "audio": "/assets/audio/silence.wav", "options": ["cà", "cá", "ca"], "answer": "cá" },
+      { "heard": "/co/", "tone": "hỏi", "audio": "/assets/audio/silence.wav", "options": ["co", "cỏ", "cô"], "answer": "cỏ" },
+      { "heard": "/co/", "tone": "nặng", "audio": "/assets/audio/silence.wav", "options": ["cọ", "có", "cô"], "answer": "cọ" },
+      { "heard": "/cô/", "tone": null, "audio": "/assets/audio/silence.wav", "options": ["co", "cô", "cỏ"], "answer": "cô" }
+    ]
+  }
+}

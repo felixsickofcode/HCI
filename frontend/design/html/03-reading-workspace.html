@@ -1,0 +1,392 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0" name="viewport"><meta content="web_standard" name="shell-type"><title>LexiEase</title><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Noto+Serif:ital,wght@0,400;0,600;0,700;1,400&amp;family=Public+Sans:wght@500;600;700&amp;display=swap" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"on-secondary-container":"#606569","primary-container":"#3366cc","on-tertiary-fixed":"#211b00","secondary":"#5a5f63","error":"#ba1a1a","background":"#faf9fa","surface-container-lowest":"#ffffff","on-secondary-fixed":"#171c20","primary-fixed":"#d9e2ff","secondary-fixed-dim":"#c2c7cc","tertiary-container":"#bfab49","on-secondary-fixed-variant":"#42474b","surface-container-low":"#f5f3f4","on-primary":"#ffffff","primary":"#094cb2","surface":"#faf9fa","outline":"#737784","on-error":"#ffffff","surface-tint":"#2259bf","on-tertiary-container":"#4a3f00","on-secondary":"#ffffff","tertiary-fixed-dim":"#dcc661","on-tertiary-fixed-variant":"#524600","on-surface-variant":"#434653","primary-fixed-dim":"#b1c5ff","on-background":"#1b1c1d","error-container":"#ffdad6","inverse-primary":"#b1c5ff","on-primary-container":"#e7ebff","on-tertiary":"#ffffff","surface-variant":"#e3e2e3","inverse-on-surface":"#f2f0f1","surface-bright":"#faf9fa","tertiary-fixed":"#f9e37a","inverse-surface":"#303031","on-primary-fixed":"#001946","outline-variant":"#c3c6d5","surface-container":"#efedee","on-error-container":"#93000a","surface-container-high":"#e9e8e9","tertiary":"#6d5e00","secondary-fixed":"#dfe3e8","surface-dim":"#dbdadb","on-primary-fixed-variant":"#00419d","surface-container-highest":"#e3e2e3","secondary-container":"#dfe3e8","on-surface":"#1b1c1d"},borderRadius:{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},spacing:{},fontFamily:{headline:["Noto Serif"],display:["Noto Serif"],body:["Inter"],label:["Public Sans"]},fontSize:{}}}}</script></head><body class="bg-background font-body text-on-surface min-h-screen flex flex-col antialiased selection:bg-primary-fixed selection:text-on-primary-fixed"><main class="w-full bg-background flex-1 flex flex-col"><div class="flex flex-col w-full">
+<div class="w-full flex min-h-[calc(100vh-4rem)] bg-background" style="background-color: rgb(250, 248, 245);">
+<!-- LEFT SIDEBAR (w-72) -->
+<aside class="w-72 shrink-0 flex flex-col justify-between select-none border-r border-[#E8E4DD]" id="sidebar-left" style="background-color: rgb(247, 245, 240);"><div class="p-5 flex flex-col gap-4">
+  <div class="flex items-center justify-between pb-2 border-b border-[#E8E4DD]">
+    <a class="flex items-center gap-1.5 text-[13px] font-semibold text-secondary hover:text-[#1D4ED8] transition-colors" data-path="library" href="#">
+      <span class="material-symbols-outlined text-[16px]">arrow_back</span>
+      <span>Về trang chủ</span>
+    </a>
+    <button aria-label="Thu gọn danh mục" class="p-1 rounded text-secondary hover:text-[#1C1917] hover:bg-[#EFECE6] transition-colors" type="button">
+      <span class="material-symbols-outlined text-[18px]">first_page</span>
+    </button>
+  </div>
+
+  <div class="flex flex-col gap-1">
+    <a class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium text-secondary hover:text-[#1C1917] hover:bg-[#EFECE6] transition-colors text-left" data-path="new-reading" href="#">
+      <span class="material-symbols-outlined text-[18px] text-secondary">edit_square</span>
+      <span>Bài đọc mới</span>
+    </a>
+    <a class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium text-secondary hover:text-[#1C1917] hover:bg-[#EFECE6] transition-colors text-left" data-path="multisensory" href="#">
+      <span class="material-symbols-outlined text-[18px] text-secondary">psychology</span>
+      <span>Học Đa Giác Quan</span>
+    </a>
+    <a class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium text-secondary hover:text-[#1C1917] hover:bg-[#EFECE6] transition-colors text-left" data-path="library" href="#">
+      <span class="material-symbols-outlined text-[18px]">menu_book</span>
+      <span>Thư viện bài đọc</span>
+    </a>
+  </div>
+
+  <div class="mt-3 pt-3 border-t border-[#E8E4DD]">
+    <div class="px-2 text-[11px] font-bold tracking-wider uppercase text-[#78716C] font-label">
+      BÀI ĐỌC CỦA TÔI
+    </div>
+    <nav class="mt-2.5 flex flex-col gap-1.5">
+      <div class="bg-white rounded-xl p-3.5 shadow-xs border border-[#E2DDD3]">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-[#1D4ED8] shrink-0"></span>
+          <span class="text-[13px] font-semibold text-[#1C1917] truncate">
+            Kế hoạch Sinh tồn ở Đại học
+          </span>
+        </div>
+        <div class="mt-2.5 flex items-center justify-between text-[11px] text-[#78716C] font-label">
+          <span>Tiến độ đọc</span>
+          <span class="font-bold text-[#1D4ED8]">60%</span>
+        </div>
+        <div class="w-full bg-[#EAE6DF] h-1.5 rounded-full overflow-hidden mt-1.5">
+          <div class="bg-[#1D4ED8] h-full w-[60%] rounded-full"></div>
+        </div>
+      </div>
+      <button class="w-full text-left px-3 py-2 text-[13px] text-[#57534E] hover:text-[#1C1917] hover:bg-[#EFECE6] rounded-lg transition-colors truncate" type="button">
+        Phương pháp tư duy trực quan cho não bộ
+      </button>
+      <button class="w-full text-left px-3 py-2 text-[13px] text-[#57534E] hover:text-[#1C1917] hover:bg-[#EFECE6] rounded-lg transition-colors truncate" type="button">
+        Lịch sử kiến trúc cổ điển phương Đông
+      </button>
+      <button class="w-full text-left px-3 py-2 text-[13px] text-[#57534E] hover:text-[#1C1917] hover:bg-[#EFECE6] rounded-lg transition-colors truncate" type="button">
+        Ghi chép nhanh và hệ thống Feynman
+      </button>
+      <button class="w-full text-left px-3 py-2 text-[13px] text-[#57534E] hover:text-[#1C1917] hover:bg-[#EFECE6] rounded-lg transition-colors truncate" type="button">
+        Quản lý năng lượng thay vì thời gian
+      </button>
+    </nav>
+  </div>
+</div></aside>
+<!-- CENTER FOCUS READING CANVAS -->
+<main class="flex-1 overflow-y-auto px-6 py-10 lg:px-12 flex justify-center bg-background" id="reading-viewport" style="background-color: rgb(250, 248, 245);">
+<div class="w-full flex flex-col max-w-4xl">
+<!-- Article Header Block -->
+<header class="mb-8 p-8 rounded-2xl shadow-xs border border-[#E8E4DD]" style="background-color: rgb(247, 245, 240);">
+<div class="flex flex-wrap items-center gap-2 mb-3">
+<span class="text-[11px] font-label font-bold uppercase tracking-wider text-white px-2.5 py-1 rounded bg-[#1D4ED8]">
+              Dyslexia Focus
+            </span>
+<span class="text-[11px] font-label font-medium tracking-wide text-[#78716C] bg-[#ECE8E0] px-2.5 py-1 rounded">
+              Bionic Reading v2.4
+            </span>
+</div>
+<h1 class="font-headline text-3xl font-bold leading-tight tracking-tight mb-4 text-[#1C1917]" id="article-title">
+            Kế hoạch Sinh tồn ở Đại học: Tư duy Độc lập và Cân bằng Não bộ
+          </h1>
+<div class="flex flex-wrap items-center justify-between gap-4 text-xs font-label text-[#78716C]">
+<div class="flex items-center gap-2">
+<span class="font-semibold text-[#1C1917]">GS. Minh Hoàng</span>
+<span>•</span>
+<span>8 phút đọc</span>
+<span>•</span>
+<span class="text-[#1D4ED8] font-semibold">Chế độ: Đọc tập trung Bionic</span>
+</div>
+<!-- Compact Audiobook Trigger -->
+<button class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-white transition-all text-xs font-semibold shadow-xs hover:opacity-95" id="btn-audio-toggle" style="background-color: #1D4ED8;" type="button">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+<span>Nghe đọc văn bản (Audiobook AI)</span>
+</button>
+</div>
+</header>
+<!-- Dynamic Reading Content Container -->
+<article class="text-[18px] text-[#292524] font-body leading-loose tracking-wide flex flex-col gap-6 relative select-text transition-all duration-200" id="reading-content">
+<!-- Reading Focus Strip / Ruler Element -->
+<div class="pointer-events-none absolute -left-4 -right-4 h-12 rounded-lg -z-0 transition-all duration-150 top-[6px]" id="reading-ruler" style="background-color: rgba(249, 227, 122, 0.35); top: 6px;"></div>
+<!-- Paragraph 1 (Active Focused Line) -->
+<p class="relative z-10 transition-colors duration-150">
+<span class="font-bold text-[#1D4ED8]">Bước</span> vào <span class="font-bold text-[#1D4ED8]">giảng</span> đường <span class="font-bold text-[#1D4ED8]">đại</span> học <span class="font-bold text-[#1D4ED8]">không</span> chỉ <span class="font-bold text-[#1D4ED8]">đơn</span> thuần <span class="font-bold text-[#1D4ED8]">là</span> một <span class="font-bold text-[#1D4ED8]">sự</span> tiếp <span class="font-bold text-[#1D4ED8]">nối</span> về <span class="font-bold text-[#1D4ED8]">mặt</span> học <span class="font-bold text-[#1D4ED8]">thuật</span>. Đó <span class="font-bold text-[#1D4ED8]">là</span> một <span class="font-bold text-[#1D4ED8]">bước</span> nhảy <span class="font-bold text-[#1D4ED8]">vọt</span> về <span class="font-bold text-[#1D4ED8]">khả</span> năng <span class="font-bold text-[#1D4ED8]">tự</span> định <span class="font-bold text-[#1D4ED8]">hướng</span> nhận <span class="font-bold text-[#1D4ED8]">thức</span>, nơi <span class="font-bold text-[#1D4ED8]">bạn</span> không <span class="font-bold text-[#1D4ED8]">còn</span> được <span class="font-bold text-[#1D4ED8]">dẫn</span> dắt <span class="font-bold text-[#1D4ED8]">từng</span> trang <span class="font-bold text-[#1D4ED8]">sách</span> bởi <span class="font-bold text-[#1D4ED8]">thầy</span> cô <span class="font-bold text-[#1D4ED8]">giáo</span> như <span class="font-bold text-[#1D4ED8]">thời</span> phổ <span class="font-bold text-[#1D4ED8]">thông</span>.
+          </p>
+<!-- Paragraph 2 -->
+<p class="relative z-10 transition-colors duration-150">
+<span class="font-bold text-[#1C1917]">Đối</span> với <span class="font-bold text-[#1C1917]">người</span> có <span class="font-bold text-[#1C1917]">phong</span> cách <span class="font-bold text-[#1C1917]">tiếp</span> nhận <span class="font-bold text-[#1C1917]">thông</span> tin <span class="font-bold text-[#1C1917]">khác</span> biệt <span class="font-bold text-[#1C1917]">—</span> đặc <span class="font-bold text-[#1C1917]">biệt</span> là <span class="font-bold text-[#1C1917]">những</span> người <span class="font-bold text-[#1C1917]">gặp</span> trở <span class="font-bold text-[#1C1917]">ngại</span> với <span class="font-bold text-[#1C1917]">chứng</span> khó <span class="font-bold text-[#1C1917]">đọc</span> (Dyslexia), <span class="font-bold text-[#1C1917]">khối</span> lượng <span class="font-bold text-[#1C1917]">tài</span> liệu <span class="font-bold text-[#1C1917]">khổng</span> lồ <span class="font-bold text-[#1C1917]">có</span> thể <span class="font-bold text-[#1C1917]">tạo</span> nên <span class="font-bold text-[#1C1917]">một</span> bức <span class="font-bold text-[#1C1917]">tường</span> tâm <span class="font-bold text-[#1C1917]">lý</span> choáng <span class="font-bold text-[#1C1917]">ngợp</span>. Tuy <span class="font-bold text-[#1C1917]">nhiên</span>, não <span class="font-bold text-[#1C1917]">bộ</span> không <span class="font-bold text-[#1C1917]">bị</span> giới <span class="font-bold text-[#1C1917]">hạn</span>; <span class="font-bold text-[#1C1917]">nó</span> chỉ <span class="font-bold text-[#1C1917]">đang</span> tìm <span class="font-bold text-[#1C1917]">kiếm</span> một <span class="font-bold text-[#1C1917]">tần</span> số <span class="font-bold text-[#1C1917]">tiếp</span> cận <span class="font-bold text-[#1C1917]">tối</span> ưu <span class="font-bold text-[#1C1917]">hơn</span>.
+          </p>
+<!-- Quote / Highlight Insight Card matching Homepage Quote Cards -->
+<div class="my-4 p-6 rounded-2xl flex items-start gap-4 border border-[#E8E4DD] shadow-xs" style="background-color: #F7F5F0;">
+<span class="material-symbols-outlined text-[#B45309] text-2xl shrink-0 mt-1" style="font-variation-settings: 'FILL' 1;">lightbulb</span>
+<div class="flex flex-col gap-1.5">
+<span class="font-headline font-semibold text-[#1C1917] text-base italic leading-relaxed">
+                “Đọc hiểu không phải là cuộc đua về tốc độ giải mã mặt chữ, mà là nghệ thuật đồng bộ hóa các khái niệm vào mô hình tư duy trực quan của chính bạn.”
+              </span>
+<span class="text-xs font-label uppercase tracking-widest text-[#78716C] font-semibold">— Ghi chú nhận thức trực quan</span>
+</div>
+</div>
+<!-- Paragraph 3 -->
+<p class="relative z-10 transition-colors duration-150">
+<span class="font-bold text-[#1C1917]">Quy</span> tắc <span class="font-bold text-[#1C1917]">vàng</span> đầu <span class="font-bold text-[#1C1917]">tiên</span>: <span class="font-bold text-[#1C1917]">Chia</span> nhỏ <span class="font-bold text-[#1C1917]">khối</span> thông <span class="font-bold text-[#1C1917]">tin</span> (Chunking). <span class="font-bold text-[#1C1917]">Thay</span> vì <span class="font-bold text-[#1C1917]">cố</span> gắng <span class="font-bold text-[#1C1917]">nuốt</span> trọn <span class="font-bold text-[#1C1917]">một</span> chương <span class="font-bold text-[#1C1917]">sách</span> 40 <span class="font-bold text-[#1C1917]">trang</span> trong <span class="font-bold text-[#1C1917]">một</span> lần <span class="font-bold text-[#1C1917]">ngồi</span>, hãy <span class="font-bold text-[#1C1917]">tách</span> nó <span class="font-bold text-[#1C1917]">thành</span> các <span class="font-bold text-[#1C1917]">mô-đun</span> 5 <span class="font-bold text-[#1C1917]">phút</span>. <span class="font-bold text-[#1C1917]">Khi</span> đôi <span class="font-bold text-[#1C1917]">mắt</span> được <span class="font-bold text-[#1C1917]">hỗ</span> trợ <span class="font-bold text-[#1C1917]">bởi</span> thước <span class="font-bold text-[#1C1917]">dòng</span> và <span class="font-bold text-[#1C1917]">sự</span> neo <span class="font-bold text-[#1C1917]">đậu</span> của <span class="font-bold text-[#1C1917]">các</span> ký <span class="font-bold text-[#1C1917]">tự</span> in <span class="font-bold text-[#1C1917]">đậm</span> ban <span class="font-bold text-[#1C1917]">đầu</span>, <span class="font-bold text-[#1C1917]">não</span> bộ <span class="font-bold text-[#1C1917]">giảm</span> tải <span class="font-bold text-[#1C1917]">được</span> hơn <span class="font-bold text-[#1C1917]">40%</span> năng <span class="font-bold text-[#1C1917]">lượng</span> dịch <span class="font-bold text-[#1C1917]">mã</span> cơ <span class="font-bold text-[#1C1917]">học</span>.
+          </p>
+<!-- Paragraph 4 -->
+<p class="relative z-10 transition-colors duration-150">
+<span class="font-bold text-[#1C1917]">Quy</span> tắc <span class="font-bold text-[#1C1917]">thứ</span> hai: <span class="font-bold text-[#1C1917]">Đa</span> giác <span class="font-bold text-[#1C1917]">quan</span> hóa <span class="font-bold text-[#1C1917]">kiến</span> thức. <span class="font-bold text-[#1C1917]">Hãy</span> kết <span class="font-bold text-[#1C1917]">hợp</span> vừa <span class="font-bold text-[#1C1917]">nghe</span> giọng <span class="font-bold text-[#1C1917]">đọc</span> nhân <span class="font-bold text-[#1C1917]">tạo</span> vừa <span class="font-bold text-[#1C1917]">dõi</span> theo <span class="font-bold text-[#1C1917]">vùng</span> sáng <span class="font-bold text-[#1C1917]">chuyển</span> động. <span class="font-bold text-[#1C1917]">Tín</span> hiệu <span class="font-bold text-[#1C1917]">âm</span> thanh <span class="font-bold text-[#1C1917]">kích</span> hoạt <span class="font-bold text-[#1C1917]">vỏ</span> não <span class="font-bold text-[#1C1917]">thính</span> giác, <span class="font-bold text-[#1C1917]">trong</span> khi <span class="font-bold text-[#1C1917]">mắt</span> ghi <span class="font-bold text-[#1C1917]">nhận</span> hình <span class="font-bold text-[#1C1917]">thái</span> từ <span class="font-bold text-[#1C1917]">ngữ</span>, <span class="font-bold text-[#1C1917]">tạo</span> nên <span class="font-bold text-[#1C1917]">liên</span> kết <span class="font-bold text-[#1C1917]">thần</span> kinh <span class="font-bold text-[#1C1917]">kép</span> vô <span class="font-bold text-[#1C1917]">cùng</span> vững <span class="font-bold text-[#1C1917]">chắc</span>.
+          </p>
+</article>
+<!-- Completion Checklist Card -->
+
+</div>
+</main><aside id="sidebar-right" class="w-80 shrink-0 border-l border-[#E8E4DD] p-5 overflow-y-auto flex flex-col gap-6 text-[#1C1917] select-none min-h-[calc(100vh-4rem)] z-10" style="background-color: rgb(247, 245, 240);">
+  <!-- Header -->
+  <div class="flex items-center justify-between pb-3 border-b border-[#E8E4DD]">
+    <div class="flex items-center gap-2">
+      <span class="material-symbols-outlined text-[#1D4ED8] text-[20px]">tune</span>
+      <span class="font-headline font-bold text-sm tracking-tight text-[#1C1917]">Bộ công cụ đọc</span>
+    </div>
+    <button type="button" aria-label="Đóng công cụ" class="p-1 text-[#78716C] hover:text-[#1C1917] hover:bg-[#EAE6DF] rounded transition-colors">
+      <span class="material-symbols-outlined text-[18px]">last_page</span>
+    </button>
+  </div>
+
+  <!-- Section 1: GIỌNG ĐỌC TRỢ THÍNH -->
+  <div class="flex flex-col gap-3">
+    <div class="flex items-center justify-between">
+      <span class="text-[11px] font-bold tracking-wider uppercase text-[#78716C] font-label">GIỌNG ĐỌC TRỢ THÍNH</span>
+      <span class="text-[11px] text-[#1D4ED8] font-bold flex items-center gap-1">
+        <span class="w-1.5 h-1.5 rounded-full bg-[#1D4ED8] animate-pulse"></span>
+        AI Voice
+      </span>
+    </div>
+
+    <!-- Primary Voice Button -->
+    <button type="button" class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-white font-semibold text-[13px] shadow-xs transition-colors hover:opacity-95" style="background-color: #1D4ED8;">
+      <span class="material-symbols-outlined text-[18px]">pause</span>
+      <span>Tạm dừng đọc (Câu 2/6)</span>
+    </button>
+
+    <!-- Speed Control -->
+    <div class="flex flex-col gap-1.5">
+      <span class="text-xs text-[#78716C] font-label font-medium">Tốc độ phát</span>
+      <div class="grid grid-cols-3 gap-1 bg-[#ECE8E0] p-1 rounded-lg border border-[#E2DDD3]">
+        <button type="button" class="py-1 text-xs rounded font-medium text-[#78716C] hover:text-[#1C1917] transition-colors">0.8x Chậm</button>
+        <button type="button" class="py-1 text-xs rounded font-bold bg-white text-[#1D4ED8] shadow-xs transition-all">1.0x Chuẩn</button>
+        <button type="button" class="py-1 text-xs rounded font-medium text-[#78716C] hover:text-[#1C1917] transition-colors">1.2x Nhanh</button>
+      </div>
+    </div>
+
+    <!-- Voice Accent -->
+    <div class="flex flex-col gap-1.5">
+      <span class="text-xs text-[#78716C] font-label font-medium">Âm sắc &amp; Vùng miền</span>
+      <div class="grid grid-cols-2 gap-1.5">
+        <button type="button" class="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-white border border-[#1D4ED8] text-[#1D4ED8] text-xs font-bold shadow-xs">
+          <span class="material-symbols-outlined text-[14px]">check</span>
+          <span>Giọng Bắc ấm</span>
+        </button>
+        <button type="button" class="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-[#ECE8E0] border border-[#E2DDD3] text-[#78716C] hover:text-[#1C1917] text-xs font-medium transition-colors">
+          <span>Giọng Nam dịu</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 2: KIỂU CHỮ & CỠ CHỮ -->
+  <div class="flex flex-col gap-3 pt-3 border-t border-[#E8E4DD]">
+    <span class="text-[11px] font-bold tracking-wider uppercase text-[#78716C] font-label">KIỂU CHỮ &amp; CỠ CHỮ</span>
+    
+    <!-- Font Switcher -->
+    <div class="grid grid-cols-2 gap-1.5">
+      <button type="button" class="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-white border border-[#1D4ED8] text-[#1D4ED8] text-xs font-bold shadow-xs">
+        <span class="material-symbols-outlined text-[14px]">check</span>
+        <span>Lexend / Sans</span>
+      </button>
+      <button type="button" class="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-[#ECE8E0] border border-[#E2DDD3] text-[#78716C] hover:text-[#1C1917] text-xs font-medium transition-colors font-headline">
+        <span>Serif Truyền thống</span>
+      </button>
+    </div>
+
+    <!-- Font Size Slider -->
+    <div class="flex flex-col gap-1.5">
+      <div class="flex items-center justify-between text-xs text-[#78716C]">
+        <span class="font-medium">Cỡ chữ hiển thị</span>
+        <span class="font-bold text-[#1D4ED8] font-label">20px</span>
+      </div>
+      <div class="flex items-center gap-2 bg-[#ECE8E0] p-2 rounded-lg border border-[#E2DDD3]">
+        <span class="text-xs font-bold text-[#78716C] font-label">A-</span>
+        <div class="flex-1 h-1.5 bg-[#DBD5C9] rounded-full overflow-hidden relative cursor-pointer">
+          <div class="bg-[#1D4ED8] h-full w-[65%] rounded-full"></div>
+        </div>
+        <span class="text-base font-bold text-[#78716C] font-label">A+</span>
+      </div>
+    </div>
+
+    <!-- Line Spacing -->
+    <div class="flex flex-col gap-1.5">
+      <span class="text-xs text-[#78716C] font-label font-medium">Khoảng cách dòng</span>
+      <div class="grid grid-cols-3 gap-1 bg-[#ECE8E0] p-1 rounded-lg border border-[#E2DDD3]">
+        <button type="button" class="py-1 text-xs rounded font-medium text-[#78716C] hover:text-[#1C1917] transition-colors">1.5x</button>
+        <button type="button" class="py-1 text-xs rounded font-bold bg-white text-[#1D4ED8] shadow-xs transition-all">1.8x Chuẩn</button>
+        <button type="button" class="py-1 text-xs rounded font-medium text-[#78716C] hover:text-[#1C1917] transition-colors">2.0x Rộng</button>
+      </div>
+    </div>
+
+    <!-- Letter Spacing -->
+    <div class="flex flex-col gap-1.5">
+      <span class="text-xs text-[#78716C] font-label font-medium">Khoảng cách ký tự</span>
+      <div class="grid grid-cols-2 gap-1 bg-[#ECE8E0] p-1 rounded-lg border border-[#E2DDD3]">
+        <button type="button" class="py-1 text-xs rounded font-bold bg-white text-[#1D4ED8] shadow-xs transition-all">Chuẩn</button>
+        <button type="button" class="py-1 text-xs rounded font-medium text-[#78716C] hover:text-[#1C1917] transition-colors">Thoáng (+0.05)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 3: MÀU DỊU MẮT & KHỔ ĐỌC -->
+  <div class="flex flex-col gap-3 pt-3 border-t border-[#E8E4DD]">
+    <span class="text-[11px] font-bold tracking-wider uppercase text-[#78716C] font-label">MÀU DỊU MẮT &amp; KHỔ ĐỌC</span>
+    
+    <!-- Eye Comfort Background Presets -->
+    <div class="flex flex-col gap-1.5">
+      <span class="text-xs text-[#78716C] font-label font-medium">Tông nền mắt đọc</span>
+      <div class="grid grid-cols-3 gap-2">
+        <button type="button" class="flex flex-col items-center gap-1 p-2 rounded-lg border-2 border-[#1D4ED8] bg-[#FAF8F5] shadow-xs text-center transition-all">
+          <span class="w-5 h-5 rounded-full border border-[#D5CFBE] bg-[#FAF8F5] flex items-center justify-center text-[#1D4ED8]">
+            <span class="material-symbols-outlined text-[13px]">check</span>
+          </span>
+          <span class="text-[11px] font-bold text-[#1D4ED8] font-label">Kem dịu</span>
+        </button>
+        <button type="button" class="flex flex-col items-center gap-1 p-2 rounded-lg border border-[#E2DDD3] bg-[#F5F2EB] text-center hover:border-[#1D4ED8] transition-all">
+          <span class="w-5 h-5 rounded-full border border-[#D5CFBE] bg-[#F5F2EB]"></span>
+          <span class="text-[11px] font-medium text-[#78716C] font-label">Giấy ngà</span>
+        </button>
+        <button type="button" class="flex flex-col items-center gap-1 p-2 rounded-lg border border-[#E2DDD3] bg-[#25282A] text-center hover:border-[#1D4ED8] transition-all">
+          <span class="w-5 h-5 rounded-full border border-black/30 bg-[#25282A]"></span>
+          <span class="text-[11px] font-medium text-[#78716C] font-label">Than êm</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Reading Width Options -->
+    <div class="flex flex-col gap-1.5">
+      <span class="text-xs text-[#78716C] font-label font-medium">Khổ đọc văn bản</span>
+      <div class="grid grid-cols-3 gap-1 bg-[#ECE8E0] p-1 rounded-lg border border-[#E2DDD3]">
+        <button type="button" class="py-1 text-xs rounded font-medium text-[#78716C] hover:text-[#1C1917] transition-colors">Hẹp</button>
+        <button type="button" class="py-1 text-xs rounded font-bold bg-white text-[#1D4ED8] shadow-xs transition-all">Chuẩn</button>
+        <button type="button" class="py-1 text-xs rounded font-medium text-[#78716C] hover:text-[#1C1917] transition-colors">Rộng</button>
+      </div>
+    </div>
+
+    <!-- Reading Ruler Toggle -->
+    <div class="flex items-center justify-between p-2.5 rounded-lg bg-[#ECE8E0] border border-[#E2DDD3] mt-1">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-[#1D4ED8] text-[18px]">line_style</span>
+        <div class="flex flex-col">
+          <span class="text-xs font-bold text-[#1C1917] font-label">Thước dẫn dòng</span>
+          <span class="text-[11px] text-[#78716C]">Theo dõi vị trí đọc</span>
+        </div>
+      </div>
+      <button type="button" id="toggle-ruler" role="switch" aria-checked="true" class="w-9 h-5 rounded-full relative flex items-center p-0.5 transition-colors cursor-pointer bg-[#1D4ED8]">
+        <div id="toggle-thumb" class="w-4 h-4 bg-white rounded-full shadow-xs transform translate-x-4 transition-transform"></div>
+      </button>
+    </div>
+  </div>
+</aside>
+<!-- RIGHT ACCESSIBILITY TOOLBAR (w-72) -->
+
+</div>
+</div>
+<script>
+  // Simple micro-interactions for the reading canvas
+  (function() {
+    const readingViewport = document.getElementById('reading-viewport');
+    const readingRuler = document.getElementById('reading-ruler');
+    const toggleRulerBtn = document.getElementById('toggle-ruler');
+    const toggleThumb = document.getElementById('toggle-thumb');
+    const readingContent = document.getElementById('reading-content');
+    const audioBtn = document.getElementById('btn-audio-toggle');
+    const colorButtons = document.querySelectorAll('.theme-color-btn');
+
+    let rulerActive = true;
+    let isPlaying = false;
+
+    // Toggle reading ruler
+    if (toggleRulerBtn && readingRuler) {
+      toggleRulerBtn.addEventListener('click', () => {
+        rulerActive = !rulerActive;
+        toggleRulerBtn.setAttribute('aria-checked', rulerActive);
+        if (rulerActive) {
+          toggleRulerBtn.classList.remove('bg-surface-dim');
+          toggleRulerBtn.classList.add('bg-primary');
+          toggleThumb.classList.add('translate-x-4');
+          readingRuler.style.display = 'block';
+        } else {
+          toggleRulerBtn.classList.remove('bg-primary');
+          toggleRulerBtn.classList.add('bg-surface-dim');
+          toggleThumb.classList.remove('translate-x-4');
+          readingRuler.style.display = 'none';
+        }
+      });
+    }
+
+    // Ruler follows mouse pointer vertically inside reading viewport
+    if (readingViewport && readingRuler) {
+      readingViewport.addEventListener('mousemove', (e) => {
+        if (!rulerActive) return;
+        const rect = readingContent.getBoundingClientRect();
+        const offsetY = e.clientY - rect.top;
+        if (offsetY >= 0 && offsetY <= rect.height) {
+          readingRuler.style.top = `${offsetY - 20}px`;
+        }
+      });
+    }
+
+    // Background color switcher
+    colorButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const bgVal = btn.getAttribute('data-bg');
+        if (readingViewport && bgVal) {
+          readingViewport.style.backgroundColor = bgVal;
+        }
+        colorButtons.forEach(b => {
+          const checkIcon = b.querySelector('.material-symbols-outlined');
+          if (checkIcon) checkIcon.remove();
+        });
+        const icon = document.createElement('span');
+        icon.className = 'material-symbols-outlined text-on-surface text-[14px]';
+        icon.innerText = 'check';
+        btn.appendChild(icon);
+      });
+    });
+
+    // Font size modifiers
+    const btnSm = document.getElementById('btn-size-sm');
+    const btnMd = document.getElementById('btn-size-md');
+    const btnLg = document.getElementById('btn-size-lg');
+    const sizeBtns = [btnSm, btnMd, btnLg];
+
+    function setSizeActive(btn, sizeClass) {
+      sizeBtns.forEach(b => {
+        b.classList.remove('bg-surface-container-lowest', 'text-primary', 'shadow-xs');
+        b.classList.add('text-secondary');
+      });
+      btn.classList.add('bg-surface-container-lowest', 'text-primary', 'shadow-xs');
+      btn.classList.remove('text-secondary');
+      readingContent.classList.remove('text-[16px]', 'text-[18px]', 'text-[21px]');
+      readingContent.classList.add(sizeClass);
+    }
+
+    if (btnSm) btnSm.addEventListener('click', () => setSizeActive(btnSm, 'text-[16px]'));
+    if (btnMd) btnMd.addEventListener('click', () => setSizeActive(btnMd, 'text-[18px]'));
+    if (btnLg) btnLg.addEventListener('click', () => setSizeActive(btnLg, 'text-[21px]'));
+
+    // Audio Playback Toggle Button
+    if (audioBtn) {
+      audioBtn.addEventListener('click', () => {
+        isPlaying = !isPlaying;
+        const icon = audioBtn.querySelector('.material-symbols-outlined');
+        const text = audioBtn.querySelector('span:last-child');
+        if (isPlaying) {
+          icon.innerText = 'pause';
+          text.innerText = 'Đang phát Audio (AI)...';
+          audioBtn.classList.replace('bg-primary-container', 'bg-tertiary');
+        } else {
+          icon.innerText = 'play_arrow';
+          text.innerText = 'Nghe đọc văn bản (Audiobook AI)';
+          audioBtn.classList.replace('bg-tertiary', 'bg-primary-container');
+        }
+      });
+    }
+  })();
+</script></main><footer class="w-full border-t border-[#E8E4DD] mt-auto" style="background-color: rgb(247, 245, 240);"><div class="max-w-7xl mx-auto px-6 lg:px-12 py-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-label text-[#78716C]"><div class="flex items-center gap-2"><span class="font-headline font-bold text-[#1C1917]">LexiEase</span><span>— Scholarly accessibility and dyslexia-first cognitive reading.</span></div><div class="flex items-center gap-6"><span>OpenDyslexic &amp; Noto Serif enabled</span><a class="hover:text-[#1D4ED8] transition-colors underline decoration-[#D5CFBE] underline-offset-4" data-path="accessibility-guide" href="#">Reading Guide</a><a class="hover:text-[#1D4ED8] transition-colors underline decoration-[#D5CFBE] underline-offset-4" data-path="settings" href="#">Preferences</a></div></div></footer>
+
+</body></html>

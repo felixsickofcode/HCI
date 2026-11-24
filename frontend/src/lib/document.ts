@@ -285,8 +285,19 @@ export function toExtractErrorMessage(error: unknown): string {
         return `Tệp quá lớn. Vui lòng chọn tệp nhỏ hơn ${MAX_UPLOAD_MB} MB.`;
       case 415:
         return 'Chỉ hỗ trợ tệp PDF, PNG, JPEG hoặc WebP.';
-      case 422:
+      case 422: {
+        const detail = error.message.toLowerCase();
+        if (detail.includes('password protected')) {
+          return 'Tệp PDF được bảo vệ bằng mật khẩu. Vui lòng bỏ mật khẩu rồi thử lại.';
+        }
+        if (detail.includes('no readable text')) {
+          return 'Tệp không có chữ có thể đọc được. Với tài liệu scan, hãy dùng ảnh rõ hơn hoặc bật OCR trên máy chủ.';
+        }
+        if (detail.includes('could not read') || detail.includes('could not process')) {
+          return 'Tệp bị hỏng hoặc không đúng định dạng PDF/ảnh. Vui lòng mở lại và lưu tệp rồi thử lại.';
+        }
         return 'Không đọc được chữ trong tệp này. Tệp có thể bị khóa mật khẩu, bị hỏng hoặc không có chữ.';
+      }
       case 503:
         return 'Máy chủ chưa bật được chức năng nhận dạng chữ. Vui lòng thử lại sau.';
       default:
