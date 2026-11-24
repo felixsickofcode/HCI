@@ -26,7 +26,7 @@ export const DEFAULTS: DisplaySettings = {
   letterSpacing: 0.02,
   theme: 'cream',
   columnWidth: 60,
-  focus: { enabled: false, dimOpacity: 0.6, followPointer: false },
+  focus: { enabled: false, dimOpacity: 0.6, followPointer: false, lineCount: 1 },
 };
 
 // Không dùng #FFFFFF. Tương phản chữ/nền đều > 12:1 (AAA).
@@ -54,6 +54,11 @@ function sanitize(raw?: Partial<DisplaySettings> | null): DisplaySettings {
   const r = { ...DEFAULTS, ...raw, focus: { ...DEFAULTS.focus, ...raw?.focus } };
   return {
     ...r,
+    focus: {
+      ...r.focus,
+      lineCount: r.focus.lineCount === 2 || r.focus.lineCount === 3 ? r.focus.lineCount : 1,
+      dimOpacity: clamp(r.focus.dimOpacity, [0.5, 0.8]),
+    },
     fontFamily: r.fontFamily in FONT_STACKS ? r.fontFamily : DEFAULTS.fontFamily,
     theme: r.theme in THEMES ? r.theme : DEFAULTS.theme,
     fontSize: Math.round(clamp(r.fontSize, LIMITS.fontSize)),
