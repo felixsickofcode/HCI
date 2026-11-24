@@ -4,7 +4,9 @@ import {
   buildFileDocument,
   buildPastedDocument,
   parseTextBlocks,
+  toExtractErrorMessage,
 } from './document';
+import { ApiError } from './api';
 
 const file = new File([''], 'tai-lieu.pdf', { type: 'application/pdf' });
 
@@ -106,5 +108,16 @@ describe('build documents', () => {
     });
     expect(withoutBlocks.blocks).toHaveLength(2);
     expect(withoutBlocks.warnings).toEqual([]);
+  });
+});
+
+describe('extraction errors', () => {
+  it('explains common PDF extraction failures', () => {
+    expect(toExtractErrorMessage(new ApiError('PDF is password protected', 422)))
+      .toContain('mật khẩu');
+    expect(toExtractErrorMessage(new ApiError('No readable text was found in the file', 422)))
+      .toContain('không có chữ');
+    expect(toExtractErrorMessage(new ApiError('Could not read the PDF file', 422)))
+      .toContain('bị hỏng');
   });
 });

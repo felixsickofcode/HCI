@@ -1,0 +1,357 @@
+<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0" name="viewport"><meta content="web_dashboard" name="shell-type"><title>LexiEase | Thư viện bài đọc</title><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=Noto+Serif:ital,wght@0,400;0,600;0,700;1,400&amp;family=Public+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"secondary":"#5a5f63","on-secondary-fixed":"#171c20","on-secondary-fixed-variant":"#42474b","on-primary-fixed":"#001946","on-tertiary-container":"#4a3f00","inverse-on-surface":"#f2f0f1","on-secondary":"#ffffff","on-surface-variant":"#434653","tertiary-fixed":"#f9e37a","on-error":"#ffffff","on-tertiary-fixed-variant":"#524600","tertiary":"#6d5e00","on-primary":"#ffffff","on-error-container":"#93000a","on-tertiary-fixed":"#211b00","primary-container":"#3366cc","on-tertiary":"#ffffff","surface-variant":"#e3e2e3","surface":"#faf9fa","outline-variant":"#c3c6d5","surface-tint":"#2259bf","background":"#faf9fa","secondary-fixed":"#dfe3e8","primary":"#094cb2","tertiary-fixed-dim":"#dcc661","surface-container":"#efedee","tertiary-container":"#bfab49","primary-fixed-dim":"#b1c5ff","on-primary-container":"#e7ebff","surface-container-lowest":"#ffffff","inverse-primary":"#b1c5ff","on-background":"#1b1c1d","surface-container-low":"#f5f3f4","surface-container-highest":"#e3e2e3","error":"#ba1a1a","on-secondary-container":"#606569","outline":"#737784","primary-fixed":"#d9e2ff","error-container":"#ffdad6","on-surface":"#1b1c1d","surface-dim":"#dbdadb","inverse-surface":"#303031","surface-bright":"#faf9fa","surface-container-high":"#e9e8e9","secondary-container":"#dfe3e8","secondary-fixed-dim":"#c2c7cc","on-primary-fixed-variant":"#00419d"},borderRadius:{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},spacing:{},fontFamily:{headline:["Noto Serif"],display:["Noto Serif"],body:["Inter"],label:["Public Sans"]},fontSize:{}}}}</script></head><body class="bg-[#FAF8F5] font-body text-on-surface min-h-screen flex flex-col antialiased selection:bg-primary-fixed selection:text-on-primary-fixed"><div class="w-full flex flex-1 min-h-screen bg-[#FAF8F5]">
+<!-- LEFT SIDEBAR (1:1 VỚI SCREEN_10) -->
+<aside class="w-72 shrink-0 bg-[#F7F5F0] border-r border-[#E8E4DD] flex flex-col justify-between select-none min-h-screen sticky top-0 h-screen overflow-y-auto" id="sidebar-left">
+<div class="p-4 flex flex-col gap-4">
+<div class="flex items-center justify-between">
+<a class="flex items-center gap-1.5 text-[13px] font-medium text-secondary hover:text-on-surface transition-colors" data-path="trang-chu" href="#">
+<span class="material-symbols-outlined text-[16px]">arrow_back</span>
+<span>Về trang chủ</span>
+</a>
+<button aria-label="Thu gọn danh mục" class="p-1 rounded text-secondary hover:text-on-surface hover:bg-surface-container transition-colors" type="button">
+<span class="material-symbols-outlined text-[18px]">first_page</span>
+</button>
+</div>
+<div class="flex flex-col gap-1">
+<a class="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] font-medium text-secondary hover:text-on-surface hover:bg-surface-container transition-colors text-left" data-path="new-reading" href="#">
+<span class="material-symbols-outlined text-[16px] text-secondary">edit_square</span>
+<span>Bài đọc mới</span>
+</a>
+<a class="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] font-medium text-secondary hover:text-on-surface hover:bg-surface-container transition-colors text-left" data-path="multisensory" href="#">
+<span class="material-symbols-outlined text-[16px] text-secondary">psychology</span>
+<span>Học Đa Giác Quan</span>
+</a>
+<a aria-current="page" class="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] font-semibold text-primary bg-primary-fixed/40 transition-colors text-left" data-path="library" href="#">
+<span class="material-symbols-outlined text-[16px] text-primary">menu_book</span>
+<span>Thư viện bài đọc</span>
+</a>
+</div>
+<div class="mt-2">
+<div class="px-2.5 text-[11px] font-semibold tracking-wider uppercase text-secondary font-label">
+          BÀI ĐỌC CỦA TÔI
+        </div>
+<nav class="mt-2 flex flex-col gap-1.5">
+<a class="block bg-surface-container-lowest rounded-lg p-3 shadow-xs border border-outline-variant/20 hover:border-primary/40 transition-all cursor-pointer" data-path="reading-workspace" href="#">
+<div class="flex items-center justify-between gap-2">
+<div class="flex items-center gap-2 truncate">
+<span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+<span class="text-[13px] font-semibold text-on-surface truncate">
+                  Kế hoạch Sinh tồn ở Đại học
+                </span>
+</div>
+</div>
+<div class="mt-2.5 flex items-center justify-between text-[11px] text-secondary font-label">
+<span>Tiến độ đọc</span>
+<span class="font-semibold text-primary">60%</span>
+</div>
+<div class="w-full bg-surface-container h-1 rounded-full overflow-hidden mt-1">
+<div class="bg-primary h-full w-[60%] rounded-full"></div>
+</div>
+</a>
+<button class="w-full text-left px-3 py-2 text-[13px] text-secondary hover:text-on-surface hover:bg-surface-container rounded-lg transition-colors truncate" type="button">
+            Phương pháp tư duy trực quan cho não bộ
+          </button>
+<button class="w-full text-left px-3 py-2 text-[13px] text-secondary hover:text-on-surface hover:bg-surface-container rounded-lg transition-colors truncate" type="button">
+            Lịch sử kiến trúc cổ điển phương Đông
+          </button>
+<button class="w-full text-left px-3 py-2 text-[13px] text-secondary hover:text-on-surface hover:bg-surface-container rounded-lg transition-colors truncate" type="button">
+            Ghi chép nhanh và hệ thống Feynman
+          </button>
+<button class="w-full text-left px-3 py-2 text-[13px] text-secondary hover:text-on-surface hover:bg-surface-container rounded-lg transition-colors truncate" type="button">
+            Quản lý năng lượng thay vì thời gian
+          </button>
+</nav>
+</div>
+</div>
+<!-- Minimal Clean Footer 1:1 with Screen 10 -->
+<div class="p-4 border-t border-outline-variant/20 flex items-center justify-between text-xs text-secondary">
+<div class="flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+<span class="text-[11px] font-label text-secondary">Đã đồng bộ cục bộ</span>
+</div>
+<span class="text-[11px] font-label text-secondary font-medium">v2.4</span>
+</div>
+</aside>
+<!-- MAIN READING LIBRARY CONTENT -->
+<main class="flex-1 flex flex-col overflow-y-auto bg-[#FDFBF7]" id="main-content">
+<div class="w-full max-w-6xl mx-auto px-8 py-10 flex flex-col gap-8">
+<!-- Header Section -->
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-outline-variant/30"><div class="flex flex-col gap-2">
+  <div class="flex items-center gap-2.5">
+    <span class="text-[11px] font-label font-bold uppercase tracking-wider text-[#1D4ED8] bg-[#EFF6FF] border border-[#DBEAFE] px-2.5 py-0.5 rounded-full">
+      Học thuật &amp; Dyslexia-friendly
+    </span>
+    <span class="text-[12px] font-label text-stone-500 flex items-center gap-1 font-medium">
+      <span class="material-symbols-outlined text-[15px] text-amber-600">bolt</span>
+      Hỗ trợ Bionic Reading
+    </span>
+  </div>
+  <h1 class="font-headline text-3xl md:text-4xl font-bold text-[#1C1917] tracking-tight mt-0.5">
+    Thư viện bài đọc &amp; Tri thức mở
+  </h1>
+  <p class="text-sm text-stone-600 font-body max-w-2xl leading-relaxed">
+    Nền tảng lưu trữ và tái cấu trúc tài liệu thông minh: chuyển đổi font chữ chuyên dụng cho chứng khó đọc, tạo neo Bionic Reading và đồng bộ hóa giọng đọc AI đa giác quan.
+  </p>
+</div>
+<div class="flex items-center gap-3 shrink-0">
+  <button class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[#D6D0C4] bg-white text-stone-800 hover:bg-[#F7F5F0] transition-all text-xs font-semibold shadow-xs" type="button">
+    <span class="material-symbols-outlined text-[18px] text-stone-500">link</span>
+    <span>Nhập liên kết bài báo</span>
+  </button>
+  <button class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1D4ED8] hover:bg-[#1E40AF] text-white transition-all text-xs font-semibold shadow-xs" type="button">
+    <span class="material-symbols-outlined text-[18px]">upload_file</span>
+    <span>Tải lên tài liệu mới</span>
+  </button>
+</div></div>
+<!-- Quick Search Bar & Filters -->
+<div class="flex flex-col gap-4"><div class="relative w-full">
+  <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 text-[20px]">search</span>
+  <input class="w-full bg-white border border-[#E8E4DD] rounded-xl pl-12 pr-28 py-3 text-sm text-[#1C1917] placeholder:text-stone-400 focus:outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#1D4ED8]/10 transition-all shadow-xs" placeholder="Tìm kiếm bài đọc, tác giả, ghi chú hoặc nội dung phân tích..." type="text">
+  <div class="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+    <span class="text-[10px] font-semibold text-stone-500 bg-[#F4F1EA] px-2 py-1 rounded border border-[#E8E4DD] font-label">⌘ K</span>
+  </div>
+</div>
+<div class="flex flex-wrap items-center justify-between gap-3 pt-1">
+  <div class="flex flex-wrap items-center gap-2">
+    <button class="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#1C1917] text-white shadow-xs transition-all" type="button">
+      Tất cả tài liệu
+    </button>
+    <button class="px-3.5 py-1.5 rounded-full text-xs font-medium bg-white border border-[#E8E4DD] text-stone-600 hover:text-[#1C1917] hover:bg-[#F7F5F0] transition-all" type="button">
+      Bài đọc của tôi (5)
+    </button>
+    <button class="px-3.5 py-1.5 rounded-full text-xs font-medium bg-white border border-[#E8E4DD] text-stone-600 hover:text-[#1C1917] hover:bg-[#F7F5F0] transition-all" type="button">
+      Tâm lý học &amp; Não bộ
+    </button>
+    <button class="px-3.5 py-1.5 rounded-full text-xs font-medium bg-white border border-[#E8E4DD] text-stone-600 hover:text-[#1C1917] hover:bg-[#F7F5F0] transition-all" type="button">
+      Phương pháp học tập
+    </button>
+    <button class="px-3.5 py-1.5 rounded-full text-xs font-medium bg-white border border-[#E8E4DD] text-stone-600 hover:text-[#1C1917] hover:bg-[#F7F5F0] transition-all" type="button">
+      Khoa học xã hội
+    </button>
+  </div>
+  <div class="flex items-center gap-2 text-xs text-stone-500 font-label">
+    <span class="flex items-center gap-1 text-stone-500">
+      <span class="material-symbols-outlined text-[16px]">filter_list</span>
+      Thời lượng:
+    </span>
+    <select class="bg-white border border-[#E8E4DD] rounded-lg px-2.5 py-1 text-xs text-[#1C1917] focus:outline-none focus:border-[#1D4ED8] cursor-pointer">
+      <option>Mọi thời lượng</option>
+      <option>&lt; 5 phút</option>
+      <option>5 - 15 phút</option>
+      <option>&gt; 15 phút</option>
+    </select>
+  </div>
+</div></div>
+<!-- Hero Card: Current In-Progress Reading -->
+<div class="bg-gradient-to-br from-white via-white to-[#F7F5F0] border border-[#E8E4DD] rounded-2xl p-6 lg:p-7 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] relative overflow-hidden"><div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative z-10">
+  <div class="flex flex-col gap-3 max-w-2xl">
+    <div class="flex items-center gap-2.5">
+      <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+      <span class="text-[11px] font-label font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+        ĐANG ĐỌC DỞ • 60% HOÀN THÀNH
+      </span>
+      <span class="text-xs text-stone-400 font-label">Cập nhật 20 phút trước</span>
+    </div>
+    <h2 class="font-headline text-2xl lg:text-3xl font-bold text-[#1C1917] leading-snug tracking-tight">
+      Kế hoạch Sinh tồn ở Đại học: Tư duy Độc lập và Cân bằng Não bộ
+    </h2>
+    <p class="text-xs text-stone-600 leading-relaxed font-body">
+      GS. Minh Hoàng • 8 phút đọc • Tích hợp thước đọc dòng &amp; AI Chunking phân đoạn giảm 40% tải nhận thức thị giác.
+    </p>
+    <div class="w-full max-w-md flex flex-col gap-1.5 pt-1">
+      <div class="flex items-center justify-between text-xs font-label">
+        <span class="text-stone-500">Trang 5 trên 8 (khoảng 3 phút còn lại)</span>
+        <span class="font-bold text-[#1D4ED8]">60%</span>
+      </div>
+      <div class="w-full bg-[#EAE6DE] h-2 rounded-full overflow-hidden">
+        <div class="bg-[#1D4ED8] h-full rounded-full transition-all duration-300" style="width: 60%"></div>
+      </div>
+    </div>
+  </div>
+  <div class="flex flex-col sm:flex-row lg:flex-col gap-2.5 shrink-0 w-full sm:w-auto">
+    <a class="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#1D4ED8] hover:bg-[#1E40AF] text-white transition-all text-xs font-semibold shadow-xs" data-path="ke-hoach-sinh-ton-o-dai-hoc" href="#">
+      <span class="material-symbols-outlined text-[18px]">play_circle</span>
+      <span>Tiếp tục đọc ngay</span>
+    </a>
+    <button class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[#D6D0C4] bg-white text-stone-800 hover:bg-[#F7F5F0] transition-all text-xs font-medium" type="button">
+      <span class="material-symbols-outlined text-[16px] text-stone-500">headphones</span>
+      <span>Nghe Audiobook AI</span>
+    </button>
+  </div>
+</div></div>
+<!-- Library Grid Header -->
+<div class="flex items-center justify-between pt-2">
+<div class="flex items-center gap-2">
+<span class="font-headline font-bold text-xl text-on-surface">Bộ sưu tập bài đọc đề xuất</span>
+<span class="text-xs font-label text-secondary bg-surface-container-high px-2 py-0.5 rounded-full font-medium">8 bài</span>
+</div>
+<div class="flex items-center gap-2 text-xs text-secondary">
+<button class="p-1 rounded bg-surface-container-low text-on-surface border border-outline-variant/20 shadow-xs" type="button">
+<span class="material-symbols-outlined text-[18px]">grid_view</span>
+</button>
+<button class="p-1 rounded text-secondary hover:text-on-surface transition-colors" type="button">
+<span class="material-symbols-outlined text-[18px]">view_agenda</span>
+</button>
+</div>
+</div>
+<!-- Reading Cards Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"><!-- Card 1 -->
+<article class="flex flex-col justify-between bg-white border border-[#EBE7DF] rounded-xl p-5 hover:border-[#1D4ED8]/40 hover:shadow-[0_8px_25px_-6px_rgba(0,0,0,0.07)] transition-all group cursor-pointer shadow-xs">
+  <div class="flex flex-col gap-3">
+    <div class="flex items-center justify-between text-[11px] font-label text-stone-500">
+      <span class="px-2.5 py-0.5 rounded-full bg-blue-50 text-[#1D4ED8] font-bold border border-blue-100 uppercase tracking-wide">Khoa học não bộ</span>
+      <span class="flex items-center gap-1 text-stone-500">
+        <span class="material-symbols-outlined text-[14px]">schedule</span>
+        6 phút
+      </span>
+    </div>
+    <h3 class="font-headline text-base font-bold text-[#1C1917] group-hover:text-[#1D4ED8] transition-colors leading-snug">
+      Phương pháp tư duy trực quan cho người có phong cách đọc khác biệt
+    </h3>
+    <p class="text-xs text-stone-600 font-body line-clamp-3 leading-relaxed">
+      Giải pháp kích hoạt tư duy không gian đa chiều, chuyển đổi khối dữ liệu thuần văn bản thành lược đồ nhận thức trực quan dạng nhánh.
+    </p>
+  </div>
+  <div class="mt-4 pt-4 border-t border-[#F0ECE1] flex items-center justify-between text-xs text-stone-500 font-label">
+    <span class="text-[#1C1917] font-medium">TS. Vũ Nam</span>
+    <span class="inline-flex items-center gap-1 text-[#1D4ED8] group-hover:translate-x-1 transition-transform font-semibold">
+      Đọc ngay
+      <span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+    </span>
+  </div>
+</article>
+<!-- Card 2 -->
+<article class="flex flex-col justify-between bg-white border border-[#EBE7DF] rounded-xl p-5 hover:border-[#1D4ED8]/40 hover:shadow-[0_8px_25px_-6px_rgba(0,0,0,0.07)] transition-all group cursor-pointer shadow-xs">
+  <div class="flex flex-col gap-3">
+    <div class="flex items-center justify-between text-[11px] font-label text-stone-500">
+      <span class="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 font-bold border border-amber-200 uppercase tracking-wide">Lịch sử &amp; Văn hóa</span>
+      <span class="flex items-center gap-1 text-stone-500">
+        <span class="material-symbols-outlined text-[14px]">schedule</span>
+        11 phút
+      </span>
+    </div>
+    <h3 class="font-headline text-base font-bold text-[#1C1917] group-hover:text-[#1D4ED8] transition-colors leading-snug">
+      Lịch sử kiến trúc cổ điển phương Đông: Từ kết cấu mộng gỗ đến đối xứng
+    </h3>
+    <p class="text-xs text-stone-600 font-body line-clamp-3 leading-relaxed">
+      Phân tích các triết lý cấu trúc chịu lực không dùng đinh và mối giao hòa phong thủy không gian mở trong hệ kiến trúc đình chùa Việt cổ.
+    </p>
+  </div>
+  <div class="mt-4 pt-4 border-t border-[#F0ECE1] flex items-center justify-between text-xs text-stone-500 font-label">
+    <span class="text-[#1C1917] font-medium">Lê Thuỳ Trâm</span>
+    <span class="inline-flex items-center gap-1 text-[#1D4ED8] group-hover:translate-x-1 transition-transform font-semibold">
+      Đọc ngay
+      <span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+    </span>
+  </div>
+</article>
+<!-- Card 3 -->
+<article class="flex flex-col justify-between bg-white border border-[#EBE7DF] rounded-xl p-5 hover:border-[#1D4ED8]/40 hover:shadow-[0_8px_25px_-6px_rgba(0,0,0,0.07)] transition-all group cursor-pointer shadow-xs">
+  <div class="flex flex-col gap-3">
+    <div class="flex items-center justify-between text-[11px] font-label text-stone-500">
+      <span class="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 font-bold border border-emerald-100 uppercase tracking-wide">Kỹ năng học sâu</span>
+      <span class="flex items-center gap-1 text-stone-500">
+        <span class="material-symbols-outlined text-[14px]">schedule</span>
+        7 phút
+      </span>
+    </div>
+    <h3 class="font-headline text-base font-bold text-[#1C1917] group-hover:text-[#1D4ED8] transition-colors leading-snug">
+      Ghi chép nhanh và hệ thống Feynman: Đơn giản hóa kiến thức trừu tượng
+    </h3>
+    <p class="text-xs text-stone-600 font-body line-clamp-3 leading-relaxed">
+      Bí quyết giảng giải bất kỳ định lý phức tạp nào cho một đứa trẻ 10 tuổi hiểu rõ, loại bỏ sương mù nhận thức và biệt ngữ hàn lâm.
+    </p>
+  </div>
+  <div class="mt-4 pt-4 border-t border-[#F0ECE1] flex items-center justify-between text-xs text-stone-500 font-label">
+    <span class="text-[#1C1917] font-medium">Thầy Nguyễn An</span>
+    <span class="inline-flex items-center gap-1 text-[#1D4ED8] group-hover:translate-x-1 transition-transform font-semibold">
+      Đọc ngay
+      <span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+    </span>
+  </div>
+</article>
+<!-- Card 4 -->
+<article class="flex flex-col justify-between bg-white border border-[#EBE7DF] rounded-xl p-5 hover:border-[#1D4ED8]/40 hover:shadow-[0_8px_25px_-6px_rgba(0,0,0,0.07)] transition-all group cursor-pointer shadow-xs">
+  <div class="flex flex-col gap-3">
+    <div class="flex items-center justify-between text-[11px] font-label text-stone-500">
+      <span class="px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-800 font-bold border border-indigo-100 uppercase tracking-wide">Hiệu suất cá nhân</span>
+      <span class="flex items-center gap-1 text-stone-500">
+        <span class="material-symbols-outlined text-[14px]">schedule</span>
+        9 phút
+      </span>
+    </div>
+    <h3 class="font-headline text-base font-bold text-[#1C1917] group-hover:text-[#1D4ED8] transition-colors leading-snug">
+      Quản lý năng lượng thay vì thời gian: Nhịp sinh học và đọc chủ động
+    </h3>
+    <p class="text-xs text-stone-600 font-body line-clamp-3 leading-relaxed">
+      Cách phân bổ các khối học tập khó nhất vào đúng khung giờ sóng não Alpha đỉnh cao thay vì ép buộc bản thân thức khuya kém hiệu quả.
+    </p>
+  </div>
+  <div class="mt-4 pt-4 border-t border-[#F0ECE1] flex items-center justify-between text-xs text-stone-500 font-label">
+    <span class="text-[#1C1917] font-medium">Đặng Minh Tâm</span>
+    <span class="inline-flex items-center gap-1 text-[#1D4ED8] group-hover:translate-x-1 transition-transform font-semibold">
+      Đọc ngay
+      <span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+    </span>
+  </div>
+</article>
+<!-- Card 5 -->
+<article class="flex flex-col justify-between bg-white border border-[#EBE7DF] rounded-xl p-5 hover:border-[#1D4ED8]/40 hover:shadow-[0_8px_25px_-6px_rgba(0,0,0,0.07)] transition-all group cursor-pointer shadow-xs">
+  <div class="flex flex-col gap-3">
+    <div class="flex items-center justify-between text-[11px] font-label text-stone-500">
+      <span class="px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-800 font-bold border border-purple-100 uppercase tracking-wide">Tâm lý học</span>
+      <span class="flex items-center gap-1 text-stone-500">
+        <span class="material-symbols-outlined text-[14px]">schedule</span>
+        5 phút
+      </span>
+    </div>
+    <h3 class="font-headline text-base font-bold text-[#1C1917] group-hover:text-[#1D4ED8] transition-colors leading-snug">
+      Hiệu ứng Dunning-Kruger và cạm bẫy của sự hiểu biết hời hợt
+    </h3>
+    <p class="text-xs text-stone-600 font-body line-clamp-3 leading-relaxed">
+      Nhận diện đường cong năng lực và cách thiết lập các phép kiểm tra nhận thức độc lập để không rơi vào ảo tưởng chuyên gia.
+    </p>
+  </div>
+  <div class="mt-4 pt-4 border-t border-[#F0ECE1] flex items-center justify-between text-xs text-stone-500 font-label">
+    <span class="text-[#1C1917] font-medium">TS. Trần Hùng</span>
+    <span class="inline-flex items-center gap-1 text-[#1D4ED8] group-hover:translate-x-1 transition-transform font-semibold">
+      Đọc ngay
+      <span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+    </span>
+  </div>
+</article>
+<!-- Card 6: Add New Article Prompt Card -->
+<div class="flex flex-col items-center justify-center text-center bg-[#F7F5F0]/80 border-2 border-dashed border-[#D6D0C4] rounded-xl p-6 hover:bg-[#F7F5F0] transition-all cursor-pointer shadow-xs">
+  <div class="w-12 h-12 rounded-full bg-white flex items-center justify-center text-[#1D4ED8] shadow-xs mb-3 border border-[#E8E4DD]">
+    <span class="material-symbols-outlined text-[24px]">add</span>
+  </div>
+  <h4 class="font-headline font-bold text-sm text-[#1C1917] mb-1">Thêm bài đọc của riêng bạn</h4>
+  <p class="text-xs text-stone-500 max-w-xs font-body mb-4">
+    Dán đường dẫn bài báo mạng, tệp PDF hoặc ảnh chụp sách để chuyển đổi sang Bionic Reading.
+  </p>
+  <button class="px-4 py-2 rounded-lg bg-white border border-[#D6D0C4] text-xs font-semibold text-[#1D4ED8] hover:bg-[#FAF8F5] shadow-xs transition-all" type="button">
+    + Nhập văn bản
+  </button>
+</div></div>
+<!-- Weekly Reading Analytics Ribbon -->
+
+</div>
+<!-- Minimal Scholarly Footer -->
+<footer class="w-full bg-[#F7F5F0] border-t border-[#E8E4DD] mt-auto">
+<div class="max-w-6xl mx-auto px-8 py-7 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-label text-secondary">
+<div class="flex items-center gap-2">
+<span class="font-headline font-semibold text-on-surface">LexiEase</span>
+<span>— Scholarly accessibility and dyslexia-first cognitive reading.</span>
+</div>
+<div class="flex items-center gap-6">
+<span>OpenDyslexic &amp; Noto Serif enabled</span>
+<a class="hover:text-primary transition-colors underline decoration-outline-variant/40 underline-offset-4" data-path="accessibility-guide" href="#">Reading Guide</a>
+<a class="hover:text-primary transition-colors underline decoration-outline-variant/40 underline-offset-4" data-path="settings" href="#">Preferences</a>
+</div>
+</div>
+</footer>
+</main>
+</div>
+
+
+</body></html>
