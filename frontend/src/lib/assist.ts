@@ -28,14 +28,27 @@ export async function contentVersion(blocks: Array<{ id: string; text: string }>
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export const explainWord = (
+const CACHE_LIMIT = 100;
+/** Nghĩa đã tra trong phiên, để bấm tra lại hoặc lưu từ không tốn thêm lượt gọi Groq. */
+const explanationCache = new Map<string, ExplanationResponse>();
+
+export const explainWord = async (
   data: Omit<ExplanationResponse, 'term' | 'meaning' | 'example' | 'cached'> & {
     contextText: string;
     selectedText: string;
   },
   signal: AbortSignal,
-) => apiFetch<ExplanationResponse>('/assist/explain', {
-  method: 'POST',
-  body: JSON.stringify(data),
-  signal,
-});
+) => {
+  const key = JSON.stringify([data.documentId, data.contentVersion, data.segmentId, data.start, data.end, data.selectedText]);
+  const hit = explanationCache.get(key);
+  if (hit) return hit;
+  const response = await apiFetch<ExplanationResponse>('/assist/explain', {
+    method: 'POST',
+    body: JSON.stringify(data),
+    signal,
+  });
+  const oldest = explanationCache.keys().next();
+  if (explanationCache.size >= CACHE_LIMIT && !oldest.done) explanationCache.delete(oldest.value);
+  explanationCache.set(key, response);
+  return response;
+};

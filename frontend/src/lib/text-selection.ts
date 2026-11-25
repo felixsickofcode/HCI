@@ -60,3 +60,32 @@ export function clickedWord(target: EventTarget | null, root: HTMLElement): Word
     rect: { left: box.left, top: box.top, bottom: box.bottom },
   };
 }
+
+function textPosition(root: HTMLElement, offset: number): { node: Text; offset: number } | null {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let remaining = offset;
+  let last: Text | null = null;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node as Text;
+    if (remaining <= text.length) return { node: text, offset: remaining };
+    remaining -= text.length;
+    last = text;
+  }
+  return last && remaining === 0 ? { node: last, offset: last.length } : null;
+}
+
+/** Đo lại vị trí của vùng chọn theo DOM, dùng khi trang cuộn hoặc đổi kích thước. */
+export function rangeRect(segmentId: string, start: number, end: number): DOMRect | null {
+  if (!segmentId) return null;
+  const segment = [...document.querySelectorAll<HTMLElement>('[data-segment-id]')]
+    .find((element) => element.dataset.segmentId === segmentId);
+  if (!segment) return null;
+  const from = textPosition(segment, start);
+  const to = textPosition(segment, end);
+  if (!from || !to) return null;
+  const range = document.createRange();
+  range.setStart(from.node, from.offset);
+  range.setEnd(to.node, to.offset);
+  const rect = range.getBoundingClientRect();
+  return rect.width || rect.height ? rect : null;
+}

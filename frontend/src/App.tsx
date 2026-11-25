@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { MinimalHomepage, MinimalReadingView, Auth, Vocabulary, PhonicsPracticeView } from './screens';
+import { MinimalHomepage, MinimalReadingView, Auth, Vocabulary, PhonicsPracticeView, Library } from './screens';
 import { PdfReview } from './dev/pdf-review/PdfReview';
 
 function App() {
@@ -8,6 +8,7 @@ function App() {
       <Routes>
         <Route path="/" element={<MinimalHomepage />} />
         <Route path="/vocabulary" element={<Vocabulary />} />
+        <Route path="/library" element={<Library />} />
         <Route path="/reading" element={<MinimalReadingView />} />
         <Route path="/phonics" element={<PhonicsPracticeView />} />
         <Route path="/phonics/:lessonId" element={<PhonicsPracticeView />} />

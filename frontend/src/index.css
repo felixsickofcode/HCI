@@ -47,3 +47,25 @@
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+
+@keyframes popover-enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--popover-shift, 0)) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(var(--popover-shift, 0)) scale(1);
+  }
+}
+
+.popover-enter {
+  transform: translateY(var(--popover-shift, 0));
+  animation: popover-enter 120ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popover-enter {
+    animation: none;
+  }
+}

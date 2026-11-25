@@ -25,6 +25,8 @@ export interface ReadingDocument {
   title: string;
   text: string;
   source: DocumentSource;
+  /** Nhãn hiển thị thay cho nhãn mặc định của `source` (ví dụ bài đọc mở từ thư viện). */
+  sourceLabel?: string;
   fileName?: string;
   originalFile?: File;
   pageCount?: number | null;
@@ -192,6 +194,23 @@ export function buildPastedDocument(raw: string): ReadingDocument {
     title: 'Văn bản đã dán',
     text: blocksToText(blocks),
     source: 'paste',
+    ocrUsed: false,
+    blocks,
+    warnings: [],
+    skippedOcrPages: [],
+  };
+}
+
+export function buildArticleDocument(title: string, raw: string): ReadingDocument {
+  const sourceText = normalizePastedText(raw);
+  const blocks = parseTextBlocks(sourceText);
+  return {
+    id: newId(),
+    title: title.trim() || 'Bài đọc',
+    text: blocksToText(blocks),
+    // Giữ `paste` để `sourceKind` của sổ từ vẫn hợp lệ; nhãn hiển thị do `sourceLabel` quyết định.
+    source: 'paste',
+    sourceLabel: 'Bài đọc',
     ocrUsed: false,
     blocks,
     warnings: [],

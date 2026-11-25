@@ -1,15 +1,3 @@
-export interface ArticleSummary {
-  id: string;
-  category: string;
-  readingTime: string;
-  comfortLevel: string;
-  title: string;
-  excerpt: string;
-  author: string;
-  imageSrc: string;
-  imageAlt: string;
-}
-
 export interface ReadingManuscript {
   id: string;
   folioSeries: string;
@@ -34,48 +22,6 @@ export interface ReadingManuscript {
   currentChapterIndex: string;
   nextChapter: string;
 }
-
-export const mockCuratedArticles: ArticleSummary[] = [
-  {
-    id: '1',
-    category: 'Triết học & Lối sống',
-    readingTime: '6 phút đọc',
-    comfortLevel: '100%',
-    title: 'Nghệ thuật thinh lặng: Tìm lại sự tập trung giữa thời đại náo nhiệt',
-    excerpt:
-      'Những trích đoạn chiêm nghiệm sâu sắc của triết gia Marcus Aurelius về việc giữ gìn khoảng lặng bên trong nội tâm để thấu tỏ tri thức cuộc đời.',
-    author: 'Tác giả: H. Đặng dịch',
-    imageSrc:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuCRtYABG6jtVZEh3_4pysZhB4NZXmogBE95OR2w0NPzxsM3abf6TKcmKi3iIbtmRsT88KNtr-30L0GFu3Q1eTzeV26njAG_xsP81dteeW1JDIjw95aoyPYPmT3r6qUtza9dI5lcJikgTrTG6CP7fRGU-7xd-3iv694uvs2EmJqEk-LxhYoztLgLLvDqkcKbtFxuvCQcJI6APk8ZOUWjjURlTxfsqhajJvf9jzqRwYW-',
-    imageAlt: 'Sách cổ điển bên hoa dại khô trên vải lanh màu ngà dưới ánh sáng ban mai',
-  },
-  {
-    id: '2',
-    category: 'Khoa học Nhận thức',
-    readingTime: '9 phút đọc',
-    comfortLevel: '98%',
-    title: 'Nhịp điệu sinh học của đôi mắt và sự tiếp nhận ngôn từ',
-    excerpt:
-      'Cách bộ não chúng ta giải mã các ký tự hình học trong vô thức và vì sao độ tương phản mềm mại lại giúp tăng khả năng ghi nhớ lâu dài.',
-    author: 'Tác giả: Viện Thị Giác',
-    imageSrc:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuB6qkob3qSd5ZhtggXaaZDL3RJevlEsNyHEf1jToLVUPB8F9P9QADwx5nu03g7N5W-G0mTuLFtyYY_JvWZLnxECDZJtU4eRsje4089f5DQU2GLrkP5eCs7g4PBE1hIOSen82PWkklxoW7_eU5Bf78gl-pIHOUUwWBrE-1Z36RGEAw7KVDA-pN5KZIZfzO47_6f6GxS0_uavocrYzFNzbdQo3bviTuCKAOE16uDC-7Wo',
-    imageAlt: 'Vườn đá thanh tịnh phong cách Nhật Bản với cát lượn sóng và rêu phong',
-  },
-  {
-    id: '3',
-    category: 'Văn học & Nghệ thuật',
-    readingTime: '5 phút đọc',
-    comfortLevel: '100%',
-    title: 'Mùi giấy cũ và hơi ấm của những thư viện cổ kính',
-    excerpt:
-      'Tản văn hoài niệm về cảm giác ngắm nhìn những vết mực in thủ công trên nền giấy xơ gai dầu, nơi ký ức văn hóa được lưu giữ trọn vẹn.',
-    author: 'Tác giả: Thạch Lam tuyển',
-    imageSrc:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuASKHcC7zkcOEk77oNW1de67WePOKRawtcyPE6eWyFQK7GeUPjBe9hUuG7LeLVna_yAAVd-xtg907UfZZz3nwJ1qI_iPXhAf56GDCuV31LGv8O3bF2Kf4s_LljPfuLOSmZW6E33pKPh1FKxLxexpWZSEAg5NS-otqKnvJar2WFsvCUgTn8LiayahyYh3xvwoRQY0FDU6fDMLj767ud2aPDOHNHm3AHto4siq8izC1dx',
-    imageAlt: 'Bát trà gốm men rạn tinh xảo đặt trên mặt gỗ mộc trong phòng trà sương sớm',
-  },
-];
 
 export const mockReadingManuscript: ReadingManuscript = {
   id: 'deep-ocean-bioluminescence',

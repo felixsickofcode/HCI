@@ -5,3 +5,4 @@ export * from './PhonicsPractice/PhonicsPracticeView';
 
 
 export * from './Vocabulary/Vocabulary';
+export * from './Library/Library';

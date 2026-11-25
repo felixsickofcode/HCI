@@ -24,7 +24,7 @@ export const Card: React.FC<CardProps> = ({
 };
 
 export interface ReadingCardProps {
-  imageSrc: string;
+  imageSrc?: string;
   imageAlt?: string;
   category: string;
   readingTime: string;
@@ -41,7 +41,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   imageAlt = '',
   category,
   readingTime,
-  comfortLevel = '100%',
+  comfortLevel,
   title,
   excerpt,
   author,
@@ -53,11 +53,18 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
       className={`group bg-surface-container-lowest rounded-3xl overflow-hidden shadow-card-subtle hover:shadow-card-hover transition-all duration-300 flex flex-col ${className}`}
     >
       <div className="relative h-56 overflow-hidden">
-        <img
-          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-          src={imageSrc}
-          alt={imageAlt}
-        />
+        {imageSrc ? (
+          <img
+            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+            src={imageSrc}
+            alt={imageAlt}
+          />
+        ) : (
+          <div
+            aria-hidden="true"
+            className="w-full h-full bg-gradient-to-br from-surface-container-low via-tertiary-fixed/40 to-primary-fixed/40"
+          />
+        )}
         <div className="absolute top-4 left-4">
           <span className="px-3 py-1 rounded-full text-xs font-label font-medium bg-surface-container-lowest/90 backdrop-blur-md text-on-surface shadow-sm">
             {category}
@@ -70,8 +77,12 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
             <span className="flex items-center gap-1">
               <span className="material-symbols-outlined text-[15px]">schedule</span> {readingTime}
             </span>
-            <span className="w-1 h-1 rounded-full bg-surface-container-highest" />
-            <span className="text-tertiary font-medium">Mức dịu mắt: {comfortLevel}</span>
+            {comfortLevel && (
+              <>
+                <span className="w-1 h-1 rounded-full bg-surface-container-highest" />
+                <span className="text-tertiary font-medium">Mức dịu mắt: {comfortLevel}</span>
+              </>
+            )}
           </div>
           <h3 className="font-headline text-xl text-on-surface font-medium leading-snug group-hover:text-primary transition-colors">
             {title}

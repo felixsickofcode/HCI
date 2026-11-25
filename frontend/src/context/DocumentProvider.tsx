@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { extractText } from '../lib/api';
 import {
+  buildArticleDocument,
   buildFileDocument,
   buildPastedDocument,
   toExtractErrorMessage,
@@ -21,6 +22,12 @@ export const DocumentProvider: React.FC<DocumentProviderProps> = ({ children }) 
     const problem = validatePastedText(raw);
     if (problem) throw new Error(problem);
     setDocument(buildPastedDocument(raw));
+  }, []);
+
+  const submitArticle = useCallback((title: string, body: string) => {
+    const problem = validatePastedText(body);
+    if (problem) throw new Error(problem);
+    setDocument(buildArticleDocument(title, body));
   }, []);
 
   const submitFile = useCallback(async (file: File, signal?: AbortSignal) => {
@@ -44,10 +51,11 @@ export const DocumentProvider: React.FC<DocumentProviderProps> = ({ children }) 
     () => ({
       document,
       submitPastedText,
+      submitArticle,
       submitFile,
       clearDocument,
     }),
-    [document, submitPastedText, submitFile, clearDocument],
+    [document, submitPastedText, submitArticle, submitFile, clearDocument],
   );
 
   return <DocumentContext.Provider value={value}>{children}</DocumentContext.Provider>;

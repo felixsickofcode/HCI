@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/auth-context';
 import type { ReadingDocument } from '../lib/document';
-import type { WordSelection } from '../lib/assist';
+import type { ExplanationResponse, WordSelection } from '../lib/assist';
 import { useVocabulary } from './useVocabulary';
 
 type SaveStatus = 'idle' | 'explaining' | 'saving' | 'saved' | 'duplicate';
@@ -27,7 +27,7 @@ export function useSaveSelectedWord(doc: ReadingDocument | null | undefined, sel
   const status: SaveStatus = operation?.key === key ? operation.status : 'idle';
   const error = operation?.key === key ? operation.error || '' : library.error || '';
 
-  const save = useCallback(async () => {
+  const save = useCallback(async (known?: ExplanationResponse | null) => {
     if (!selection || !doc || !user || !token || !library.ready || status === 'explaining' || status === 'saving') return;
     const selected = selection;
     const docId = doc.id;
@@ -35,8 +35,11 @@ export function useSaveSelectedWord(doc: ReadingDocument | null | undefined, sel
     const request = ++run.current;
     const stillCurrent = () => run.current === request && selectionRef.current === selected &&
       scopeRef.current === accountScope;
-    setOperation({ key, status: 'explaining' });
-    const explanation = await explain();
+    // Nghĩa đã hiện trên popover thì dùng luôn, không gọi lại Groq.
+    const reuse = known && known.segmentId === selected.segmentId && known.start === selected.start
+      && known.end === selected.end && known.term === selected.selectedText ? known : null;
+    setOperation({ key, status: reuse ? 'saving' : 'explaining' });
+    const explanation = reuse ?? await explain();
     if (!stillCurrent()) return;
     if (!explanation) {
       setOperation({ key, status: 'idle', error: 'Chưa lấy được nghĩa. Hãy thử lại.' });

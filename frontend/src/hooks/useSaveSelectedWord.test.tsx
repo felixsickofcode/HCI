@@ -64,3 +64,22 @@ it('supplements a duplicate without a meaning and stops when the selection chang
   await act(async () => { resolve(explanation); await pending; });
   expect(mocks.save).toHaveBeenCalledOnce();
 });
+
+it('reuses the explanation already on screen instead of asking the model again', async () => {
+  mocks.save.mockResolvedValue({ created: true, entry: { id: 9, term: 'sinh học', meaning: explanation.meaning } });
+  const explain = vi.fn().mockResolvedValue(explanation);
+  const { result } = renderHook(() => useSaveSelectedWord(doc, selection, explain), { wrapper });
+  await act(async () => result.current.save(explanation));
+  expect(explain).not.toHaveBeenCalled();
+  expect(mocks.save).toHaveBeenCalledWith(expect.objectContaining({ meaning: explanation.meaning }));
+  expect(result.current.status).toBe('saved');
+});
+
+it('asks the model when the explanation on screen belongs to another selection', async () => {
+  mocks.save.mockResolvedValue({ created: true, entry: { term: 'sinh học', meaning: explanation.meaning } });
+  const explain = vi.fn().mockResolvedValue(explanation);
+  const { result } = renderHook(() => useSaveSelectedWord(doc, selection, explain), { wrapper });
+  await act(async () => result.current.save({ ...explanation, start: 0, end: 2, term: 'Em' }));
+  expect(explain).toHaveBeenCalledOnce();
+  expect(result.current.status).toBe('saved');
+});

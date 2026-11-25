@@ -4,6 +4,7 @@ import type { ReadingDocument } from '../lib/document';
 export interface DocumentContextValue {
   document: ReadingDocument | null;
   submitPastedText: (raw: string) => void;
+  submitArticle: (title: string, body: string) => void;
   submitFile: (file: File, signal?: AbortSignal) => Promise<void>;
   clearDocument: () => void;
 }
