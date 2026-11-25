@@ -49,7 +49,12 @@ TextExtractionServiceDep = Annotated[
 ]
 
 def get_summary_service() -> SummaryService:
-    return SummaryService(settings)
+    summary_provider = GroqProvider(
+        settings.GROQ_API_KEY,
+        settings.GROQ_MODEL,
+        settings.GROQ_TIMEOUT_SECONDS,
+    )
+    return SummaryService(settings, summary_provider)
 
 
 SummaryServiceDep = Annotated[SummaryService, Depends(get_summary_service)]

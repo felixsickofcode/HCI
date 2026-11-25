@@ -25,7 +25,9 @@ import { useWordExplanation } from '../../hooks/useWordExplanation';
 import { useSaveSelectedWord } from '../../hooks/useSaveSelectedWord';
 import { WordExplanationPopover } from '../../components/reading/WordExplanationPopover';
 import type { PopoverCloseReason } from '../../components/reading/WordExplanationPopover';
-
+import { summarizeDocument, toSummarySegments } from '../../lib/summary';
+import type { SummarizeResponse } from '../../lib/summary';
+import { ApiError } from '../../lib/api';
 const SOURCE_LABEL: Record<DocumentSource, string> = {
   paste: 'Văn bản dán',
   pdf: 'Tệp PDF',
@@ -87,6 +89,109 @@ export const MinimalReadingView: React.FC = () => {
   const showSettingsPanel = viewMode === 'reading' && panelOpen;
 
   const blocks = useMemo(() => doc?.blocks ?? [], [doc?.blocks]);
+  const summarySegments = useMemo(
+    () => toSummarySegments(blocks),
+    [blocks],
+  );
+
+  const [summaryResult, setSummaryResult] =
+    useState<SummarizeResponse | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState('');
+  const [summaryNeedsLogin, setSummaryNeedsLogin] = useState(false);
+  const [summaryMethod, setSummaryMethod] = useState<'extractive' | 'llm'>('extractive');
+
+  const summaryControllerRef = useRef<AbortController | null>(null);
+  const summarySequenceRef = useRef(0);
+
+  const clearSummary = useCallback(() => {
+    summarySequenceRef.current += 1;
+    summaryControllerRef.current?.abort();
+    summaryControllerRef.current = null;
+    setSummaryResult(null);
+    setSummaryLoading(false);
+    setSummaryError('');
+    setSummaryNeedsLogin(false);
+  }, []);
+
+  const generateSummary = useCallback(async () => {
+    if (!doc) {
+      setSummaryError('Không tìm thấy tài liệu để tóm tắt.');
+      return;
+    }
+
+    if (!user) {
+      setSummaryNeedsLogin(true);
+      setSummaryError('Hãy đăng nhập để sử dụng tính năng tóm tắt.');
+      return;
+    }
+
+    if (summarySegments.length === 0) {
+      setSummaryError('Tài liệu không có đoạn văn phù hợp để tóm tắt.');
+      return;
+    }
+
+    summarySequenceRef.current += 1;
+    const sequence = summarySequenceRef.current;
+    summaryControllerRef.current?.abort();
+
+    const controller = new AbortController();
+    summaryControllerRef.current = controller;
+
+    setSummaryLoading(true);
+    setSummaryError('');
+    setSummaryNeedsLogin(false);
+    setSummaryResult(null);
+
+    try {
+      const response = await summarizeDocument(
+        doc.id,
+        summarySegments,
+        summaryMethod,
+        controller.signal,
+      );
+
+      if (sequence !== summarySequenceRef.current) return;
+      if (response.documentId !== doc.id) {
+        throw new Error('Kết quả tóm tắt không thuộc tài liệu hiện tại.');
+      }
+
+      setSummaryResult(response);
+    } catch (cause) {
+      if (sequence !== summarySequenceRef.current ||
+          controller.signal.aborted) return;
+
+      if (cause instanceof ApiError) {
+        if (cause.status === 401) {
+          setSummaryNeedsLogin(true);
+          setSummaryError('Phiên đăng nhập đã hết hạn.');
+        } else if (cause.status === 429) {
+          setSummaryError('Server đang giới hạn lượt tóm tắt.');
+        } else if (cause.status === 413) {
+          setSummaryError('Tài liệu quá dài để tóm tắt.');
+        } else if (cause.status === 422 || cause.status === 503) {
+          setSummaryError(cause.message);
+        } else {
+          setSummaryError(cause.message);
+        }
+      } else {
+        setSummaryError(
+          cause instanceof Error
+            ? cause.message
+            : 'Không thể tạo tóm tắt lúc này.',
+        );
+      }
+    } finally {
+      if (sequence === summarySequenceRef.current) {
+        setSummaryLoading(false);
+        summaryControllerRef.current = null;
+      }
+    }
+  }, [doc, summarySegments, summaryMethod, user]);
+
+  useEffect(() => {
+    queueMicrotask(clearSummary);
+  }, [doc?.id, summarySegments, clearSummary]);
   const { selection: wordSelection, result: wordResult, loading: wordLoading,
     error: wordError, needsLogin: wordNeedsLogin, choose: chooseWord, explain: explainWord, clear: clearWord } = useWordExplanation(doc?.id, blocks);
   const wordSave = useSaveSelectedWord(doc, wordSelection, explainWord);
@@ -337,7 +442,139 @@ export const MinimalReadingView: React.FC = () => {
         )}
 
         {tab === 'Khác' && (
-          <p className="text-sm text-on-surface-variant">Chưa có tùy chọn bổ sung.</p>
+          <section className="space-y-3" aria-live="polite">
+            <div>
+              <h3 className="text-xs font-label font-bold uppercase tracking-wide text-on-surface-variant">
+                Tóm tắt tài liệu
+              </h3>
+              <p className="mt-1 text-[11px] leading-relaxed text-on-surface-variant">
+                Chọn cách rút ý chính từ các đoạn văn hiện tại.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Phương pháp tóm tắt">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={summaryMethod === 'extractive'}
+                onClick={() => { setSummaryMethod('extractive'); clearSummary(); }}
+                disabled={summaryLoading}
+                className={`rounded-xl border px-3 py-2.5 text-left text-xs ${summaryMethod === 'extractive'
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-black/[0.08] text-on-surface-variant'}`}
+              >
+                <span className="block font-semibold">Đọc ý chính</span>
+                <span className="mt-0.5 block">Rút gọn đoạn văn thừa</span>
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={summaryMethod === 'llm'}
+                onClick={() => { setSummaryMethod('llm'); clearSummary(); }}
+                disabled={summaryLoading}
+                className={`rounded-xl border px-3 py-2.5 text-left text-xs ${summaryMethod === 'llm'
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-black/[0.08] text-on-surface-variant'}`}
+              >
+                <span className="block font-semibold">AI tóm tắt</span>
+                <span className="mt-0.5 block">Hỗ trợ diễn đạt mạch lạc</span>
+              </button>
+            </div>
+
+            {summaryNeedsLogin ? (
+              <div className="space-y-3 rounded-xl border border-primary/15 bg-primary/5 p-3">
+                <p className="text-sm">Tính năng tóm tắt yêu cầu đăng nhập.</p>
+                <Link
+                  to="/login"
+                  state={{ from: '/reading' }}
+                  className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-3 py-2.5 text-sm font-medium text-on-primary"
+                >
+                  Đăng nhập
+                </Link>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={generateSummary}
+                disabled={summaryLoading}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-medium text-on-primary disabled:opacity-60"
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  {summaryLoading ? 'progress_activity' : 'summarize'}
+                </span>
+                {summaryLoading
+                  ? 'Đang tóm tắt…'
+                  : summaryResult
+                    ? 'Tạo lại tóm tắt'
+                    : 'Tạo tóm tắt'}
+              </button>
+            )}
+
+            {summaryError && !summaryNeedsLogin && (
+              <div
+                role="alert"
+                className="rounded-xl border border-red-500/20 bg-red-50 px-3 py-2.5 text-sm text-red-800"
+              >
+                {summaryError}
+              </div>
+            )}
+
+            {summaryResult && (
+              <div className="space-y-3">
+                <span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary">
+                  {summaryResult.method === 'llm' ? 'Tóm tắt bằng AI' : 'Extractive'}
+                </span>
+
+                <ol className="space-y-2">
+                  {summaryResult.items.map((item, index) => (
+                    <li
+                      key={item.id}
+                      className="rounded-xl border border-black/[0.07] bg-white/70 p-3"
+                    >
+                      <div className="flex gap-2.5">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">
+                          {index + 1}
+                        </span>
+
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm leading-relaxed text-on-surface">
+                            {item.text}
+                          </p>
+
+                          {item.sources.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const source = [
+                                  ...document.querySelectorAll<HTMLElement>(
+                                    '[data-segment-id]',
+                                  ),
+                                ].find(
+                                  (element) =>
+                                    element.dataset.segmentId === item.sources[0],
+                                );
+
+                                source?.scrollIntoView({
+                                  behavior: 'smooth',
+                                  block: 'center',
+                                });
+                              }}
+                              className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+                            >
+                              <span className="material-symbols-outlined text-[14px]">
+                                location_on
+                              </span>
+                              Xem đoạn nguồn
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+          </section>
         )}
       </div>
 
