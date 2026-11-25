@@ -1,8 +1,9 @@
 import math
 import re
 import unicodedata
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
+from typing import Optional
 
 
 _STOPWORDS = frozenset(
@@ -20,23 +21,28 @@ _ABBREVIATIONS = frozenset(
 _BOUNDARY = re.compile(
     r'(?P<p>[.!?…]+["\'”’)\]]*)(?P<ws>\s+)|(?P<nl>\n+)'
 )
-_WORD = re.compile(r"\w+", re.UNICODE)
+_WORD = re.compile(r"\d+(?:[.,]\d+)+|\w+", re.UNICODE)
 _LAST_WORD = re.compile(r"(\w+)$", re.UNICODE)
+_SPACES = re.compile(r"\s+")
+_INVISIBLE = re.compile("[\u200b\u2060\ufeff\u00ad]")
+_HYPHEN_BREAK = re.compile(r"(\w)-\n([^\W\d_])")
 
 _BULLETS = "•·▪◦‣"
 _QUOTES = "\"'“‘"
+_STARTERS = _QUOTES + "([" + _BULLETS + "-–—"
 _TERMINAL = re.compile(r'[.!?…:]["\'”’)\]]*$')
 _SENTENCE_END = re.compile(r'[.!?…]["\'”’)\]]*$')
 
 _REFERENCES = re.compile(
-    r"^\s*(references|bibliography|tài liệu tham khảo|"
-    r"danh mục tài liệu tham khảo)\s*$",
-    re.IGNORECASE | re.MULTILINE
+    r"^[ \t]*(?:\d+[.)]?[ \t]+)?"
+    r"(?:references|bibliography|tài liệu tham khảo|danh mục tài liệu tham khảo)"
+    r"[ \t]*:?[ \t]*$",
+    re.IGNORECASE | re.MULTILINE,
 )
 
 _CAPTION = re.compile(
     r"^(table|figure|fig\.|bảng|hình)\s*\d+",
-    re.IGNORECASE
+    re.IGNORECASE,
 )
 
 _NOISE = ("http", "www.")
@@ -44,13 +50,14 @@ _NOISE = ("http", "www.")
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)?\s*%?")
 
 _CUE = re.compile(
-    r"kết luận|tóm lại|nhìn chung|quan trọng|chủ yếu|chính là|đáng chú ý|"
+    r"\b(?:kết luận|tóm lại|nhìn chung|quan trọng|chủ yếu|chính là|đáng chú ý|"
     r"cần lưu ý|cam kết|thống nhất|quyết định|đề xuất|cho biết|nhận định|"
     r"nếu .{0,100}(?:thì|sẽ)|"
-    r"in conclusion|in summary|overall|important|significant|notably|"
-    r"we propose|we show|results show|achieves|outperforms|recommend|"
-    r"decided|agreed|\bif\b .{0,100}\b(?:then|will|would)\b|main\b|key\b",
-    re.IGNORECASE
+    r"in conclusion|in summary|overall|important(?:ly)?|significant(?:ly)?|notabl[ey]|"
+    r"we propose|we show|results show|achieves|outperforms|recommend(?:s|ed)?|"
+    r"decided|agreed|if .{0,100}\b(?:then|will|would)|"
+    r"(?:main|key) (?:point|finding|result)s?)\b",
+    re.IGNORECASE,
 )
 
 _EDGE_PUNCT = "\"'“”‘’()[],.;:!?"
@@ -58,7 +65,8 @@ _EDGE_PUNCT = "\"'“”‘’()[],.;:!?"
 _MIN_CHARS = 20
 _MIN_TOKENS = 5
 _MAX_CHARS = 500
-_MIN_ALPHA_RATIO = 0.6
+_RELAXED_LENGTH_FACTOR = 3
+_MIN_ALPHA_RATIO = 0.5
 
 _TARGET_COVERAGE = 0.68
 _MAX_RATIO = 0.40
@@ -66,6 +74,8 @@ _MIN_SENTENCES = 3
 
 _DAMPING = 0.85
 _PAGERANK_ITERATIONS = 40
+_TOLERANCE = 1e-6
+_MIN_EDGE = 0.05
 
 _MMR_LAMBDA = 0.75
 _REDUNDANT_THRESHOLD = 0.88
@@ -76,6 +86,9 @@ _W_INFO = 0.25
 _POSITION_BONUS = 0.05
 _SEGMENT_BONUS = 0.10
 _DEPENDENT_PENALTY = 0.85
+
+_REPEAT_LIMIT = 3
+_REFERENCES_MIN_POSITION = 0.5
 
 _DEPENDENT_OPENERS = (
     "trong đó",
@@ -103,6 +116,11 @@ _DEPENDENT_OPENERS = (
     "additionally",
 )
 
+_DEPENDENT = re.compile(
+    r"^\W*(?:" + "|".join(re.escape(o) for o in _DEPENDENT_OPENERS) + r")\b",
+    re.IGNORECASE,
+)
+
 
 @dataclass(frozen=True)
 class ExtractedSentence:
@@ -117,8 +135,65 @@ class _Candidate:
     segment_id: str
     text: str
     tokens: Counter
+    terms: Counter
     info: float
     pagerank: float = 0.0
+
+
+def _join_hyphen(match):
+    if match.group(2).islower():
+        return match.group(1) + match.group(2)
+    return match.group(0)
+
+
+def _normalize(text: str) -> str:
+    text = unicodedata.normalize("NFC", text)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = _INVISIBLE.sub("", text)
+    return _HYPHEN_BREAK.sub(_join_hyphen, text)
+
+
+def _is_soft_wrap(text, start, match):
+    if len(match.group("nl")) != 1:
+        return False
+
+    chunk = text[start:match.start("nl")].rstrip()
+
+    if len(chunk) < 40 or _TERMINAL.search(chunk):
+        return False
+
+    line_end = text.find("\n", match.end("nl"))
+    next_line = text[
+        match.end("nl"):
+        line_end if line_end != -1 else len(text)
+    ].strip()
+
+    if not next_line or next_line[0] in _BULLETS:
+        return False
+
+    return len(next_line) >= 40 or bool(_TERMINAL.search(next_line))
+
+
+def _is_abbreviation(text, start, punct_start):
+    if text[punct_start] != ".":
+        return False
+
+    window = text[max(start, punct_start - 30):punct_start]
+    prev = _LAST_WORD.search(window)
+
+    if not prev:
+        return False
+
+    word = prev.group(1)
+
+    if word.lower() in _ABBREVIATIONS or len(word) == 1:
+        return True
+
+    return (
+        word.isdigit()
+        and len(word) <= 2
+        and text[start:punct_start].strip() == word
+    )
 
 
 def split_sentences(text: str) -> list[str]:
@@ -127,36 +202,18 @@ def split_sentences(text: str) -> list[str]:
 
     for m in _BOUNDARY.finditer(text):
         if m.group("nl"):
-            chunk = text[start:m.start("nl")].rstrip()
-
-            line_end = text.find("\n", m.end("nl"))
-            next_line = text[
-                m.end("nl"):
-                line_end if line_end != -1 else len(text)
-            ].strip()
-
-            if (
-                len(m.group("nl")) == 1
-                and len(chunk) >= 40
-                and not _TERMINAL.search(chunk)
-                and next_line
-                and next_line[0] not in _BULLETS
-                and (
-                    len(next_line) >= 40
-                    or _TERMINAL.search(next_line)
-                )
-            ):
+            if _is_soft_wrap(text, start, m):
                 continue
 
             spans.append((start, m.start("nl")))
             start = m.end("nl")
             continue
 
-        punct_start = m.start("p")
-        punct_end = m.end("p")
-
         if m.end() >= len(text):
             continue
+
+        punct_start = m.start("p")
+        punct_end = m.end("p")
 
         if "\n" in m.group("ws"):
             spans.append((start, punct_end))
@@ -167,28 +224,13 @@ def split_sentences(text: str) -> list[str]:
 
         if not (
             nxt.isdigit()
-            or nxt in _QUOTES
-            or nxt in "(["
+            or nxt in _STARTERS
             or (nxt.isalpha() and not nxt.islower())
         ):
             continue
 
-        prev = _LAST_WORD.search(
-            text[max(start, punct_start - 12):punct_start]
-        )
-
-        if prev and text[punct_start] == ".":
-            word = prev.group(1)
-
-            if word.lower() in _ABBREVIATIONS or len(word) == 1:
-                continue
-
-            if (
-                word.isdigit()
-                and len(word) <= 2
-                and text[start:punct_start].strip() == word
-            ):
-                continue
+        if _is_abbreviation(text, start, punct_start):
+            continue
 
         spans.append((start, punct_end))
         start = m.end()
@@ -196,7 +238,7 @@ def split_sentences(text: str) -> list[str]:
     spans.append((start, len(text)))
 
     cleaned = (
-        text[a:b].strip().lstrip(_BULLETS).strip()
+        _SPACES.sub(" ", text[a:b]).strip().lstrip(_BULLETS).strip()
         for a, b in spans
     )
 
@@ -208,13 +250,19 @@ def _tokens(sentence: str) -> list[str]:
     return _WORD.findall(sentence)
 
 
+def _keep(token: str) -> bool:
+    return token not in _STOPWORDS and (len(token) > 1 or token.isdigit())
+
+
 def _content_tokens(tokens: list[str]) -> Counter:
+    return Counter(t for t in tokens if _keep(t))
+
+
+def _bigrams(tokens: list[str]) -> Counter:
     return Counter(
-        t for t in tokens
-        if (
-            t not in _STOPWORDS
-            and (len(t) > 1 or t.isdigit())
-        )
+        f"{a} {b}"
+        for a, b in zip(tokens, tokens[1:])
+        if _keep(a) and _keep(b)
     )
 
 
@@ -227,7 +275,7 @@ def _alpha_ratio(sentence: str) -> float:
     return sum(c.isalpha() for c in visible) / len(visible)
 
 
-def _is_valid(sentence: str, tokens: list[str]) -> bool:
+def _is_valid(sentence: str, tokens: list[str], strict: bool) -> bool:
     if not sentence:
         return False
 
@@ -237,18 +285,25 @@ def _is_valid(sentence: str, tokens: list[str]) -> bool:
         return False
 
     lowered = sentence.lower()
+    max_chars = _MAX_CHARS if strict else _MAX_CHARS * _RELAXED_LENGTH_FACTOR
 
-    return (
-        not body[0].islower()
-        and bool(_SENTENCE_END.search(sentence))
-        and sentence.count("(") == sentence.count(")")
+    structural = (
+        sentence.count("(") == sentence.count(")")
         and sentence.count("[") == sentence.count("]")
         and not _CAPTION.match(sentence)
         and not any(n in lowered for n in _NOISE)
-        and _MIN_CHARS <= len(sentence) <= _MAX_CHARS
+        and _MIN_CHARS <= len(sentence) <= max_chars
         and len(tokens) >= _MIN_TOKENS
         and _alpha_ratio(sentence) >= _MIN_ALPHA_RATIO
     )
+
+    if not structural:
+        return False
+
+    if strict:
+        return not body[0].islower() and bool(_SENTENCE_END.search(sentence))
+
+    return True
 
 
 def _informativeness(sentence: str) -> float:
@@ -272,43 +327,14 @@ def _informativeness(sentence: str) -> float:
 
 
 def _dependent_opener(sentence: str) -> bool:
-    lowered = sentence.lower().strip()
-
-    return any(
-        lowered.startswith(opener)
-        for opener in _DEPENDENT_OPENERS
-    )
-
-
-def _cosine(a: dict, b: dict) -> float:
-    if not a or not b:
-        return 0.0
-
-    if len(a) > len(b):
-        a, b = b, a
-
-    dot = sum(
-        value * b.get(word, 0.0)
-        for word, value in a.items()
-    )
-
-    if dot <= 0:
-        return 0.0
-
-    norm_a = math.sqrt(sum(v * v for v in a.values()))
-    norm_b = math.sqrt(sum(v * v for v in b.values()))
-
-    if not norm_a or not norm_b:
-        return 0.0
-
-    return dot / (norm_a * norm_b)
+    return bool(_DEPENDENT.match(sentence))
 
 
 def _build_tfidf(candidates):
     document_frequency = Counter()
 
     for c in candidates:
-        document_frequency.update(c.tokens.keys())
+        document_frequency.update(c.terms.keys())
 
     n = len(candidates)
     vectors = []
@@ -316,30 +342,46 @@ def _build_tfidf(candidates):
     for c in candidates:
         vector = {}
 
-        for word, count in c.tokens.items():
-            idf = math.log(
-                (1 + n) / (1 + document_frequency[word])
-            ) + 1.0
-
+        for word, count in c.terms.items():
+            idf = math.log((1 + n) / (1 + document_frequency[word])) + 1.0
             vector[word] = (1 + math.log(count)) * idf
 
-        norm = math.sqrt(
-            sum(value * value for value in vector.values())
-        )
+        norm = math.sqrt(sum(v * v for v in vector.values()))
 
         if norm:
-            vector = {
-                word: value / norm
-                for word, value in vector.items()
-            }
+            vector = {word: v / norm for word, v in vector.items()}
 
         vectors.append(vector)
 
     return vectors
 
 
-def _textrank(vectors):
-    n = len(vectors)
+def _similarities(vectors):
+    postings = defaultdict(list)
+
+    for i, vector in enumerate(vectors):
+        for term, weight in vector.items():
+            postings[term].append((i, weight))
+
+    sims = []
+
+    for i, vector in enumerate(vectors):
+        accumulated = defaultdict(float)
+
+        for term, weight in vector.items():
+            for j, other in postings[term]:
+                if j != i:
+                    accumulated[j] += weight * other
+
+        sims.append(
+            {j: s for j, s in accumulated.items() if s >= _MIN_EDGE}
+        )
+
+    return sims
+
+
+def _textrank(sims):
+    n = len(sims)
 
     if n == 0:
         return []
@@ -347,40 +389,26 @@ def _textrank(vectors):
     if n == 1:
         return [1.0]
 
-    graph = [[] for _ in range(n)]
-    totals = [0.0] * n
-
-    for i in range(n):
-        for j in range(i + 1, n):
-            similarity = _cosine(vectors[i], vectors[j])
-
-            if similarity > 0:
-                graph[i].append((j, similarity))
-                graph[j].append((i, similarity))
-                totals[i] += similarity
-                totals[j] += similarity
-
+    totals = [sum(s.values()) for s in sims]
     scores = [1.0 / n] * n
 
     for _ in range(_PAGERANK_ITERATIONS):
-        updated = [(1 - _DAMPING) / n] * n
+        dangling = sum(scores[i] for i in range(n) if totals[i] == 0)
+        base = (1 - _DAMPING) / n + _DAMPING * dangling / n
+        updated = [base] * n
 
         for i in range(n):
-            if totals[i] == 0:
-                share = _DAMPING * scores[i] / n
+            if totals[i]:
+                share = _DAMPING * scores[i] / totals[i]
 
-                for j in range(n):
-                    updated[j] += share
-            else:
-                for j, weight in graph[i]:
-                    updated[j] += (
-                        _DAMPING
-                        * scores[i]
-                        * weight
-                        / totals[i]
-                    )
+                for j, weight in sims[i].items():
+                    updated[j] += share * weight
 
+        delta = sum(abs(a - b) for a, b in zip(scores, updated))
         scores = updated
+
+        if delta < _TOLERANCE:
+            break
 
     maximum = max(scores)
 
@@ -390,17 +418,12 @@ def _textrank(vectors):
     return scores
 
 
-def _novelty(candidate, covered, idf):
-    total = sum(
-        count * idf.get(word, 1.0)
-        for word, count in candidate.tokens.items()
-    )
-
+def _novelty(candidate, total, covered, idf):
     if not total:
         return 0.0
 
     new = sum(
-        count * idf.get(word, 1.0)
+        count * idf[word]
         for word, count in candidate.tokens.items()
         if word not in covered
     )
@@ -408,25 +431,36 @@ def _novelty(candidate, covered, idf):
     return new / total
 
 
-def extractive_summarize(
-    segments: list[tuple[str, str]],
-    target_coverage: float = _TARGET_COVERAGE,
-    max_ratio: float = _MAX_RATIO,
-    min_sentences: int = _MIN_SENTENCES,
-) -> list[ExtractedSentence]:
+def _prepare(segments):
+    normalized = [(sid, _normalize(text)) for sid, text in segments]
+    total = sum(len(text) for _, text in normalized)
+    prepared = []
+    offset = 0
 
+    for segment_id, text in normalized:
+        matches = list(_REFERENCES.finditer(text))
+
+        if (
+            matches
+            and offset + matches[-1].start() >= _REFERENCES_MIN_POSITION * total
+        ):
+            prepared.append((segment_id, text[:matches[-1].start()]))
+            break
+
+        prepared.append((segment_id, text))
+        offset += len(text)
+
+    return prepared
+
+
+def _collect(prepared, strict):
     candidates = []
 
-    for seg_index, (segment_id, text) in enumerate(segments):
-        ref = _REFERENCES.search(text)
-
-        if ref:
-            text = text[:ref.start()]
-
+    for seg_index, (segment_id, text) in enumerate(prepared):
         for sent_index, sentence in enumerate(split_sentences(text)):
             tokens = _tokens(sentence)
 
-            if not _is_valid(sentence, tokens):
+            if not _is_valid(sentence, tokens, strict):
                 continue
 
             content = _content_tokens(tokens)
@@ -441,124 +475,154 @@ def extractive_summarize(
                     segment_id=segment_id,
                     text=sentence,
                     tokens=content,
+                    terms=content + _bigrams(tokens),
                     info=_informativeness(sentence),
                 )
             )
 
-        if ref:
-            break
+    return candidates
+
+
+def _drop_repeats(candidates):
+    counts = Counter(c.text.lower() for c in candidates)
+    seen = set()
+    kept = []
+
+    for c in candidates:
+        key = c.text.lower()
+
+        if counts[key] >= _REPEAT_LIMIT or key in seen:
+            continue
+
+        seen.add(key)
+        kept.append(c)
+
+    return kept
+
+
+def extractive_summarize(
+    segments: list[tuple[str, str]],
+    target_coverage: float = _TARGET_COVERAGE,
+    max_ratio: float = _MAX_RATIO,
+    min_sentences: int = _MIN_SENTENCES,
+    max_sentences: Optional[int] = None,
+) -> list[ExtractedSentence]:
+
+    prepared = _prepare(segments)
+
+    candidates = _drop_repeats(_collect(prepared, strict=True))
+
+    if len(candidates) < min_sentences:
+        candidates = _drop_repeats(_collect(prepared, strict=False))
 
     if not candidates:
         return []
 
-    vectors = _build_tfidf(candidates)
-    ranks = _textrank(vectors)
+    sims = _similarities(_build_tfidf(candidates))
 
-    for candidate, rank in zip(candidates, ranks):
+    for candidate, rank in zip(candidates, _textrank(sims)):
         candidate.pagerank = rank
+
+    n = len(candidates)
 
     document_frequency = Counter()
 
     for candidate in candidates:
         document_frequency.update(candidate.tokens.keys())
 
-    n = len(candidates)
-
     idf = {
         word: math.log((1 + n) / (1 + count)) + 1.0
         for word, count in document_frequency.items()
     }
 
-    total_weight = sum(
-        count * idf[word]
-        for word, count in document_frequency.items()
-    )
+    word_weight = {
+        word: document_frequency[word] * idf[word]
+        for word in document_frequency
+    }
 
-    max_sentences = max(
-        min_sentences,
-        math.ceil(max_ratio * n)
-    )
+    total_weight = sum(word_weight.values())
+
+    candidate_weight = [
+        sum(count * idf[word] for word, count in c.tokens.items())
+        for c in candidates
+    ]
+
+    limit = max(min_sentences, math.ceil(max_ratio * n))
+
+    if max_sentences is not None:
+        limit = min(limit, max(1, max_sentences))
 
     covered = set()
     covered_weight = 0.0
     chosen = []
+    chosen_segments = set()
     remaining = list(range(n))
     max_sim = [0.0] * n
-    chosen_segments = set()
 
     def score(index):
         candidate = candidates[index]
 
-        novelty = _novelty(candidate, covered, idf)
-
-        position_bonus = (
-            _POSITION_BONUS if candidate.sent_index == 0 else 0.0
+        novelty = _novelty(
+            candidate, candidate_weight[index], covered, idf
         )
 
-        segment_bonus = (
-            _SEGMENT_BONUS
-            if candidate.seg_index not in chosen_segments
-            else 0.0
-        )
-
-        relevance_score = (
+        relevance = (
             _W_RELEVANCE * candidate.pagerank
             + _W_NOVELTY * novelty
             + _W_INFO * candidate.info
-            + position_bonus
         )
+
+        if candidate.sent_index == 0:
+            relevance += _POSITION_BONUS
 
         if _dependent_opener(candidate.text):
-            relevance_score *= _DEPENDENT_PENALTY
+            relevance *= _DEPENDENT_PENALTY
 
-        return (
-            _MMR_LAMBDA * relevance_score
+        value = (
+            _MMR_LAMBDA * relevance
             - (1 - _MMR_LAMBDA) * max_sim[index]
-            + segment_bonus
         )
 
-    while remaining and len(chosen) < max_sentences:
-        current_coverage = (
+        if candidate.seg_index not in chosen_segments:
+            value += _SEGMENT_BONUS
+
+        return value
+
+    while remaining and len(chosen) < limit:
+        coverage = (
             covered_weight / total_weight if total_weight else 1.0
         )
 
-        if (
-            len(chosen) >= min_sentences
-            and current_coverage >= target_coverage
-        ):
+        if len(chosen) >= min_sentences and coverage >= target_coverage:
             break
 
-        best_index = max(remaining, key=score)
-        remaining.remove(best_index)
+        best = max(remaining, key=score)
 
-        if max_sim[best_index] >= _REDUNDANT_THRESHOLD:
-            continue
+        chosen.append(best)
+        chosen_segments.add(candidates[best].seg_index)
 
-        chosen.append(best_index)
-        chosen_segments.add(candidates[best_index].seg_index)
-
-        for word in candidates[best_index].tokens:
+        for word in candidates[best].tokens:
             if word not in covered:
                 covered.add(word)
-                covered_weight += document_frequency[word] * idf[word]
+                covered_weight += word_weight[word]
 
-        for i in remaining:
-            similarity = _cosine(vectors[i], vectors[best_index])
+        for j, similarity in sims[best].items():
+            if similarity > max_sim[j]:
+                max_sim[j] = similarity
 
-            if similarity > max_sim[i]:
-                max_sim[i] = similarity
+        remaining = [
+            i for i in remaining
+            if i != best and max_sim[i] < _REDUNDANT_THRESHOLD
+        ]
 
     chosen.sort(
         key=lambda i: (
             candidates[i].seg_index,
-            candidates[i].sent_index
+            candidates[i].sent_index,
         )
     )
 
     return [
-        ExtractedSentence(
-            candidates[i].segment_id,
-            candidates[i].text
-        )
+        ExtractedSentence(candidates[i].segment_id, candidates[i].text)
         for i in chosen
     ]
