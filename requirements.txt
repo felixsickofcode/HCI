@@ -38,3 +38,4 @@ pypdfium2==4.30.0
 pytesseract==0.3.13
 python-multipart==0.0.20
 pdfplumber==0.11.9
+edge-tts==7.3.1

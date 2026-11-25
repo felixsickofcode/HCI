@@ -19,6 +19,7 @@ from app.services.vocabulary_service import VocabularyService
 from app.services.summary_service import SummaryService
 from app.services.llm_assist_service import LLMAssistService
 from app.services.llm_provider import GroqProvider
+from app.services.tts_service import EdgeTtsProvider, TtsService
 
 DbSession = Annotated[Session, Depends(get_db)]
 
@@ -101,3 +102,28 @@ def get_vocabulary_service(db: DbSession) -> VocabularyService:
 
 
 VocabularyServiceDep = Annotated[VocabularyService, Depends(get_vocabulary_service)]
+
+def _build_tts_service() -> TtsService:
+    voices = [name.strip() for name in settings.TTS_VOICES.split(",") if name.strip()]
+    default_voice = settings.TTS_DEFAULT_VOICE
+    if default_voice not in voices:
+        voices.insert(0, default_voice)
+    return TtsService(
+        EdgeTtsProvider(settings.TTS_TIMEOUT_SECONDS),
+        voices=voices,
+        default_voice=default_voice,
+        max_chars=settings.TTS_MAX_CHARS,
+        hourly_limit=settings.TTS_HOURLY_LIMIT,
+        cache_items=settings.TTS_CACHE_ITEMS,
+        cache_bytes=settings.TTS_CACHE_BYTES,
+    )
+
+
+_tts_service = _build_tts_service()
+
+
+def get_tts_service() -> TtsService:
+    return _tts_service
+
+
+TtsServiceDep = Annotated[TtsService, Depends(get_tts_service)]

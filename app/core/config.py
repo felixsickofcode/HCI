@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     GROQ_TIMEOUT_SECONDS: float = 20
     ASSIST_HOURLY_LIMIT: int = 20
 
+    TTS_DEFAULT_VOICE: str = "vi-VN-HoaiMyNeural"
+    TTS_VOICES: str = "vi-VN-HoaiMyNeural,vi-VN-NamMinhNeural"
+    TTS_MAX_CHARS: int = Field(2000, ge=1)
+    TTS_HOURLY_LIMIT: int = Field(60, ge=1)
+    TTS_CACHE_ITEMS: int = Field(64, ge=1)
+    TTS_CACHE_BYTES: int = Field(32 * 1024 * 1024, ge=1)
+    TTS_TIMEOUT_SECONDS: float = Field(20.0, gt=0)
+
 
     model_config = SettingsConfigDict(env_file=".env")
 

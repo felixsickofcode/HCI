@@ -93,3 +93,33 @@ class AssistUnavailableError(AppError):
 class AssistTimeoutError(AppError):
     status_code = 504
     message = "Dịch vụ giải nghĩa phản hồi quá lâu"
+
+
+class TtsInputError(AppError):
+    status_code = 422
+    message = "Yêu cầu đọc thành tiếng không hợp lệ"
+
+
+class TtsTooLargeError(AppError):
+    status_code = 413
+    message = "Đoạn văn quá dài để đọc thành tiếng"
+
+
+class TtsRateLimitError(AppError):
+    status_code = 429
+    message = "Đã hết lượt đọc thành tiếng trong giờ này"
+
+
+class TtsProviderError(AppError):
+    status_code = 502
+    message = "Dịch vụ đọc thành tiếng trả về kết quả không hợp lệ"
+
+
+class TtsUnavailableError(AppError):
+    status_code = 503
+    message = "Dịch vụ đọc thành tiếng chưa sẵn sàng"
+
+
+class TtsTimeoutError(AppError):
+    status_code = 504
+    message = "Dịch vụ đọc thành tiếng phản hồi quá lâu"

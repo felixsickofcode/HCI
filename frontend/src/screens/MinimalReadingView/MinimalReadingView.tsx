@@ -16,8 +16,8 @@ import {
   isSpeechSupported,
   pickPreferredVoice,
   SPEECH_SPEEDS,
-  SpeechController,
 } from '../../lib/speech';
+import { SpeechProxy } from '../../lib/speech-proxy';
 import type { BoundaryReliability, ReadingSegment, SpeechBoundaryEvent, SpeechStatus } from '../../lib/speech';
 import { FixedReadingRuler } from './FixedReadingRuler';
 import { OriginalDocumentView } from './OriginalDocumentView';
@@ -102,7 +102,7 @@ export const MinimalReadingView: React.FC = () => {
         })),
     [blocks],
   );
-  const speechRef = useRef<SpeechController | null>(null);
+  const speechRef = useRef<SpeechProxy | null>(null);
   const [speechStatus, setSpeechStatus] = useState<SpeechStatus>(() => isSpeechSupported() ? 'idle' : 'unsupported');
   const [boundaryReliability, setBoundaryReliability] = useState<BoundaryReliability>('unknown');
   const [activeBoundary, setActiveBoundary] = useState<SpeechBoundaryEvent | null>(null);
@@ -115,7 +115,7 @@ export const MinimalReadingView: React.FC = () => {
   const [readingExcerpt, setReadingExcerpt] = useState(false);
 
   useEffect(() => {
-    const controller = new SpeechController();
+    const controller = new SpeechProxy();
     speechRef.current = controller;
     controller.attachCallbacks({
       onStatusChange: (nextStatus, message) => {
@@ -195,11 +195,6 @@ export const MinimalReadingView: React.FC = () => {
     clearWord();
   }, [clearWord, wordSelection]);
   useEffect(() => { clearWord(); }, [user?.id, clearWord]);
-  useEffect(() => {
-    const main = mainRef.current;
-    main?.addEventListener('scroll', clearWord);
-    return () => main?.removeEventListener('scroll', clearWord);
-  }, [clearWord]);
   const rulerEnabled = s.focus.enabled && viewMode === 'reading'
     && blocks.some((block) => ['paragraph', 'heading', 'quote', 'listItem'].includes(block.type) && block.text.trim());
 
@@ -519,7 +514,7 @@ export const MinimalReadingView: React.FC = () => {
                 {/* Tiêu đề và thông tin bài */}
                 <div className="mb-10 text-left">
                   <div className="inline-block text-tertiary font-label text-xs tracking-[0.25em] uppercase font-semibold mb-3.5 bg-tertiary-fixed/30 px-3 py-1 rounded-full select-none">
-                    {SOURCE_LABEL[doc.source]}
+                    {doc.sourceLabel ?? SOURCE_LABEL[doc.source]}
                   </div>
                   <h1
                     className="font-headline text-3xl sm:text-4xl md:text-[2.65rem] font-semibold tracking-tight leading-[1.3] mb-5 break-words"
@@ -647,10 +642,11 @@ export const MinimalReadingView: React.FC = () => {
                     saveStatus={wordSave.status}
                     saveError={wordSave.error}
                     onExplain={explainWord}
-                    onSave={wordSave.save}
+                    onSave={() => { void wordSave.save(wordResult); }}
                     onRead={readSelection}
                     speechSupported={isSpeechSupported()}
                     onClose={closeWord}
+                    dark={s.theme === 'dark' || s.theme === 'navy'}
                   />}
                 </div>
 
