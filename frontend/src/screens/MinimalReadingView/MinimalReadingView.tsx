@@ -99,6 +99,7 @@ export const MinimalReadingView: React.FC = () => {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState('');
   const [summaryNeedsLogin, setSummaryNeedsLogin] = useState(false);
+  const [summaryMethod, setSummaryMethod] = useState<'extractive' | 'llm'>('extractive');
 
   const summaryControllerRef = useRef<AbortController | null>(null);
   const summarySequenceRef = useRef(0);
@@ -146,6 +147,7 @@ export const MinimalReadingView: React.FC = () => {
       const response = await summarizeDocument(
         doc.id,
         summarySegments,
+        summaryMethod,
         controller.signal,
       );
 
@@ -185,10 +187,10 @@ export const MinimalReadingView: React.FC = () => {
         summaryControllerRef.current = null;
       }
     }
-  }, [doc, summarySegments, user]);
+  }, [doc, summarySegments, summaryMethod, user]);
 
   useEffect(() => {
-    clearSummary();
+    queueMicrotask(clearSummary);
   }, [doc?.id, summarySegments, clearSummary]);
   const { selection: wordSelection, result: wordResult, loading: wordLoading,
     error: wordError, needsLogin: wordNeedsLogin, choose: chooseWord, explain: explainWord, clear: clearWord } = useWordExplanation(doc?.id, blocks);
@@ -446,8 +448,37 @@ export const MinimalReadingView: React.FC = () => {
                 Tóm tắt tài liệu
               </h3>
               <p className="mt-1 text-[11px] leading-relaxed text-on-surface-variant">
-                Rút các ý chính từ các đoạn văn hiện tại.
+                Chọn cách rút ý chính từ các đoạn văn hiện tại.
               </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Phương pháp tóm tắt">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={summaryMethod === 'extractive'}
+                onClick={() => { setSummaryMethod('extractive'); clearSummary(); }}
+                disabled={summaryLoading}
+                className={`rounded-xl border px-3 py-2.5 text-left text-xs ${summaryMethod === 'extractive'
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-black/[0.08] text-on-surface-variant'}`}
+              >
+                <span className="block font-semibold">Đọc ý chính</span>
+                <span className="mt-0.5 block">Rút gọn đoạn văn thừa</span>
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={summaryMethod === 'llm'}
+                onClick={() => { setSummaryMethod('llm'); clearSummary(); }}
+                disabled={summaryLoading}
+                className={`rounded-xl border px-3 py-2.5 text-left text-xs ${summaryMethod === 'llm'
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-black/[0.08] text-on-surface-variant'}`}
+              >
+                <span className="block font-semibold">AI tóm tắt</span>
+                <span className="mt-0.5 block">Hỗ trợ diễn đạt mạch lạc</span>
+              </button>
             </div>
 
             {summaryNeedsLogin ? (

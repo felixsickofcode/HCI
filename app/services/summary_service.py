@@ -2,6 +2,7 @@ import hashlib
 import json
 
 from fastapi.concurrency import run_in_threadpool
+from typing import Protocol
 
 from app.core.config import Settings
 from app.core.exceptions import (
@@ -25,6 +26,10 @@ def content_hash(segments: list[SegmentIn]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+class SummaryProvider(Protocol):
+    def summarize(self, segments: list[SegmentIn]) -> list[SummaryItem]: ...
+
+
 def validate_sources(items: list[SummaryItem], valid_ids: set[str]) -> list[SummaryItem]:
     result: list[SummaryItem] = []
     for item in items:
@@ -37,19 +42,20 @@ def validate_sources(items: list[SummaryItem], valid_ids: set[str]) -> list[Summ
 
 
 class SummaryService:
-    def __init__(self, cfg: Settings):
+    def __init__(self, cfg: Settings, llm_provider: SummaryProvider | None = None):
         self._cfg = cfg
+        self._llm_provider = llm_provider
 
     async def summarize(self, data: SummarizeRequest) -> SummarizeResponse:
         self._validate(data)
-        if self._cfg.SUMMARY_USE_LLM:
+        method = data.method
+
+        if method == "llm":
             items = await self._summarize_llm(data.segments)
-            method = "llm"
         else:
             segments = [(s.id, s.text) for s in data.segments]
             extracted = await run_in_threadpool(extractive_summarize, segments)
             items = [SummaryItem(id="", text=e.text, sources=[e.segment_id]) for e in extracted]
-            method = "extractive"
 
         items = validate_sources(items, {s.id for s in data.segments})
         if not items:
@@ -78,4 +84,6 @@ class SummaryService:
         return total
 
     async def _summarize_llm(self, segments: list[SegmentIn]) -> list[SummaryItem]:
-        raise LLMUnavailableError("Tóm tắt bằng AI chưa được cài đặt trên máy chủ")
+        if self._llm_provider is None:
+            raise LLMUnavailableError("Tóm tắt bằng AI chưa được cấu hình trên máy chủ")
+        return await run_in_threadpool(self._llm_provider.summarize, segments)

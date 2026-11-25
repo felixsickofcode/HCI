@@ -37,6 +37,7 @@ export function toSummarySegments(
 export function summarizeDocument(
   documentId: string,
   segments: SummarySegment[],
+  method: 'extractive' | 'llm' = 'extractive',
   signal?: AbortSignal,
 ): Promise<SummarizeResponse> {
   return apiFetch<SummarizeResponse>('/assist/summarize', {
@@ -44,6 +45,7 @@ export function summarizeDocument(
     body: JSON.stringify({
       documentId,
       segments,
+      method,
     }),
     signal,
   });
