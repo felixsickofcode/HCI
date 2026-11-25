@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     SUMMARY_USE_LLM: bool = False
     SUMMARY_MAX_CHARS: int = 50_000
-    SUMMARY_MAX_SEGMENTS: int = 300
+    SUMMARY_MAX_SEGMENTS: int = 500
     SUMMARY_MIN_CHARS: int = 300
 
     SUMMARY_TIMEOUT_SECONDS: float = Field(30.0, gt=0)   
