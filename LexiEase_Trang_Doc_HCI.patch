@@ -1,0 +1,880 @@
+diff --git a/docs/handoff.md b/docs/handoff.md
+index 72e5b59642a1ffee31715fbc0486aaafe4052ef2..86d51a081f89911d7d9fed6ad982876f8ab96e6e 100644
+--- a/docs/handoff.md
++++ b/docs/handoff.md
+@@ -1,9 +1,11 @@
+ # Handoff dự án HCI
+ 
+-Cập nhật hiện hành: **2026-11-20**, múi giờ Asia/Bangkok. Agent đọc phần hiện hành trước; các mục dưới “Nhật ký lịch sử” ghi diễn tiến, có quyết định đã được thay thế. Cập nhật file này cuối mỗi phiên.
++Cập nhật hiện hành: **2026-11-25**, múi giờ Asia/Bangkok. Agent đọc phần hiện hành trước; các mục dưới “Nhật ký lịch sử” ghi diễn tiến, có quyết định đã được thay thế. Cập nhật file này cuối mỗi phiên.
+ 
+ ## Trạng thái hiện hành và ý định người dùng
+ 
++- **Trang đọc, 25/11.** Sidebar có Trang chủ, Đọc tài liệu, Thư viện từ khó và nút Cài đặt hiển thị. Bảng mở theo yêu cầu; Esc quay về nút mở. Công cụ chỉnh cỡ chữ và thước nằm cạnh bài. Kiểm tra giao diện bằng `npx playwright test e2e/reader-navigation.spec.ts e2e/fr03-ruler.spec.ts` trong `frontend/`.
++
+ - **FR-03, thước đọc cố định (2026-11-20).** Trong **Hỗ trợ đọc**, người dùng chọn cửa sổ 1, 2 hoặc 3 dòng. Bấm ↑/↓, Dòng trước/sau, lăn chuột hoặc vuốt trong văn bản để dịch một dòng hiển thị. `FixedReadingRuler` đo dòng ngay trên các token của `ReadingText` để tính cả dòng tự ngắt, tiêu đề, trích dẫn và khoảng cách đoạn. Mục `focus.lineCount` được lưu ở trình duyệt và trong JSONB của tài khoản (schema v2, dữ liệu cũ mặc định 1). Đã kiểm tra PNG và PDF scan tiếng Việt qua Tesseract và giao diện tải tệp, chuyển Bản gốc/Trang đọc, chọn từ và đổi bề rộng/cỡ chữ. Pytest 129, Vitest 42 và Playwright FR-03 3 test đạt. Chạy lại kiểm thử giao diện từ `frontend/` bằng `npx playwright test e2e/fr03-ruler.spec.ts`.
+ - **Bàn giao remote 2026-11-20:** người dùng yêu cầu push cả `origin/feature/hong-quan` và `origin/main`. Đã fetch lại cả hai nhánh, xác nhận cả hai là tổ tiên của HEAD sau merge `f3896d3`, có thể cập nhật fast-forward không force. Phiên này đóng gói toàn bộ code/test/docs FR05–FR07, parser/benchmark và các thay đổi giao diện đã bàn giao; không đưa `.env`, PDF cá nhân, output QA/cache vào commit. Đích hai nhánh remote là cùng commit bàn giao (xem `git log -1`/remote refs để lấy hash). Kiểm tra bản kết hợp trước bàn giao: backend **126 passed**, frontend **42 passed**, lint/build pass; không chạy lại vì không đổi code sau kiểm tra. Các mục “chưa push” phía dưới ghi trạng thái lịch sử tại thời điểm thực hiện.
+ - **Merge main 2026-11-20:** theo yêu cầu người dùng, fetch `origin/main` tại `aa74e75` và merge vào `feature/hong-quan` bằng commit local `f3896d3`. Main mang FR-08 extractive summary. Xung đột merge tại deps/router được xử lý giữ cả vocabulary và summary; khôi phục thay đổi chưa commit có thêm xung đột deps/router/config/exceptions, đã giữ cả FR-06 Groq và FR-08. Toàn bộ 31 thay đổi tracked cùng 46 file untracked đã đối chiếu với stash: không thiếu file; chỉ bốn file tích hợp nói trên khác nội dung có chủ đích. Các thay đổi cũ vẫn chưa staged/chưa commit. Giữ stash `pre-main-merge-2026-11-20` (`119708b`) làm dự phòng. Kiểm tra sau merge: backend **126 passed** trên `_test`, frontend **42 passed**, lint/build pass, không còn unmerged paths. Chưa push.
+diff --git a/frontend/e2e/fr03-ruler.spec.ts b/frontend/e2e/fr03-ruler.spec.ts
+index eff9a1c0afa54ff436bee25639799194c64c89c8..6bd1f15acaad4f8ca60feef85213c5ff48fc5f31 100644
+--- a/frontend/e2e/fr03-ruler.spec.ts
++++ b/frontend/e2e/fr03-ruler.spec.ts
+@@ -33,7 +33,7 @@ for (const width of [1366, 390]) {
+     await page.goto('/');
+     await page.getByRole('textbox', { name: 'Văn bản cần đọc' }).fill(text);
+     await page.getByRole('button', { name: /Đọc ngay/ }).click();
+-    if (width === 390) await page.getByRole('button', { name: 'Mở cài đặt hiển thị' }).click();
++    await page.getByRole('button', { name: 'Cài đặt hiển thị', exact: true }).click();
+     await page.getByRole('button', { name: /Hỗ trợ đọc/ }).click();
+     const toggle = page.getByRole('switch', { name: 'Thước đọc cố định' });
+     await toggle.click();
+@@ -42,7 +42,7 @@ for (const width of [1366, 390]) {
+       await page.getByRole('button', { name: count + ' dòng', exact: true }).click();
+       await expect.poll(async () => (await windowLines(page)).rows).toEqual(count === 2 ? [0, 1] : [0, 1, 2]);
+     }
+-    if (width === 390) await page.getByRole('button', { name: 'Đóng', exact: true }).click();
++    if (width === 390) await page.getByRole('button', { name: 'Đóng cài đặt', exact: true }).click();
+     const next = page.getByRole('button', { name: '↓ Dòng sau' });
+     const prev = page.getByRole('button', { name: '↑ Dòng trước' });
+     const first = await windowLines(page);
+@@ -90,6 +90,7 @@ test('preserves the current word after reflow and leaves word selection usable',
+   await page.getByRole('textbox', { name: 'Văn bản cần đọc' }).fill(text);
+   await page.getByRole('button', { name: /Đọc ngay/ }).click();
+   await expect.poll(async () => (await windowLines(page)).rows).toEqual([0]);
++  await page.getByRole('button', { name: 'Cài đặt hiển thị', exact: true }).click();
+   const next = page.getByRole('button', { name: '↓ Dòng sau' });
+   await next.click();
+   await next.click();
+@@ -102,7 +103,7 @@ test('preserves the current word after reflow and leaves word selection usable',
+     return { segment: token.closest<HTMLElement>('[data-segment-id]')!.dataset.segmentId, start: token.dataset.tokenStart };
+   });
+   const word = page.locator(`[data-segment-id="${anchoredWord.segment}"] [data-token-start="${anchoredWord.start}"]`);
+-  await page.getByRole('button', { name: 'A+', exact: true }).click();
++  await page.getByRole('complementary', { name: 'Cài đặt hiển thị' }).getByRole('button', { name: 'Tăng cỡ chữ' }).click();
+   await page.setViewportSize({ width: 1170, height: 800 });
+   await expect.poll(() => word.evaluate(token => {
+     const band = document.querySelector('[data-reading-ruler]')!.getBoundingClientRect();
+diff --git a/frontend/e2e/fr07.spec.ts b/frontend/e2e/fr07.spec.ts
+index 0f9c7d061e23317b97706ac2ace4aa4eb253e413..721e644a31ef653e51e15b9db8d83f1751d6ebe4 100644
+--- a/frontend/e2e/fr07.spec.ts
++++ b/frontend/e2e/fr07.spec.ts
+@@ -7,7 +7,7 @@ for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844
+     await page.getByRole('textbox', { name: 'Văn bản cần đọc' }).fill('🌱 Em học sinh học. Sinh học thật thú vị.');
+     await page.getByRole('button', { name: /Đọc ngay/ }).click();
+     await expect(page).toHaveURL(/\/reading$/);
+-    await page.locator('[data-segment-id="paragraph-0"]').evaluate(paragraph => {
++    await page.locator('[data-block-type="paragraph"]').filter({ hasText: 'Sinh học thật thú vị.' }).evaluate(paragraph => {
+       const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+       let position = 0, node: Node | null;
+       const range = document.createRange();
+@@ -19,6 +19,7 @@ for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844
+       }
+       const selection = window.getSelection()!;
+       selection.removeAllRanges(); selection.addRange(range);
++      paragraph.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+     });
+     await expect(page.getByRole('dialog', { name: 'Giải nghĩa sinh học' })).toBeVisible();
+     await expect(page.getByRole('link', { name: 'Đăng nhập để tiếp tục' })).toHaveAttribute('href', '/login');
+diff --git a/frontend/e2e/reader-navigation.spec.ts b/frontend/e2e/reader-navigation.spec.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..a09c0a922cd1817b766c748f0808a67638d22070
+--- /dev/null
++++ b/frontend/e2e/reader-navigation.spec.ts
+@@ -0,0 +1,84 @@
++import { expect, test } from '@playwright/test';
++
++test('sidebar, keyboard settings and current word on a 1024px laptop', async ({ page }) => {
++  await page.setViewportSize({ width: 1024, height: 768 });
++  await page.goto('/');
++  const passage = Array.from({ length: 32 }, (_, i) => `Đoạn ${i + 1}. ${'Buổi sáng em đọc sách ở nhà. '.repeat(5)}`).join('\n\n');
++  await page.getByRole('textbox', { name: 'Văn bản cần đọc' }).fill(passage);
++  await page.getByRole('button', { name: /Đọc ngay/ }).click();
++
++  const nav = page.getByRole('navigation', { name: 'Điều hướng chính' });
++  await expect(nav.getByRole('link')).toHaveCount(3);
++  await expect(nav.getByRole('link', { name: 'Đọc tài liệu' })).toHaveAttribute('aria-current', 'page');
++  const open = page.getByRole('button', { name: 'Cài đặt hiển thị', exact: true });
++  const panel = page.getByRole('complementary', { name: 'Cài đặt hiển thị' });
++  const main = page.getByRole('main', { name: 'Nội dung tài liệu' });
++  await expect(open).toHaveAttribute('aria-expanded', 'false');
++
++  // Remember a real word halfway through a long document. Its visual offset
++  // must survive changes to column width and font size with the ruler off.
++  const word = main.locator('[data-segment-id]').nth(14).locator('[data-token-start]').nth(6);
++  await word.evaluate(el => el.scrollIntoView({ block: 'center' }));
++  await word.focus();
++  const top = await word.evaluate(el => el.getBoundingClientRect().top);
++  await open.focus();
++  await page.keyboard.press('Enter');
++  await expect(panel.getByRole('button', { name: 'Đóng cài đặt' })).toBeFocused();
++  await expect.poll(() => nav.evaluate(el => el.clientWidth)).toBeLessThan(80);
++  await expect.poll(() => main.locator('.reading-body').first().evaluate(el => el.clientWidth)).toBeGreaterThan(400);
++  const size = panel.getByRole('slider', { name: 'Cỡ chữ' });
++  await size.focus();
++  await page.keyboard.press('ArrowRight');
++  await page.keyboard.press('ArrowRight');
++  await expect(size).toHaveAttribute('aria-valuetext', '22 pixel');
++  await expect.poll(() => word.evaluate((el, y) => Math.abs(el.getBoundingClientRect().top - y), top)).toBeLessThan(3);
++
++  await panel.getByRole('button', { name: 'Đặt lại mặc định' }).focus();
++  await page.keyboard.press('Tab');
++  await expect(main).toBeFocused();
++  await expect(panel).toBeVisible();
++  await word.click();
++  await expect(page.getByRole('dialog', { name: /Giải nghĩa/ })).toBeVisible();
++  await page.keyboard.press('Escape');
++  await expect(word).toBeFocused();
++  await expect(panel).toBeVisible();
++  await page.keyboard.press('Escape');
++  await expect(open).toBeFocused();
++  await expect(panel).toHaveCount(0);
++  await expect.poll(() => word.evaluate((el, y) => Math.abs(el.getBoundingClientRect().top - y), top)).toBeLessThan(3);
++
++  await nav.getByRole('link', { name: 'Thư viện từ khó' }).press('Enter');
++  await expect(page).toHaveURL(/\/vocabulary$/);
++  await expect(page.getByRole('heading', { name: 'Thư viện từ khó' })).toBeVisible();
++  await page.getByRole('link', { name: 'Tiếp tục đọc' }).click();
++  await expect(page).toHaveURL(/\/reading$/);
++  await expect(main.locator('[data-segment-id]').first()).toContainText('Đoạn 1.');
++  await nav.getByRole('link', { name: 'Trang chủ' }).click();
++  await expect(page.getByRole('textbox', { name: 'Văn bản cần đọc' })).toBeVisible();
++});
++
++for (const source of ['image', 'pdf'] as const) {
++  test(`original and reading views remain available for ${source}`, async ({ page }) => {
++    const line = 'Một đoạn văn từ tài liệu.';
++    await page.route('**/documents/extract-text', route => route.fulfill({
++      json: { text: line, source, pageCount: 1, charCount: line.length, ocrUsed: false },
++    }));
++    await page.goto('/');
++    const name = source === 'image' ? 'tai-lieu.png' : 'tai-lieu.pdf';
++    await page.locator('input[type=file]').setInputFiles({
++      name,
++      mimeType: source === 'image' ? 'image/png' : 'application/pdf',
++      buffer: source === 'image'
++        ? Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jXxkAAAAASUVORK5CYII=', 'base64')
++        : Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF'),
++    });
++    const modes = page.getByRole('group', { name: 'Chế độ xem tài liệu' });
++    await modes.getByRole('button', { name: 'Bản gốc' }).click();
++    if (source === 'image') await expect(page.getByRole('img', { name: 'Bản gốc của ' + name })).toBeVisible();
++    else await expect(page.getByTitle('Bản gốc PDF: ' + name)).toBeVisible();
++    await modes.getByRole('button', { name: 'Trang đọc' }).click();
++    await expect(page.locator('[data-segment-id]').first()).toContainText(line);
++    await modes.getByRole('button', { name: 'Bản gốc' }).click();
++    await expect(page.getByRole('link', { name: 'Mở bản gốc ở tab mới' })).toBeVisible();
++  });
++}
+diff --git a/frontend/src/components/layout/Header.tsx b/frontend/src/components/layout/Header.tsx
+index 33820e278b6b46af1cbd32383a66b8d275d9dc16..6e5070102efca318ef347fb41f2e08991fd05edd 100644
+--- a/frontend/src/components/layout/Header.tsx
++++ b/frontend/src/components/layout/Header.tsx
+@@ -86,7 +86,7 @@ export const Header: React.FC<HeaderProps> = ({ className = '' }) => {
+         </div>
+ 
+         {/* Mobile entry: the desktop navigation is hidden below md. */}
+-        <Link to="/vocabulary" aria-label="Từ khó của tôi" className="md:hidden rounded-full p-2 text-primary">
++        <Link to="/vocabulary" aria-label="Thư viện từ khó" className="md:hidden rounded-full p-2 text-primary">
+           <span className="material-symbols-outlined" aria-hidden>bookmarks</span>
+         </Link>
+         {/* Right actions */}
+diff --git a/frontend/src/context/DisplaySettingsProvider.tsx b/frontend/src/context/DisplaySettingsProvider.tsx
+index 8f31d4f09eed62bacca133ad8d9b8de97b063970..ac2365fc97894380105bca4175453e48269a91bd 100644
+--- a/frontend/src/context/DisplaySettingsProvider.tsx
++++ b/frontend/src/context/DisplaySettingsProvider.tsx
+@@ -30,12 +30,12 @@ export const DEFAULTS: DisplaySettings = {
+ };
+ 
+ // Không dùng #FFFFFF. Tương phản chữ/nền đều > 12:1 (AAA).
+-export const THEMES: Record<ThemeName, { label: string; bg: string; fg: string }> = {
+-  cream: { label: 'Kem ấm', bg: '#FBF0D9', fg: '#222222' },
+-  mint: { label: 'Bạc hà dịu', bg: '#E6F4EA', fg: '#1E2A22' },
+-  blue: { label: 'Xanh êm', bg: '#E6F3FC', fg: '#1B2A38' },
+-  dark: { label: 'Xám đêm', bg: '#1A1F2B', fg: '#E8EAF0' },
+-  navy: { label: 'Xanh đêm', bg: '#0F1A2E', fg: '#E9EEF7' },
++export const THEMES: Record<ThemeName, { label: string; bg: string; fg: string; secondaryText: string; badgeText: string; badgeBg: string }> = {
++  cream: { label: 'Kem ấm', bg: '#FBF0D9', fg: '#222222', secondaryText: '#50452E', badgeText: '#51411F', badgeBg: '#EEE2B8' },
++  mint: { label: 'Bạc hà dịu', bg: '#E6F4EA', fg: '#1E2A22', secondaryText: '#394E40', badgeText: '#294C37', badgeBg: '#CDE3D2' },
++  blue: { label: 'Xanh êm', bg: '#E6F3FC', fg: '#1B2A38', secondaryText: '#394D60', badgeText: '#25465E', badgeBg: '#CDDFEE' },
++  dark: { label: 'Xám đêm', bg: '#1A1F2B', fg: '#E8EAF0', secondaryText: '#C5CBD9', badgeText: '#F0E8CD', badgeBg: '#373B42' },
++  navy: { label: 'Xanh đêm', bg: '#0F1A2E', fg: '#E9EEF7', secondaryText: '#C4D0E1', badgeText: '#D7E8FF', badgeBg: '#243750' },
+ };
+ 
+ export const FONT_STACKS: Record<FontFamily, string> = {
+diff --git a/frontend/src/mocks/navigation.ts b/frontend/src/mocks/navigation.ts
+index e859565a68ab7516ca81ec3c6b879a2794e508ec..8cfcadb19c79b7b85c16069de6721dbcdce1e4c2 100644
+--- a/frontend/src/mocks/navigation.ts
++++ b/frontend/src/mocks/navigation.ts
+@@ -8,7 +8,7 @@ export const mockHeaderNavLinks: NavLinkItem[] = [
+   { label: 'Trang chủ', path: '/', isActive: true },
+   { label: 'Học đa giác quan', path: '/phonics' },
+   { label: 'Thư viện', path: '#thu-vien' },
+-  { label: 'Từ khó của tôi', path: '/vocabulary' },
++  { label: 'Thư viện từ khó', path: '/vocabulary' },
+   { label: 'Khám phá', path: '#kham-pha' },
+ ];
+ 
+diff --git a/frontend/src/screens/MinimalReadingView/MinimalReadingView.tsx b/frontend/src/screens/MinimalReadingView/MinimalReadingView.tsx
+index 94bded9a590679debcc2588c67c0769c553da9c2..5f6848f9ee80f26201a31b61537e7433083fe1db 100644
+--- a/frontend/src/screens/MinimalReadingView/MinimalReadingView.tsx
++++ b/frontend/src/screens/MinimalReadingView/MinimalReadingView.tsx
+@@ -1,6 +1,7 @@
+-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+-import { createPortal } from 'react-dom';
+-import { Link, Navigate } from 'react-router-dom';
++import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
++import { useReadingAnchor } from './useReadingAnchor';
++import './reader-layout.css';
++import { Link, Navigate, NavLink } from 'react-router-dom';
+ import { AudioPlayerCapsule, ManuscriptCard, ReadingText } from '../../components/common';
+ import { useAuth, useDocument } from '../../context';
+ import {
+@@ -41,19 +42,34 @@ const FONT_LABELS: Record<FontFamily, string> = {
+ };
+ 
+ const SIDEBAR_ITEMS = [
+-  { icon: 'auto_stories', label: 'Đọc tài liệu', active: true },
+-  { icon: 'library_books', label: 'Thư viện', active: false },
+-  { icon: 'bar_chart', label: 'Thống kê', active: false },
+-  { icon: 'settings', label: 'Cài đặt', active: false },
++  { to: '/', icon: 'M2 11 12 3l10 8 M5 9v12h14V9', label: 'Trang chủ' },
++  { to: '/reading', icon: 'M12 6Q7 3 2 5v14q5-2 10 1 5-3 10-1V5q-5-2-10 1v14', label: 'Đọc tài liệu' },
++  { to: '/vocabulary', icon: 'M6 3h14v14H6z M3 7v14h13 M9 7h8 M9 11h5', label: 'Thư viện từ khó' },
+ ] as const;
+ 
+-type Tab = 'Giao diện' | 'Hỗ trợ đọc' | 'Khác';
++function SidebarIcon({ path }: { path: string }) {
++  return (
++    <svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" className="shrink-0"
++      fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
++      <path d={path} />
++    </svg>
++  );
++}
++
++const overlayQuery = '(max-width: 767px)';
++const isOverlay = () => window.matchMedia(overlayQuery).matches;
++function subscribeOverlay(listener: () => void) {
++  const query = window.matchMedia(overlayQuery);
++  query.addEventListener('change', listener);
++  return () => query.removeEventListener('change', listener);
++}
++
++type Tab = 'Giao diện' | 'Hỗ trợ đọc';
+ type ViewMode = 'original' | 'reading';
+ 
+ const TABS: { key: Tab; label: string; icon: string }[] = [
+   { key: 'Giao diện', label: 'Giao diện', icon: 'desktop_windows' },
+   { key: 'Hỗ trợ đọc', label: 'Hỗ trợ đọc', icon: 'volume_up' },
+-  { key: 'Khác', label: 'Khác', icon: 'more_horiz' },
+ ];
+ 
+ const Slider = (p: {
+@@ -76,7 +92,11 @@ export const MinimalReadingView: React.FC = () => {
+   const { document: doc, clearDocument } = useDocument();
+   const { user } = useAuth();
+   const { settings: s, update, reset } = useDisplaySettings();
+-  const [panelOpen, setPanelOpen] = useState(() => window.innerWidth >= 1024);
++  const [panelOpen, setPanelOpen] = useState(false);
++  const narrow = useSyncExternalStore(subscribeOverlay, isOverlay);
++  const triggerRef = useRef<HTMLButtonElement>(null);
++  const closeRef = useRef<HTMLButtonElement>(null);
++  const focusAfterToggle = useRef(false);
+   const [tab, setTab] = useState<Tab>('Giao diện');
+   const [viewSelection, setViewSelection] = useState<{ documentId: string; mode: ViewMode } | null>(null);
+   const theme = THEMES[s.theme];
+@@ -181,7 +201,7 @@ export const MinimalReadingView: React.FC = () => {
+     }
+   };
+ 
+-  // ----- Thước đọc bám dòng -----
++  // Vùng văn bản và thước đọc cố định.
+   const mainRef = useRef<HTMLElement>(null);
+   const bodyRef = useRef<HTMLDivElement>(null);
+   const closeWord = useCallback((reason: PopoverCloseReason = 'restore-focus') => {
+@@ -203,18 +223,68 @@ export const MinimalReadingView: React.FC = () => {
+   const rulerEnabled = s.focus.enabled && viewMode === 'reading'
+     && blocks.some((block) => ['paragraph', 'heading', 'quote', 'listItem'].includes(block.type) && block.text.trim());
+ 
++  const { capture, rememberWord } = useReadingAnchor(mainRef, bodyRef, rulerEnabled);
++  const modal = narrow && showSettingsPanel;
++
++  function togglePanel() {
++    capture();
++    focusAfterToggle.current = true;
++    setPanelOpen(open => !open);
++  }
++
++  useLayoutEffect(() => {
++    if (!focusAfterToggle.current) return;
++    focusAfterToggle.current = false;
++    (showSettingsPanel ? closeRef : triggerRef).current?.focus({ preventScroll: true });
++  }, [showSettingsPanel]);
++
++  useEffect(() => {
++    if (!showSettingsPanel) return;
++    const onKey = (event: KeyboardEvent) => {
++      if (event.defaultPrevented || wordSelection ||
++          document.querySelector('[role="dialog"]:not(#reader-display-settings), dialog[open]')) return;
++      if (event.key === 'Escape') {
++        event.preventDefault();
++        capture();
++        focusAfterToggle.current = true;
++        setPanelOpen(false);
++      }
++      if (event.key === 'Tab' && modal) {
++        const controls = closeRef.current?.closest('aside')?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)');
++        if (!controls?.length) return;
++        const edge = event.shiftKey ? controls[0] : controls[controls.length - 1];
++        if (document.activeElement === edge) {
++          event.preventDefault();
++          (event.shiftKey ? controls[controls.length - 1] : controls[0]).focus();
++        }
++      }
++    };
++    window.addEventListener('keydown', onKey);
++    return () => window.removeEventListener('keydown', onKey);
++  }, [showSettingsPanel, modal, wordSelection, capture]);
++
++  function changeSettings(patch: Parameters<typeof update>[0]) {
++    capture();
++    update(patch);
++  }
++  function changeFontSize(delta: number) {
++    const [min, max] = LIMITS.fontSize;
++    changeSettings({ fontSize: Math.max(min, Math.min(max, s.fontSize + delta)) });
++  }
++
+   const settingsPanel = (
+-    <aside className="flex flex-col w-[340px] max-w-[92vw] h-full rounded-3xl shadow-sm border border-black/5 bg-[#FFFDF8] overflow-hidden">
++    <aside id="reader-display-settings" role={modal ? 'dialog' : undefined} aria-modal={modal || undefined}
++      aria-labelledby="reader-settings-title" className="text-on-surface flex flex-col w-[340px] max-w-[92vw] h-full rounded-3xl shadow-sm border border-black/5 bg-[#FFFDF8] overflow-hidden">
+       <div className="flex items-center justify-between px-5 py-4 border-b border-black/5 shrink-0">
+-        <h2 className="flex items-center gap-2 text-[15px] font-headline font-semibold text-on-surface">
++        <h2 id="reader-settings-title" className="flex items-center gap-2 text-[15px] font-headline font-semibold text-on-surface">
+           <span className="material-symbols-outlined text-[20px] text-on-surface-variant">tune</span>
+           Cài đặt hiển thị
+         </h2>
+         <button
+-          type="button" onClick={() => setPanelOpen(false)} aria-label="Đóng"
++          type="button" ref={closeRef} onClick={togglePanel} aria-label="Đóng cài đặt"
+           className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-black/5"
+         >
+-          <span className="material-symbols-outlined text-[18px]">close</span>
++          <span aria-hidden="true" className="text-xl">×</span>
+         </button>
+       </div>
+ 
+@@ -235,61 +305,64 @@ export const MinimalReadingView: React.FC = () => {
+       <div className="flex-1 overflow-y-auto px-5 py-5 space-y-7">
+         {tab === 'Giao diện' && (
+           <>
+-            <section className="space-y-2.5">
+-              <h3 className="text-xs font-label font-bold uppercase tracking-wide text-on-surface-variant">Phông & kiểu chữ</h3>
+-              <div className="grid grid-cols-2 gap-2">
+-                {(Object.keys(FONT_LABELS) as FontFamily[]).map((f) => (
+-                  <button
+-                    key={f} type="button" onClick={() => update({ fontFamily: f })} aria-pressed={s.fontFamily === f}
+-                    className={`min-w-0 px-2.5 py-2 rounded-xl text-left border transition-colors ${
+-                      s.fontFamily === f ? 'border-primary bg-primary/[0.06]' : 'border-black/10 hover:border-black/20'
+-                    }`}
+-                    style={{ fontFamily: FONT_STACKS[f] }}
+-                  >
+-                    <span className="block text-[12px] leading-tight font-semibold text-on-surface break-words">
+-                      {FONT_LABELS[f]}
+-                    </span>
+-                    {s.fontFamily === f && (
+-                      <span className="block text-[10px] font-label text-primary mt-0.5 leading-none">✓ Đang dùng</span>
+-                    )}
+-                  </button>
+-                ))}
+-              </div>
+-            </section>
+-
+-            <section className="space-y-2.5">
+-              <h3 className="text-xs font-label font-bold uppercase tracking-wide text-on-surface-variant">Kích thước chữ</h3>
+-              <div className="flex items-center gap-2">
+-                <button
+-                  type="button" onClick={() => update({ fontSize: Math.max(LIMITS.fontSize[0], s.fontSize - 1) })}
+-                  className="w-8 h-8 shrink-0 rounded-lg border border-black/10 flex items-center justify-center text-sm font-bold text-on-surface-variant hover:bg-black/5"
+-                >A-</button>
+-                <input
+-                  type="range" className="flex-1 accent-primary" min={LIMITS.fontSize[0]} max={LIMITS.fontSize[1]} step={1}
+-                  value={s.fontSize} onChange={(e) => update({ fontSize: Number(e.target.value) })}
+-                />
+-                <button
+-                  type="button" onClick={() => update({ fontSize: Math.min(LIMITS.fontSize[1], s.fontSize + 1) })}
+-                  className="w-8 h-8 shrink-0 rounded-lg border border-black/10 flex items-center justify-center text-sm font-bold text-on-surface-variant hover:bg-black/5"
+-                >A+</button>
+-                <span className="text-xs font-label text-on-surface-variant w-10 text-right shrink-0">{s.fontSize}px</span>
+-              </div>
+-            </section>
+-
+-            <section className="space-y-3">
+-              <h3 className="text-xs font-label font-bold uppercase tracking-wide text-on-surface-variant">Khoảng cách</h3>
+-              <Slider label="Giãn dòng" value={s.lineHeight} min={LIMITS.lineHeight[0]} max={LIMITS.lineHeight[1]} step={0.1} onChange={(v) => update({ lineHeight: v })} />
+-              <Slider label="Giãn chữ" unit="em" value={s.letterSpacing} min={LIMITS.letterSpacing[0]} max={LIMITS.letterSpacing[1]} step={0.01} onChange={(v) => update({ letterSpacing: v })} />
+-              <Slider label="Độ rộng cột" unit="ch" value={s.columnWidth} min={LIMITS.columnWidth[0]} max={LIMITS.columnWidth[1]} step={1} onChange={(v) => update({ columnWidth: v })} />
+-            </section>
++            <div role="group" aria-labelledby="reader-typography" className="space-y-5">
++              <h3 id="reader-typography" className="text-sm font-semibold">Chữ và khoảng cách</h3>
++              <section className="space-y-2.5">
++                <h3 className="text-xs font-label font-bold uppercase tracking-wide text-on-surface-variant">Phông & kiểu chữ</h3>
++                <div className="grid grid-cols-2 gap-2">
++                  {(Object.keys(FONT_LABELS) as FontFamily[]).map((f) => (
++                    <button
++                      key={f} type="button" onClick={() => changeSettings({ fontFamily: f })} aria-pressed={s.fontFamily === f}
++                      className={`min-w-0 px-2.5 py-2 rounded-xl text-left border transition-colors ${
++                        s.fontFamily === f ? 'border-primary bg-primary/[0.06]' : 'border-black/10 hover:border-black/20'
++                      }`}
++                      style={{ fontFamily: FONT_STACKS[f] }}
++                    >
++                      <span className="block text-[12px] leading-tight font-semibold text-on-surface break-words">
++                        {FONT_LABELS[f]}
++                      </span>
++                      {s.fontFamily === f && (
++                        <span className="block text-[10px] font-label text-primary mt-0.5 leading-none">✓ Đang dùng</span>
++                      )}
++                    </button>
++                  ))}
++                </div>
++              </section>
+ 
++              <section className="space-y-2.5">
++                <h3 className="text-xs font-label font-bold uppercase tracking-wide text-on-surface-variant">Kích thước chữ</h3>
++                <div className="flex items-center gap-2">
++                  <button
++                    type="button" aria-label="Giảm cỡ chữ" disabled={s.fontSize <= LIMITS.fontSize[0]} onClick={() => changeFontSize(-1)}
++                    className="w-8 h-8 shrink-0 rounded-lg border border-black/10 flex items-center justify-center text-sm font-bold text-on-surface-variant hover:bg-black/5"
++                  >A-</button>
++                  <input
++                    type="range" className="flex-1 accent-primary" min={LIMITS.fontSize[0]} max={LIMITS.fontSize[1]} step={1}
++                    aria-label="Cỡ chữ" aria-valuetext={s.fontSize + ' pixel'}
++                    value={s.fontSize} onChange={(e) => changeSettings({ fontSize: Number(e.target.value) })}
++                  />
++                  <button
++                    type="button" aria-label="Tăng cỡ chữ" disabled={s.fontSize >= LIMITS.fontSize[1]} onClick={() => changeFontSize(1)}
++                    className="w-8 h-8 shrink-0 rounded-lg border border-black/10 flex items-center justify-center text-sm font-bold text-on-surface-variant hover:bg-black/5"
++                  >A+</button>
++                  <span className="text-xs font-label text-on-surface-variant w-10 text-right shrink-0">{s.fontSize}px</span>
++                </div>
++              </section>
++
++              <section className="space-y-3">
++                <h3 className="text-xs font-label font-bold uppercase tracking-wide text-on-surface-variant">Khoảng cách</h3>
++                <Slider label="Giãn dòng" value={s.lineHeight} min={LIMITS.lineHeight[0]} max={LIMITS.lineHeight[1]} step={0.1} onChange={(v) => changeSettings({ lineHeight: v })} />
++                <Slider label="Giãn chữ" unit="em" value={s.letterSpacing} min={LIMITS.letterSpacing[0]} max={LIMITS.letterSpacing[1]} step={0.01} onChange={(v) => changeSettings({ letterSpacing: v })} />
++                <Slider label="Độ rộng cột" unit="ch" value={s.columnWidth} min={LIMITS.columnWidth[0]} max={LIMITS.columnWidth[1]} step={1} onChange={(v) => changeSettings({ columnWidth: v })} />
++              </section>
++            </div>
+             <section className="space-y-2.5">
+-              <h3 className="text-xs font-label font-bold uppercase tracking-wide text-on-surface-variant">Màu sắc & độ tương phản</h3>
++              <h3 className="text-sm font-semibold">Màu sắc</h3>
+               <div className="flex items-center gap-2.5 flex-wrap">
+                 {(Object.keys(THEMES) as ThemeName[]).map((k) => (
+                   <button
+                     key={k} type="button" onClick={() => update({ theme: k })} aria-pressed={s.theme === k}
+-                    title={THEMES[k].label}
++                    title={THEMES[k].label} aria-label={THEMES[k].label}
+                     className={`w-9 h-9 rounded-full border-2 transition-all ${s.theme === k ? 'border-primary ring-2 ring-primary/30 scale-105' : 'border-black/10'}`}
+                     style={{ backgroundColor: THEMES[k].bg }}
+                   />
+@@ -305,14 +378,14 @@ export const MinimalReadingView: React.FC = () => {
+             <h3 className="text-xs font-label font-bold uppercase tracking-wide text-on-surface-variant">Tính năng hỗ trợ</h3>
+ 
+             <button
+-              type="button" role="switch" aria-label="Thước đọc cố định" aria-checked={s.focus.enabled} data-ruler-switch
++              type="button" role="switch" aria-label="Thước đọc cố định" aria-describedby="reader-ruler-help" aria-checked={s.focus.enabled} data-ruler-switch
+               onClick={() => update({ focus: { enabled: !s.focus.enabled } })}
+               className="w-full flex items-center gap-3 px-3 py-3 rounded-xl border border-black/10 hover:border-black/20 text-left"
+             >
+               <span className="material-symbols-outlined text-[18px] text-on-surface-variant shrink-0">view_day</span>
+               <span className="flex-1 min-w-0">
+                 <span className="block text-sm font-medium text-on-surface">Thước đọc cố định</span>
+-                <span className="block text-[11px] text-on-surface-variant mt-0.5">Dùng phím ↑/↓, lăn chuột hoặc vuốt trên văn bản để chuyển từng dòng.</span>
++                <span id="reader-ruler-help" className="block text-[11px] text-on-surface-variant mt-0.5">Thước đứng yên. Nhấn ↓ để văn bản cuộn lên một dòng, nhấn ↑ để quay lại. Bạn cũng có thể lăn chuột trong vùng chữ.</span>
+               </span>
+               <span className={`relative shrink-0 w-10 h-6 rounded-full transition-colors ${s.focus.enabled ? 'bg-primary' : 'bg-black/15'}`}>
+                 <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${s.focus.enabled ? 'left-[18px]' : 'left-0.5'}`} />
+@@ -320,7 +393,7 @@ export const MinimalReadingView: React.FC = () => {
+             </button>
+             {s.focus.enabled && (
+               <fieldset className="space-y-2" data-ruler-control>
+-                <legend className="text-sm font-medium">Số dòng trong thước</legend>
++                <legend className="text-sm font-medium">Số dòng nhìn rõ</legend>
+                 <div className="flex gap-2">
+                   {([1, 2, 3] as const).map((count) => (
+                     <button key={count} type="button" aria-pressed={s.focus.lineCount === count}
+@@ -336,13 +409,10 @@ export const MinimalReadingView: React.FC = () => {
+           </section>
+         )}
+ 
+-        {tab === 'Khác' && (
+-          <p className="text-sm text-on-surface-variant">Chưa có tùy chọn bổ sung.</p>
+-        )}
+       </div>
+ 
+       <div className="px-5 py-4 border-t border-black/5 space-y-3 shrink-0">
+-        <button type="button" onClick={reset} className="w-full text-xs font-label font-semibold text-on-surface-variant bg-black/[0.04] hover:bg-black/[0.07] rounded-lg py-2.5">
++        <button type="button" onClick={() => { capture(); reset(); }} className="w-full text-xs font-label font-semibold text-on-surface-variant bg-black/[0.04] hover:bg-black/[0.07] rounded-lg py-2.5">
+           Đặt lại mặc định
+         </button>
+         <div className="flex items-start gap-2 text-[11px] leading-snug bg-tertiary-fixed/25 text-on-surface rounded-xl px-3 py-2.5">
+@@ -360,40 +430,40 @@ export const MinimalReadingView: React.FC = () => {
+ 
+   return (
+     <div
+-      className="font-body antialiased h-screen flex overflow-hidden relative isolate selection:bg-tertiary-fixed selection:text-on-tertiary-fixed"
+-      style={{ backgroundColor: theme.bg, color: theme.fg }}
++      className="reader-shell antialiased h-screen flex overflow-hidden relative isolate selection:bg-tertiary-fixed selection:text-on-tertiary-fixed"
++      style={{ backgroundColor: theme.bg, color: theme.fg, fontFamily: FONT_STACKS[s.fontFamily], fontSize: s.fontSize }}
+     >
+-      {/* Sidebar thương hiệu và điều hướng (chỉ desktop) */}
+-      <aside className="hidden lg:flex flex-col w-56 xl:w-60 h-screen shrink-0 bg-[#FCF8F1] border-r border-[#EDE5DA] px-4 py-6 overflow-hidden">
+-        <div className="shrink-0">
+-          <Link to="/" className="flex items-center gap-2 px-2 mb-9 select-none">
+-            <span className="font-headline text-[25px] font-semibold tracking-tight text-[#17294D]">
+-              LexiEase
+-            </span>
+-            <span className="w-2 h-2 rounded-full bg-[#A18A25]" />
++      <aside data-settings-open={showSettingsPanel} inert={modal}
++        className="reader-sidebar flex flex-col h-screen shrink-0 bg-[#FCF8F1] border-r border-[#EDE5DA] px-2 py-6 font-body text-base">
++        <div className="px-1">
++          <Link to="/" aria-label="LexiEase – Trang chủ" className="reader-brand mb-6 flex items-center gap-2 px-2 text-[#17294D]">
++            <span className="reader-brand-long font-headline text-[25px] font-semibold">LexiEase</span>
++            <span className="reader-nav-short font-headline text-[22px] font-semibold" aria-hidden="true">L</span>
++            <span className="h-2 w-2 rounded-full bg-[#A18A25]" />
+           </Link>
+         </div>
+-
+-        <nav className="flex flex-col gap-2 shrink-0" aria-label="Điều hướng chính">
+-          {SIDEBAR_ITEMS.map((item) => (
+-            <div
+-              key={item.label}
+-              aria-disabled={!item.active}
+-              aria-current={item.active ? 'page' : undefined}
+-              className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-label select-none transition-all duration-200 ${
+-                item.active
+-                  ? 'bg-[#E9EDF7] text-[#1556B8] font-semibold shadow-sm'
+-                  : 'text-[#63718A]/85 cursor-not-allowed'
+-              }`}
+-            >
+-              <span className="material-symbols-outlined text-[21px]">{item.icon}</span>
+-              <span>{item.label}</span>
+-              {item.active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#1556B8]" />}
+-            </div>
++        <nav className="flex flex-col gap-1 font-label text-sm" aria-label="Điều hướng chính">
++          {SIDEBAR_ITEMS.map(({ to, icon, label }) => (
++            <NavLink key={to} to={to} end aria-label={label} className="reader-nav-item">
++              {({ isActive }) => <>
++                <SidebarIcon path={icon} />
++                <span className="reader-nav-text">{label}</span>
++                {isActive && <span className="reader-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-current" />}
++              </>}
++            </NavLink>
+           ))}
+         </nav>
+-
+-        <div className="flex-1 min-h-0 flex flex-col justify-end gap-4 pt-5">
++        {viewMode === 'reading' && (
++          <div className="mt-3 border-t border-[#E5DDD3] pt-3 font-label text-sm">
++            <button ref={triggerRef} type="button" className="reader-nav-item" aria-label="Cài đặt hiển thị"
++              aria-expanded={showSettingsPanel} aria-controls={showSettingsPanel ? 'reader-display-settings' : undefined}
++              onClick={togglePanel}>
++              <SidebarIcon path="M3 7h7m4 0h7M3 17h13m4 0h1M10 4v6m6 4v6" />
++              <span className="reader-nav-text">Cài đặt hiển thị</span>
++            </button>
++          </div>
++        )}
++        <div className="reader-decoration flex-1 min-h-0 flex flex-col justify-end gap-4 px-2 pt-5 overflow-hidden">
+           <div className="flex-1 min-h-[120px] flex items-center justify-center overflow-hidden relative">
+             <div className="absolute w-40 h-40 rounded-full bg-[#F2EBDD]/80 blur-2xl" />
+             <img
+@@ -424,24 +494,21 @@ export const MinimalReadingView: React.FC = () => {
+         </div>
+       </aside>
+ 
+-      {/* Cột phải: header cố định + (vùng đọc cuộn riêng | panel cố định) */}
+-      <div className="flex-1 min-w-0 h-screen flex flex-col overflow-hidden">
+-        <header className="w-full bg-[#FAF7F2]/85 backdrop-blur-md px-5 sm:px-6 py-4 flex items-center justify-between gap-4 border-b border-surface-container/60 shrink-0">
+-          <Link
+-            to="/"
+-            className="inline-flex items-center gap-2 text-xs font-label uppercase tracking-widest text-on-surface-variant hover:text-primary transition-colors select-none"
+-          >
+-            <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+-            <span>Trở về trang chủ</span>
+-          </Link>
++      <div className="flex-1 min-w-0 h-screen flex overflow-hidden font-body text-base">
++        {showSettingsPanel && <>
++          {modal && <div aria-hidden="true" className="fixed inset-0 z-40 bg-black/20" onClick={togglePanel} />}
++          <div className={modal ? 'fixed inset-y-0 right-0 z-50' : 'order-last shrink-0 h-full py-4 pr-4'}>
++            {settingsPanel}
++          </div>
++        </>}
++        <div className="relative min-w-0 flex-1" inert={modal}>
++          <main ref={mainRef} tabIndex={0} aria-label="Nội dung tài liệu" className="relative h-full overflow-y-auto" style={rulerEnabled ? { containerType: 'size', overflowAnchor: 'none' } : undefined}>
++            <div className="fixed inset-0 pointer-events-none -z-10 flex items-center justify-center">
++              <div className="w-[620px] h-[620px] rounded-full bg-tertiary-fixed/20 blur-[130px] opacity-70" />
++            </div>
+ 
+-          <div className="flex items-center gap-2">
+-            <Link to="/vocabulary" className="lg:hidden inline-flex items-center gap-1 text-xs text-primary" aria-label="Từ khó của tôi">
+-              <span className="material-symbols-outlined" aria-hidden>bookmarks</span>
+-              <span className="hidden sm:inline">Từ khó của tôi</span>
+-            </Link>
+             {hasOriginal && (
+-              <div className="flex rounded-xl border border-black/10 bg-white/75 p-1 text-xs font-label" role="group" aria-label="Chế độ xem tài liệu">
++              <div className="mx-4 my-3 inline-flex text-on-surface rounded-xl border border-black/10 bg-white/75 p-1 text-xs font-label" role="group" aria-label="Chế độ xem tài liệu">
+                 <button
+                   type="button"
+                   aria-pressed={viewMode === 'original'}
+@@ -465,38 +532,6 @@ export const MinimalReadingView: React.FC = () => {
+                 </button>
+               </div>
+             )}
+-            {viewMode === 'reading' && !panelOpen && (
+-              <button
+-                type="button"
+-                onClick={() => setPanelOpen(true)}
+-                aria-expanded={panelOpen}
+-                aria-label="Mở cài đặt hiển thị"
+-                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-label font-medium tracking-wide bg-white/75 border border-black/5 hover:bg-white text-on-surface transition-colors"
+-              >
+-                <span className="material-symbols-outlined text-[17px]">tune</span>
+-                <span className="hidden sm:inline">Cài đặt hiển thị</span>
+-              </button>
+-            )}
+-          </div>
+-        </header>
+-
+-        {/* Mobile/tablet: panel là overlay portal */}
+-        {showSettingsPanel && createPortal(
+-          <div className="lg:hidden">
+-            <div className="fixed inset-0 bg-black/20 z-[60]" onClick={() => setPanelOpen(false)} />
+-            <div className="fixed top-0 right-0 h-full z-[70] py-0">{settingsPanel}</div>
+-          </div>,
+-          document.body,
+-        )}
+-
+-        {/* Hàng chứa vùng đọc (cuộn riêng) + panel desktop (cố định) */}
+-        <div className="flex-1 min-h-0 flex overflow-hidden">
+-          <div className="relative min-w-0 flex-1">
+-          <main ref={mainRef} className="relative h-full overflow-y-auto" style={rulerEnabled ? { containerType: 'size', overflowAnchor: 'none' } : undefined}>
+-            <div className="fixed inset-0 pointer-events-none -z-10 flex items-center justify-center">
+-              <div className="w-[620px] h-[620px] rounded-full bg-tertiary-fixed/20 blur-[130px] opacity-70" />
+-            </div>
+-
+             {viewMode === 'original' && doc.originalFile ? (
+               <OriginalDocumentView
+                 key={doc.id}
+@@ -518,7 +553,7 @@ export const MinimalReadingView: React.FC = () => {
+                 <div style={rulerEnabled ? { minHeight: '30cqh' } : undefined}>
+                 {/* Tiêu đề và thông tin bài */}
+                 <div className="mb-10 text-left">
+-                  <div className="inline-block text-tertiary font-label text-xs tracking-[0.25em] uppercase font-semibold mb-3.5 bg-tertiary-fixed/30 px-3 py-1 rounded-full select-none">
++                  <div style={{ color: theme.badgeText, backgroundColor: theme.badgeBg }} className="inline-block font-label text-xs tracking-[0.25em] uppercase font-semibold mb-3.5 px-3 py-1 rounded-full select-none">
+                     {SOURCE_LABEL[doc.source]}
+                   </div>
+                   <h1
+@@ -608,13 +643,25 @@ export const MinimalReadingView: React.FC = () => {
+                   </nav>
+                 )}
+ 
+-                {/* Nội dung bài đọc: theo cài đặt hiển thị */}
+-                <p className="mb-3 text-xs font-label text-on-surface-variant">
++                <div role="group" aria-label="Công cụ đọc" className="mb-4 flex flex-wrap items-center gap-2 font-label text-sm">
++                  <button type="button" aria-label="Giảm cỡ chữ" disabled={s.fontSize <= LIMITS.fontSize[0]}
++                    onClick={() => changeFontSize(-1)} className="rounded-lg border border-current/30 px-3 py-2 disabled:opacity-50">A−</button>
++                  <span>{s.fontSize} px</span>
++                  <button type="button" aria-label="Tăng cỡ chữ" disabled={s.fontSize >= LIMITS.fontSize[1]}
++                    onClick={() => changeFontSize(1)} className="rounded-lg border border-current/30 px-3 py-2 disabled:opacity-50">A+</button>
++                  <button type="button" role="switch" aria-label="Thước đọc" aria-checked={s.focus.enabled} data-ruler-switch
++                    onClick={() => update({ focus: { enabled: !s.focus.enabled } })}
++                    className="rounded-lg border border-current/30 px-3 py-2 aria-checked:font-semibold">
++                    Thước đọc · {s.focus.enabled ? 'Bật' : 'Tắt'}
++                  </button>
++                </div>
++                <p style={{ color: theme.secondaryText }} className="mb-3 text-xs font-label">
+                   Bôi chọn nội dung trong một đoạn để nghe phần đó. Chọn từ hoặc cụm từ để giải nghĩa hoặc lưu từ. Bàn phím: Tab tới đoạn, Enter vào từ, dùng ←/→ rồi Enter để chọn.
+                 </p>
+                 </div>
+                 <div
+                   ref={bodyRef}
++                  onFocusCapture={e => rememberWord(e.target)} onPointerDownCapture={e => rememberWord(e.target)}
+                   className="reading-body text-left relative w-full"
+                   style={{
+                     fontFamily: FONT_STACKS[s.fontFamily],
+@@ -686,9 +733,6 @@ export const MinimalReadingView: React.FC = () => {
+               lineCount={s.focus.lineCount} background={theme.bg} opacity={s.focus.dimOpacity}
+             />
+           )}
+-          </div>
+-
+-          {showSettingsPanel && <div className="hidden lg:block shrink-0 h-full py-6 pr-6">{settingsPanel}</div>}
+         </div>
+       </div>
+     </div>
+diff --git a/frontend/src/screens/MinimalReadingView/reader-layout.css b/frontend/src/screens/MinimalReadingView/reader-layout.css
+new file mode 100644
+index 0000000000000000000000000000000000000000..5547e2bc898a2f47281deb80f4cc524cf606c40b
+--- /dev/null
++++ b/frontend/src/screens/MinimalReadingView/reader-layout.css
+@@ -0,0 +1,61 @@
++.reader-shell {
++  container: reader / inline-size;
++}
++.reader-sidebar {
++  --rail-width: 15rem;
++  width: var(--rail-width);
++  z-index: 30;
++}
++.reader-nav-item {
++  position: relative;
++  display: flex;
++  align-items: center;
++  gap: .75rem;
++  min-height: 2.75rem;
++  width: 100%;
++  padding: .625rem .875rem;
++  border-radius: 1rem;
++  text-align: left;
++  color: #495974;
++}
++.reader-nav-item:hover { background: #f0eee9; }
++.reader-nav-item[aria-current="page"] { background: #e9edf7; color: #1556b8; font-weight: 600; }
++.reader-nav-item[aria-expanded="true"] { box-shadow: inset 0 0 0 1px #63718a; }
++.reader-shell :is(a, button, input, main):focus-visible {
++  outline: 2px solid #246aca;
++  outline-offset: 2px;
++  box-shadow: 0 0 0 2px white;
++}
++.reader-nav-short { display: none; }
++
++/* The query uses the reading font for ch. Reserve 15rem for full navigation,
++   9rem for page/card gutters and 22.75rem for the open settings column.
++   Measure against the entire shell to avoid oscillation when the rail shrinks. */
++@container reader (width < calc(45ch + 24rem)) {
++  .reader-sidebar { --rail-width: 3.5rem; }
++}
++@container reader (width < calc(45ch + 46.75rem)) {
++  .reader-sidebar[data-settings-open="true"] { --rail-width: 3.5rem; }
++}
++.reader-sidebar {
++  container: navigation / inline-size;
++}
++@container navigation (width < 8rem) {
++  .reader-brand-long, .reader-decoration, .reader-active-dot { display: none; }
++  .reader-nav-short { display: inline; }
++  .reader-brand, .reader-nav-item { justify-content: center; padding-inline: 0; }
++  .reader-nav-text { display: none; }
++  .reader-nav-item:is(:hover, :focus-visible) .reader-nav-text {
++    display: block;
++    position: absolute;
++    left: calc(100% + .5rem);
++    top: 50%;
++    transform: translateY(-50%);
++    width: max-content;
++    padding: .3rem .65rem;
++    border-radius: .45rem;
++    color: white;
++    background: #263750;
++    pointer-events: none;
++  }
++}
+diff --git a/frontend/src/screens/MinimalReadingView/useReadingAnchor.ts b/frontend/src/screens/MinimalReadingView/useReadingAnchor.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..18163a32c83707f218a391582e250d6243a7d631
+--- /dev/null
++++ b/frontend/src/screens/MinimalReadingView/useReadingAnchor.ts
+@@ -0,0 +1,78 @@
++import { useCallback, useLayoutEffect, useRef, type RefObject } from 'react';
++
++interface Anchor {
++  segment: HTMLElement;
++  start: string;
++  top: number;
++}
++
++// Record a visible word just before changing the document layout. The fixed
++// ruler owns scroll position while enabled; this hook serves ordinary reading.
++export function useReadingAnchor(
++  mainRef: RefObject<HTMLElement | null>,
++  bodyRef: RefObject<HTMLElement | null>,
++  rulerEnabled: boolean,
++) {
++  const pending = useRef<Anchor | null>(null);
++  const fontAnchor = useRef<Anchor | null>(null);
++  const preferred = useRef<HTMLElement | null>(null);
++
++  function rememberWord(target: EventTarget | null) {
++    if (target instanceof Element) {
++      const token = target.closest<HTMLElement>('[data-token-start]');
++      if (token) preferred.current = token;
++    }
++  }
++
++  const capture = useCallback(() => {
++    const main = mainRef.current;
++    const body = bodyRef.current;
++    pending.current = null;
++    fontAnchor.current = null;
++    if (rulerEnabled || !main || !body) return;
++    const viewport = main.getBoundingClientRect();
++    const visible = (node: HTMLElement) => {
++      const rect = node.getBoundingClientRect();
++      return rect.bottom > viewport.top && rect.top < viewport.bottom;
++    };
++    let token = preferred.current;
++    if (!token || !body.contains(token) || !visible(token)) {
++      if (main.scrollTop <= 0) return;
++      token = null;
++      for (const block of body.querySelectorAll<HTMLElement>('[data-segment-id]')) {
++        if (!visible(block)) continue;
++        token = Array.from(block.querySelectorAll<HTMLElement>('[data-token-start]')).find(visible) ?? null;
++        if (token) break;
++      }
++    }
++    const segment = token?.closest<HTMLElement>('[data-segment-id]');
++    if (segment && token?.dataset.tokenStart !== undefined) {
++      pending.current = { segment, start: token.dataset.tokenStart, top: token.getBoundingClientRect().top - viewport.top };
++    }
++  }, [bodyRef, mainRef, rulerEnabled]);
++
++  useLayoutEffect(() => {
++    const main = mainRef.current;
++    const anchor = pending.current;
++    pending.current = null;
++    if (rulerEnabled) fontAnchor.current = null;
++    if (!main || !anchor || rulerEnabled) return;
++    const restore = () => {
++      const word = anchor.segment.querySelector<HTMLElement>(`[data-token-start="${anchor.start}"]`);
++      if (!word || !main.contains(word)) return;
++      const delta = word.getBoundingClientRect().top - main.getBoundingClientRect().top - anchor.top;
++      if (Math.abs(delta) > 1) main.scrollTop += delta;
++    };
++    restore();
++    const scrollTop = main.scrollTop;
++    // Access geometry first so a font requested by this render is in the font set.
++    if (document.fonts.status === 'loading') {
++      fontAnchor.current = anchor;
++      void document.fonts.ready.then(() => {
++        if (fontAnchor.current === anchor && Math.abs(main.scrollTop - scrollTop) <= 1) restore();
++        if (fontAnchor.current === anchor) fontAnchor.current = null;
++      });
++    }
++  });
++  return { capture, rememberWord };
++}
+diff --git a/frontend/src/screens/Vocabulary/Vocabulary.tsx b/frontend/src/screens/Vocabulary/Vocabulary.tsx
+index baa3a92415f070c45aff6c02baa45fbd8c44b903..5d359b18d07c1fecad1542539beb2dadf678356c 100644
+--- a/frontend/src/screens/Vocabulary/Vocabulary.tsx
++++ b/frontend/src/screens/Vocabulary/Vocabulary.tsx
+@@ -74,7 +74,7 @@ export function Vocabulary() {
+         <div className="flex flex-wrap items-start justify-between gap-5">
+           <div>
+             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-tertiary">Góp từng từ, hiểu thêm mỗi ngày</p>
+-            <h1 className="mt-3 font-headline text-3xl sm:text-4xl">Từ khó của tôi</h1>
++            <h1 className="mt-3 font-headline text-3xl sm:text-4xl">Thư viện từ khó</h1>
+             <p className="mt-3 max-w-xl text-sm leading-relaxed text-on-surface-variant">
+               Những từ bạn chủ động lưu, cùng ngữ cảnh để đọc và ôn lại.
+             </p>

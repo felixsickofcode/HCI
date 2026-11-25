@@ -1,8 +1,10 @@
 # Handoff dự án HCI
 
-Cập nhật hiện hành: **2026-11-20**, múi giờ Asia/Bangkok. Agent đọc phần hiện hành trước; các mục dưới “Nhật ký lịch sử” ghi diễn tiến, có quyết định đã được thay thế. Cập nhật file này cuối mỗi phiên.
+Cập nhật hiện hành: **2026-11-25**, múi giờ Asia/Bangkok. Agent đọc phần hiện hành trước; các mục dưới “Nhật ký lịch sử” ghi diễn tiến, có quyết định đã được thay thế. Cập nhật file này cuối mỗi phiên.
 
 ## Trạng thái hiện hành và ý định người dùng
+
+- **Trang đọc, 25/11.** Sidebar có Trang chủ, Đọc tài liệu, Thư viện từ khó và nút Cài đặt hiển thị. Bảng mở theo yêu cầu; Esc quay về nút mở. Công cụ chỉnh cỡ chữ và thước nằm cạnh bài. Kiểm tra giao diện bằng `npx playwright test e2e/reader-navigation.spec.ts e2e/fr03-ruler.spec.ts` trong `frontend/`.
 
 - **FR-03, thước đọc cố định (2026-11-20).** Trong **Hỗ trợ đọc**, người dùng chọn cửa sổ 1, 2 hoặc 3 dòng. Bấm ↑/↓, Dòng trước/sau, lăn chuột hoặc vuốt trong văn bản để dịch một dòng hiển thị. `FixedReadingRuler` đo dòng ngay trên các token của `ReadingText` để tính cả dòng tự ngắt, tiêu đề, trích dẫn và khoảng cách đoạn. Mục `focus.lineCount` được lưu ở trình duyệt và trong JSONB của tài khoản (schema v2, dữ liệu cũ mặc định 1). Đã kiểm tra PNG và PDF scan tiếng Việt qua Tesseract và giao diện tải tệp, chuyển Bản gốc/Trang đọc, chọn từ và đổi bề rộng/cỡ chữ. Pytest 129, Vitest 42 và Playwright FR-03 3 test đạt. Chạy lại kiểm thử giao diện từ `frontend/` bằng `npx playwright test e2e/fr03-ruler.spec.ts`.
 - **Bàn giao remote 2026-11-20:** người dùng yêu cầu push cả `origin/feature/hong-quan` và `origin/main`. Đã fetch lại cả hai nhánh, xác nhận cả hai là tổ tiên của HEAD sau merge `f3896d3`, có thể cập nhật fast-forward không force. Phiên này đóng gói toàn bộ code/test/docs FR05–FR07, parser/benchmark và các thay đổi giao diện đã bàn giao; không đưa `.env`, PDF cá nhân, output QA/cache vào commit. Đích hai nhánh remote là cùng commit bàn giao (xem `git log -1`/remote refs để lấy hash). Kiểm tra bản kết hợp trước bàn giao: backend **126 passed**, frontend **42 passed**, lint/build pass; không chạy lại vì không đổi code sau kiểm tra. Các mục “chưa push” phía dưới ghi trạng thái lịch sử tại thời điểm thực hiện.

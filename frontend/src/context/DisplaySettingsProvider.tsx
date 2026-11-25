@@ -30,12 +30,12 @@ export const DEFAULTS: DisplaySettings = {
 };
 
 // Không dùng #FFFFFF. Tương phản chữ/nền đều > 12:1 (AAA).
-export const THEMES: Record<ThemeName, { label: string; bg: string; fg: string }> = {
-  cream: { label: 'Kem ấm', bg: '#FBF0D9', fg: '#222222' },
-  mint: { label: 'Bạc hà dịu', bg: '#E6F4EA', fg: '#1E2A22' },
-  blue: { label: 'Xanh êm', bg: '#E6F3FC', fg: '#1B2A38' },
-  dark: { label: 'Xám đêm', bg: '#1A1F2B', fg: '#E8EAF0' },
-  navy: { label: 'Xanh đêm', bg: '#0F1A2E', fg: '#E9EEF7' },
+export const THEMES: Record<ThemeName, { label: string; bg: string; fg: string; secondaryText: string; badgeText: string; badgeBg: string }> = {
+  cream: { label: 'Kem ấm', bg: '#FBF0D9', fg: '#222222', secondaryText: '#50452E', badgeText: '#51411F', badgeBg: '#EEE2B8' },
+  mint: { label: 'Bạc hà dịu', bg: '#E6F4EA', fg: '#1E2A22', secondaryText: '#394E40', badgeText: '#294C37', badgeBg: '#CDE3D2' },
+  blue: { label: 'Xanh êm', bg: '#E6F3FC', fg: '#1B2A38', secondaryText: '#394D60', badgeText: '#25465E', badgeBg: '#CDDFEE' },
+  dark: { label: 'Xám đêm', bg: '#1A1F2B', fg: '#E8EAF0', secondaryText: '#C5CBD9', badgeText: '#F0E8CD', badgeBg: '#373B42' },
+  navy: { label: 'Xanh đêm', bg: '#0F1A2E', fg: '#E9EEF7', secondaryText: '#C4D0E1', badgeText: '#D7E8FF', badgeBg: '#243750' },
 };
 
 export const FONT_STACKS: Record<FontFamily, string> = {

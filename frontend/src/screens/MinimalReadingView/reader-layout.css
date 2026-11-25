@@ -1,0 +1,61 @@
+.reader-shell {
+  container: reader / inline-size;
+}
+.reader-sidebar {
+  --rail-width: 15rem;
+  width: var(--rail-width);
+  z-index: 30;
+}
+.reader-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  min-height: 2.75rem;
+  width: 100%;
+  padding: .625rem .875rem;
+  border-radius: 1rem;
+  text-align: left;
+  color: #495974;
+}
+.reader-nav-item:hover { background: #f0eee9; }
+.reader-nav-item[aria-current="page"] { background: #e9edf7; color: #1556b8; font-weight: 600; }
+.reader-nav-item[aria-expanded="true"] { box-shadow: inset 0 0 0 1px #63718a; }
+.reader-shell :is(a, button, input, main):focus-visible {
+  outline: 2px solid #246aca;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px white;
+}
+.reader-nav-short { display: none; }
+
+/* The query uses the reading font for ch. Reserve 15rem for full navigation,
+   9rem for page/card gutters and 22.75rem for the open settings column.
+   Measure against the entire shell to avoid oscillation when the rail shrinks. */
+@container reader (width < calc(45ch + 24rem)) {
+  .reader-sidebar { --rail-width: 3.5rem; }
+}
+@container reader (width < calc(45ch + 46.75rem)) {
+  .reader-sidebar[data-settings-open="true"] { --rail-width: 3.5rem; }
+}
+.reader-sidebar {
+  container: navigation / inline-size;
+}
+@container navigation (width < 8rem) {
+  .reader-brand-long, .reader-decoration, .reader-active-dot { display: none; }
+  .reader-nav-short { display: inline; }
+  .reader-brand, .reader-nav-item { justify-content: center; padding-inline: 0; }
+  .reader-nav-text { display: none; }
+  .reader-nav-item:is(:hover, :focus-visible) .reader-nav-text {
+    display: block;
+    position: absolute;
+    left: calc(100% + .5rem);
+    top: 50%;
+    transform: translateY(-50%);
+    width: max-content;
+    padding: .3rem .65rem;
+    border-radius: .45rem;
+    color: white;
+    background: #263750;
+    pointer-events: none;
+  }
+}
