@@ -110,6 +110,11 @@ export const MinimalReadingView: React.FC = () => {
   const [bookmarkedSummaryIds, setBookmarkedSummaryIds] = useState<string[]>([]);
   const [copiedSummaryId, setCopiedSummaryId] = useState<string | null>(null);
   const [summaryCopyError, setSummaryCopyError] = useState('');
+  const [summaryPreviewOpen, setSummaryPreviewOpen] = useState(false);
+  const [previewItems, setPreviewItems] = useState<Array<{ id: string; text: string; included: boolean }>>([]);
+  const [previewFontSize, setPreviewFontSize] = useState(16);
+  const [previewFormat, setPreviewFormat] = useState<'list' | 'prose'>('list');
+  const [previewError, setPreviewError] = useState('');
 
   const summaryControllerRef = useRef<AbortController | null>(null);
   const summarySequenceRef = useRef(0);
@@ -257,6 +262,24 @@ export const MinimalReadingView: React.FC = () => {
   const sourcePreview = doc?.blocks.find((block) => block.text.trim())?.text ?? doc?.text ?? '';
   const activeReadingSegments = summaryView ? summaryReadingSegments : segments;
 
+  const selectSummaryItem = (itemId: string) => {
+    setSelectedSummaryItemId(itemId);
+    setSummaryNavigationRevision((revision) => revision + 1);
+    setPanelOpen(true);
+    setTab('Khác');
+    setSummaryView(true);
+  };
+
+  const selectSummaryForSourceBlock = (segmentId: string) => {
+    if (!summaryResult) return;
+    const item = summaryResult.items.find((candidate) => candidate.sources.includes(segmentId));
+    if (!item) return;
+    setSelectedSummaryItemId(item.id);
+    setSummaryNavigationRevision((revision) => revision + 1);
+    setPanelOpen(true);
+    setTab('Khác');
+  };
+
   const showSummarySource = (segmentId: string) => {
     if (!doc) return;
     setSourcesItemId(null);
@@ -389,6 +412,50 @@ export const MinimalReadingView: React.FC = () => {
     }
     setOpenSummaryMenuId(null);
   };
+
+  const openSummaryPreview = () => {
+    if (!summaryResult) return;
+    setPreviewItems(summaryResult.items.map((item) => ({ id: item.id, text: item.text, included: true })));
+    setPreviewFormat('list');
+    setPreviewError('');
+    setSummaryPreviewOpen(true);
+  };
+
+  const previewText = previewItems
+    .filter((item) => item.included && item.text.trim())
+    .map((item) => item.text.trim())
+    .join(previewFormat === 'list' ? '\n\n' : ' ');
+
+  const copySummaryPreview = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+      await navigator.clipboard.writeText(previewText);
+      setPreviewError('');
+    } catch {
+      setPreviewError('Không thể sao chép nội dung trong trình duyệt này.');
+    }
+  };
+
+  const downloadSummaryText = () => {
+    if (!previewText) return;
+    const blob = new Blob([previewText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = window.document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${(doc?.title || 'tom-tat').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'tom-tat'}.txt`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setPreviewError('');
+  };
+
+  useEffect(() => {
+    if (!summaryPreviewOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSummaryPreviewOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [summaryPreviewOpen]);
   const readSelection = () => {
     if (!wordSelection || !isSpeechSupported()) return;
     const block = blocks.find((item) => item.id === wordSelection.segmentId);
@@ -684,11 +751,7 @@ export const MinimalReadingView: React.FC = () => {
                         type="button"
                         aria-label={`Đi tới ý ${index + 1}`}
                         aria-pressed={selected}
-                        onClick={() => {
-                          setSelectedSummaryItemId(item.id);
-                          setSummaryNavigationRevision((revision) => revision + 1);
-                          setSummaryView(true);
-                        }}
+                        onClick={() => selectSummaryItem(item.id)}
                         className={`flex h-9 items-center justify-center gap-1.5 rounded-lg border text-sm font-semibold transition-colors ${selected ? 'border-primary bg-primary text-on-primary ring-2 ring-primary/30' : bookmarked ? 'border-red-400 bg-red-100 text-red-900' : 'border-black/15 bg-white hover:border-primary/40 hover:bg-primary/5'}`}
                       >
                         {bookmarked && <span className="material-symbols-outlined text-sm" aria-hidden="true">flag</span>}
@@ -698,6 +761,13 @@ export const MinimalReadingView: React.FC = () => {
                   })}
                 </div>
               </div>
+            )}
+            {summaryResult && (
+              <button type="button" onClick={openSummaryPreview}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-primary/25 bg-primary/5 px-3 py-3 text-sm font-medium text-primary hover:bg-primary/10">
+                <span className="material-symbols-outlined text-[18px]">preview</span>
+                Xem bản tóm tắt hoàn chỉnh
+              </button>
             )}
           </section>
         )}
@@ -995,7 +1065,14 @@ export const MinimalReadingView: React.FC = () => {
                               data-block-type="paragraph"
                               aria-current={isSelected ? 'location' : undefined}
                               tabIndex={0}
-                              className={`relative rounded-xl border p-4 pr-14 transition-colors ${isSelected ? 'border-primary/50 bg-primary/[0.08] text-on-surface ring-2 ring-primary/30' : isBookmarked ? 'border-red-400 bg-red-100/70 text-red-950 ring-2 ring-red-300' : 'border-current/20'}`}
+                              onClick={() => selectSummaryItem(item.id)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  selectSummaryItem(item.id);
+                                }
+                              }}
+                              className={`relative cursor-pointer rounded-xl border p-4 pr-14 transition-colors ${isSelected ? 'border-primary/50 bg-primary/[0.08] text-on-surface ring-2 ring-primary/30' : isBookmarked ? 'border-red-400 bg-red-100/70 text-red-950 ring-2 ring-red-300' : 'border-current/20'}`}
                             >
                               {isBookmarked && <span className={`mb-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${isSelected ? 'bg-primary/10 text-primary' : 'bg-red-100 text-red-800'}`}><span className="material-symbols-outlined text-sm" aria-hidden="true">flag</span>Đã đánh dấu để xem lại</span>}
                               <p className="whitespace-pre-line">{tokens}</p>
@@ -1061,6 +1138,94 @@ export const MinimalReadingView: React.FC = () => {
                         document.body,
                       );
                     })()}
+                    {summaryPreviewOpen && createPortal(
+                      <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-3 sm:p-6"
+                        onMouseDown={(event) => { if (event.target === event.currentTarget) setSummaryPreviewOpen(false); }}>
+                        <section role="dialog" aria-modal="true" aria-labelledby="summary-preview-title"
+                          className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-[#FFFDF8] text-[#17294D] shadow-2xl">
+                          <header className="flex items-start justify-between gap-4 border-b border-black/10 px-5 py-4 sm:px-6">
+                            <div>
+                              <h2 id="summary-preview-title" className="font-headline text-xl font-semibold">Bản tóm tắt hoàn chỉnh</h2>
+                              <p className="mt-1 text-sm text-on-surface-variant">Chọn ý cần giữ, chỉnh nội dung và xem trước định dạng xuất.</p>
+                            </div>
+                            <button type="button" aria-label="Đóng bản xem trước" onClick={() => setSummaryPreviewOpen(false)}
+                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg hover:bg-black/5">
+                              <span className="material-symbols-outlined">close</span>
+                            </button>
+                          </header>
+                          <div className="flex flex-wrap items-end gap-3 border-b border-black/10 bg-black/[0.02] px-5 py-3 sm:px-6">
+                            <label className="flex flex-col gap-1 text-xs font-medium">
+                              Cách trình bày
+                              <select value={previewFormat} onChange={(event) => setPreviewFormat(event.target.value as 'list' | 'prose')}
+                                className="rounded-lg border border-black/15 bg-white px-3 py-2 text-sm">
+                                <option value="list">Mỗi ý một đoạn</option>
+                                <option value="prose">Nối thành văn bản liền</option>
+                              </select>
+                            </label>
+                            <label className="flex min-w-36 flex-col gap-1 text-xs font-medium">
+                              Cỡ chữ xem trước: {previewFontSize}px
+                              <input type="range" min="14" max="24" step="1" value={previewFontSize}
+                                onChange={(event) => setPreviewFontSize(Number(event.target.value))} />
+                            </label>
+                            <p className="ml-auto text-xs text-on-surface-variant">{previewItems.filter((item) => item.included).length}/{previewItems.length} ý được chọn</p>
+                          </div>
+                          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6" style={{ fontSize: `${previewFontSize}px` }}>
+                            {previewItems.length === 0 ? (
+                              <p className="text-sm text-on-surface-variant">Không có ý tóm tắt để xem trước.</p>
+                            ) : previewFormat === 'list' ? (
+                              <ol className="space-y-3">
+                                {previewItems.map((item, index) => (
+                                  <li key={item.id} className={`rounded-xl border p-3 ${item.included ? 'border-black/10 bg-white' : 'border-black/5 bg-black/[0.03] opacity-60'}`}>
+                                    <div className="mb-2 flex items-center justify-between gap-3">
+                                      <label className="flex items-center gap-2 text-xs font-medium">
+                                        <input type="checkbox" checked={item.included}
+                                          onChange={(event) => setPreviewItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, included: event.target.checked } : entry))} />
+                                        Giữ ý {index + 1}
+                                      </label>
+                                      <div className="flex gap-1">
+                                        <button type="button" aria-label={`Chuyển ý ${index + 1} lên`} disabled={index === 0}
+                                          onClick={() => setPreviewItems((current) => { const next = [...current]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}
+                                          className="rounded px-2 py-1 text-sm hover:bg-black/5 disabled:opacity-30">↑</button>
+                                        <button type="button" aria-label={`Chuyển ý ${index + 1} xuống`} disabled={index === previewItems.length - 1}
+                                          onClick={() => setPreviewItems((current) => { const next = [...current]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}
+                                          className="rounded px-2 py-1 text-sm hover:bg-black/5 disabled:opacity-30">↓</button>
+                                      </div>
+                                    </div>
+                                    <textarea aria-label={`Nội dung ý ${index + 1}`} value={item.text}
+                                      onChange={(event) => setPreviewItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, text: event.target.value } : entry))}
+                                      rows={Math.max(2, Math.min(6, Math.ceil(item.text.length / 100)))}
+                                      className="w-full resize-y rounded-lg border border-black/10 bg-[#FFFDF8] px-3 py-2 leading-relaxed focus:border-primary focus:outline-none" />
+                                  </li>
+                                ))}
+                              </ol>
+                            ) : (
+                              <div className="space-y-3">
+                                {previewItems.map((item, index) => item.included && item.text.trim() ? (
+                                  <label key={item.id} className="block">
+                                    <span className="mb-1 flex items-center gap-2 text-xs font-medium text-on-surface-variant">
+                                      <input type="checkbox" checked onChange={() => setPreviewItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, included: false } : entry))} />
+                                      Ý {index + 1}
+                                    </span>
+                                    <textarea aria-label={`Nội dung ý ${index + 1}`} value={item.text}
+                                      onChange={(event) => setPreviewItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, text: event.target.value } : entry))}
+                                      rows={Math.max(2, Math.min(6, Math.ceil(item.text.length / 100)))}
+                                      className="w-full resize-y rounded-lg border border-black/10 bg-white px-3 py-2 leading-relaxed focus:border-primary focus:outline-none" />
+                                  </label>
+                                ) : null)}
+                              </div>
+                            )}
+                            {previewError && <p role="alert" className="mt-4 text-sm text-red-700">{previewError}</p>}
+                          </div>
+                          <footer className="flex flex-wrap justify-end gap-2 border-t border-black/10 px-5 py-4 sm:px-6">
+                            <button type="button" onClick={() => setSummaryPreviewOpen(false)} className="rounded-lg border border-black/15 px-4 py-2 text-sm">Đóng</button>
+                            <button type="button" onClick={() => void copySummaryPreview()} disabled={!previewText}
+                              className="rounded-lg border border-primary/25 px-4 py-2 text-sm font-medium text-primary disabled:opacity-40">Sao chép</button>
+                            <button type="button" onClick={downloadSummaryText} disabled={!previewText}
+                              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary disabled:opacity-40">Tải .txt</button>
+                          </footer>
+                        </section>
+                      </div>, document.body,
+                    )}
                   </section>
                 ) : (
                 <>
@@ -1178,6 +1343,7 @@ export const MinimalReadingView: React.FC = () => {
                     blocks={blocks}
                     activeBoundary={activeBoundary}
                     onWordSelection={chooseWord}
+                    onSegmentClick={selectSummaryForSourceBlock}
                     className="font-body break-words"
                     style={{
                       fontFamily: FONT_STACKS[s.fontFamily],
