@@ -14,6 +14,7 @@ from app.core.config import Settings
 from app.schemas.summary import SegmentIn, SummarizeRequest, SummaryItem
 from app.services.llm_provider import GroqProvider
 from app.services.summary_service import SummaryService, content_hash, validate_sources
+from app.services.extractive_summary import extractive_summarize, extractive_summarize_variants
 
 pytestmark = pytest.mark.no_db
 
@@ -105,6 +106,38 @@ def test_llm_summary_response_has_content_hash_and_validated_sources():
         ("summary-1", "Ý chính", ["block-1"])
     ]
     assert provider.calls == [data.segments]
+
+
+def test_extractive_variants_keep_current_medium_and_order_by_coverage():
+    segments = [(f"block-{i}",
+        f"Phần {i} trình bày kết quả nghiên cứu về khả năng tiếp cận thông tin và giáo dục. "
+        f"Dữ liệu của phần {i} cho thấy một phương pháp khác nhau trong thực tế.")
+        for i in range(1, 16)]
+    variants = extractive_summarize_variants(segments)
+    current = extractive_summarize(segments)
+
+    assert set(variants) == {"short", "medium", "long"}
+    assert variants["medium"] == current
+    assert len(variants["short"]) <= len(variants["medium"]) <= len(variants["long"])
+
+
+def test_extractive_response_includes_all_variants_and_selected_items():
+    service = SummaryService(Settings(DATABASE_URL="postgresql://user:pass@localhost/db"))
+    data = request(segments=[
+        SegmentIn(id=f"block-{i}", text=(
+            f"Section {i} presents important research findings about education and access to information. "
+            f"Analysis {i} describes distinct methods and evidence for student learning outcomes. "
+            f"Researchers report different effects on the local community and future policy. "
+        ))
+        for i in range(1, 8)
+    ])
+    data.length = "short"
+    import asyncio
+    result = asyncio.run(service.summarize(data))
+
+    assert [variant.length for variant in result.variants] == ["short", "medium", "long"]
+    assert result.items == result.variants[0].items
+    assert result.method == "extractive"
 
 
 @pytest.mark.parametrize("status, error", [

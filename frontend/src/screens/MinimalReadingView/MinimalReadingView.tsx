@@ -26,7 +26,7 @@ import { useSaveSelectedWord } from '../../hooks/useSaveSelectedWord';
 import { WordExplanationPopover } from '../../components/reading/WordExplanationPopover';
 import type { PopoverCloseReason } from '../../components/reading/WordExplanationPopover';
 import { summarizeDocument, toSummarySegments } from '../../lib/summary';
-import type { SummarizeResponse } from '../../lib/summary';
+import type { SummaryLength, SummarizeResponse } from '../../lib/summary';
 import { ApiError } from '../../lib/api';
 const SOURCE_LABEL: Record<DocumentSource, string> = {
   paste: 'Văn bản dán',
@@ -100,6 +100,7 @@ export const MinimalReadingView: React.FC = () => {
   const [summaryError, setSummaryError] = useState('');
   const [summaryNeedsLogin, setSummaryNeedsLogin] = useState(false);
   const [summaryMethod, setSummaryMethod] = useState<'extractive' | 'llm'>('extractive');
+  const [summaryLength, setSummaryLength] = useState<SummaryLength>('medium');
   const [summaryView, setSummaryView] = useState(false);
   const [selectedSummaryItemId, setSelectedSummaryItemId] = useState<string | null>(null);
   const [summaryNavigationRevision, setSummaryNavigationRevision] = useState(0);
@@ -172,6 +173,7 @@ export const MinimalReadingView: React.FC = () => {
         doc.id,
         summarySegments,
         summaryMethod,
+        summaryLength,
         controller.signal,
       );
 
@@ -214,7 +216,17 @@ export const MinimalReadingView: React.FC = () => {
         summaryControllerRef.current = null;
       }
     }
-  }, [doc, summarySegments, summaryMethod, user]);
+  }, [doc, summarySegments, summaryMethod, summaryLength, user]);
+
+  const selectSummaryLength = (length: SummaryLength) => {
+    setSummaryLength(length);
+    if (!summaryResult || summaryResult.method !== 'extractive') return;
+    const variant = summaryResult.variants?.find((item) => item.length === length);
+    if (!variant) return;
+    setSummaryResult((current) => current ? { ...current, items: variant.items } : current);
+    setSelectedSummaryItemId(null);
+    setSummaryNavigationRevision((revision) => revision + 1);
+  };
 
   useEffect(() => {
     queueMicrotask(clearSummary);
@@ -632,6 +644,23 @@ export const MinimalReadingView: React.FC = () => {
                 {summaryError}
               </div>
             )}
+
+            {summaryResult?.method === 'extractive' && summaryResult.variants?.length ? (
+              <fieldset className="space-y-2 rounded-xl border border-black/10 bg-white/60 p-3">
+                <legend className="px-1 text-xs font-semibold text-on-surface">Độ dài tóm tắt</legend>
+                <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Độ dài tóm tắt">
+                  {([
+                    ['short', 'Ngắn'], ['medium', 'Vừa'], ['long', 'Dài'],
+                  ] as const).map(([length, label]) => (
+                    <button key={length} type="button" role="radio" aria-checked={summaryLength === length}
+                      onClick={() => selectSummaryLength(length)}
+                      className={`rounded-lg border px-2 py-2 text-sm ${summaryLength === length ? 'border-primary bg-primary/10 font-semibold text-primary' : 'border-black/15'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            ) : null}
 
             {summaryResult && !summaryView && (
               <button
