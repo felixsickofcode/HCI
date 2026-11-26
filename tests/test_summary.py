@@ -162,6 +162,10 @@ def test_groq_summary_request_and_source_filtering(monkeypatch):
         assert json["max_completion_tokens"] == 1500
         assert timeout == 2
         assert json["messages"][1]["content"].find("block-1") >= 0
+        prompt = json["messages"][0]["content"]
+        assert "Không gộp toàn bộ văn bản thành một ý" in prompt
+        assert "không đặt số lượng cứng" in prompt
+        assert "diễn biến" in prompt
         return httpx.Response(200, json={"choices": [{"message": {"content":
             '{"items":[{"text":"Ý chính","sources":["block-1","unknown"]}]}'
         }}]})

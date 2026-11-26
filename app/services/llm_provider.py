@@ -112,7 +112,13 @@ class GroqProvider:
                     "role": "system",
                     "content": (
                         "Bạn là trợ lý tóm tắt tài liệu tiếng Việt. "
-                        "Viết lại bằng ngôn ngữ rõ ràng, diễn đạt lại ý nghĩa; không sao chép câu dài. "
+                        "Tạo bản tóm tắt gồm nhiều ý ngắn, rõ ràng, mỗi ý là một thông tin quan trọng riêng. "
+                        "Chia theo chủ đề riêng trong văn bản thông tin/biên bản; với truyện, chia theo các diễn biến "
+                        "hoặc chuyển biến quan trọng của câu chuyện. Không gộp toàn bộ văn bản thành một ý nếu có "
+                        "nhiều chủ đề hoặc diễn biến khác nhau. Số ý phải phù hợp độ dài và nội dung: văn bản ngắn "
+                        "có thể ít ý, văn bản dài thường cần nhiều ý; không đặt số lượng cứng và không tạo ý để đủ số. "
+                        "Mỗi ý nên tập trung vào một điểm, không lặp ý; diễn đạt lại bằng ngôn ngữ rõ ràng, không sao chép câu dài. "
+                        "Giữ lại tên riêng, mốc thời gian, quyết định và việc cần làm khi chúng quan trọng. "
                         "Chỉ dùng thông tin có trong các đoạn đầu vào. "
                         "Mỗi mục phải có nguồn là một hoặc nhiều mã đoạn hợp lệ trong danh sách. "
                         "Không thêm kết luận, nhận xét, HTML hoặc Markdown ngoài JSON."
