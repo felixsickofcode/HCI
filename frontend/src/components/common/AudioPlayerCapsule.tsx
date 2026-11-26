@@ -13,6 +13,7 @@ export interface AudioPlayerCapsuleProps {
   progressLabel?: string;
   title?: string;
   className?: string;
+  trailing?: React.ReactNode;
   onPlay: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -23,8 +24,8 @@ export interface AudioPlayerCapsuleProps {
 
 const STATUS_LABEL: Record<SpeechStatus, string> = {
   idle: 'Sẵn sàng đọc',
-  speaking: 'Đang đọc...',
-  paused: 'Đã tạm dừng',
+  speaking: 'Đang đọc',
+  paused: 'Tạm dừng',
   stopped: 'Đã dừng',
   ended: 'Đã đọc xong',
   unsupported: 'Không hỗ trợ giọng đọc',
@@ -43,6 +44,7 @@ export const AudioPlayerCapsule: React.FC<AudioPlayerCapsuleProps> = ({
   progressLabel,
   title = 'Giọng đọc AI',
   className = '',
+  trailing,
   onPlay,
   onPause,
   onResume,
@@ -53,151 +55,193 @@ export const AudioPlayerCapsule: React.FC<AudioPlayerCapsuleProps> = ({
   const isSpeaking = status === 'speaking';
   const isPaused = status === 'paused';
   const disabledControls = status === 'unsupported';
-  const canPlay = !disabledControls && !isSpeaking && !isPaused;
   const showVoiceWarning = !disabledControls && voices.length > 0 && !hasVietnameseVoice;
   const showBoundaryWarning = reliability === 'unreliable';
+  const showStatusPill = isSpeaking || isPaused || status === 'ended';
 
   return (
     <div
-      className={`rounded-2xl bg-white/80 backdrop-blur-sm border border-black/[0.06] p-3 sm:p-3.5 flex flex-col gap-3 text-on-surface select-none shadow-[0_10px_30px_rgba(27,28,29,0.06)] transition-all duration-300 hover:shadow-[0_14px_34px_rgba(27,28,29,0.09)] ${className}`}
+      className={`rounded-2xl px-2.5 py-2 flex flex-col gap-2 select-none font-label transition-colors duration-200 ${className}`}
+      style={{
+        backgroundColor: 'var(--reader-surface-bg, #F2E3C2)',
+        border: '1px solid var(--reader-border, #DFCFA9)',
+        color: 'var(--reader-fg, #222222)',
+      }}
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
           <button
             type="button"
             aria-label={isSpeaking ? 'Tạm dừng đọc' : isPaused ? 'Tiếp tục đọc' : 'Nghe đọc bài viết'}
+            title={title}
             onClick={isSpeaking ? onPause : isPaused ? onResume : onPlay}
             disabled={disabledControls}
-            className={`w-11 h-11 shrink-0 rounded-full bg-gradient-to-tr from-primary to-primary-container text-on-primary flex items-center justify-center shadow-[0_5px_14px_rgba(9,76,178,0.28)] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-              isSpeaking ? 'ring-2 ring-primary/20' : ''
-            }`}
+            className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              backgroundColor: 'var(--reader-accent, #1556B8)',
+              color: 'var(--reader-accent-fg, #FAF6EE)',
+            }}
           >
-            <span className="material-symbols-outlined text-[20px]">
+            <span className="material-symbols-outlined text-[19px]">
               {isSpeaking ? 'pause' : 'play_arrow'}
             </span>
           </button>
+
           <button
             type="button"
             aria-label="Dừng đọc"
             onClick={onStop}
             disabled={disabledControls || (!isSpeaking && !isPaused)}
-            className="w-9 h-9 shrink-0 rounded-full bg-surface-container-highest/60 hover:bg-surface-container-highest flex items-center justify-center text-on-surface transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-7 h-7 shrink-0 rounded-full flex items-center justify-center transition-colors disabled:opacity-45 disabled:cursor-not-allowed"
+            style={{
+              backgroundColor: 'var(--reader-hover-bg, #EADBB9)',
+              color: 'var(--reader-secondary-text, #50452E)',
+            }}
           >
-            <span className="material-symbols-outlined text-[16px]">stop</span>
+            <span className="material-symbols-outlined text-[14px]">stop</span>
           </button>
-          <div className="flex flex-col min-w-0">
-            <span className="text-[12px] font-label font-medium text-on-surface flex items-center gap-1.5 truncate">
-              {title}
+
+          {isSpeaking && (
+            <div className="hidden sm:flex items-center gap-[3px] h-4 px-1 shrink-0" aria-hidden="true">
+              <span className="w-[2.5px] h-2.5 rounded-full animate-pulse" style={{ backgroundColor: 'var(--reader-accent, #1556B8)', opacity: 0.55 }} />
+              <span className="w-[2.5px] h-4 rounded-full animate-pulse" style={{ backgroundColor: 'var(--reader-accent, #1556B8)' }} />
+              <span className="w-[2.5px] h-3 rounded-full animate-pulse" style={{ backgroundColor: 'var(--reader-accent, #1556B8)', opacity: 0.75 }} />
+              <span className="w-[2.5px] h-3.5 rounded-full animate-pulse" style={{ backgroundColor: 'var(--reader-accent, #1556B8)', opacity: 0.6 }} />
+            </div>
+          )}
+
+          <span className="sr-only" aria-live="polite">
+            {STATUS_LABEL[status]}
+            {progressLabel ? ` · ${progressLabel}` : ''}
+          </span>
+
+          {showStatusPill && (
+            <span
+              aria-hidden="true"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11.5px] font-semibold"
+              style={{
+                backgroundColor: 'var(--reader-accent-soft, #E3ECFA)',
+                color: 'var(--reader-active-fg, #1556B8)',
+              }}
+            >
               {isSpeaking && (
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: 'currentColor' }} />
               )}
+              {progressLabel || STATUS_LABEL[status]}
             </span>
-            <span className="text-[11px] font-label text-on-surface-variant font-normal" aria-live="polite">
-              {STATUS_LABEL[status]}
-              {progressLabel ? ` · ${progressLabel}` : ''}
+          )}
+
+          <label htmlFor="speech-voice" className="sr-only">
+            Giọng đọc
+          </label>
+          <select
+            id="speech-voice"
+            value={selectedVoiceURI}
+            onChange={(event) => onVoiceChange(event.target.value)}
+            disabled={disabledControls || voices.length === 0}
+            title="Chọn giọng đọc (đổi tốc độ hoặc giọng sẽ đọc lại từ vị trí hiện tại)"
+            className="min-w-[118px] max-w-[156px] truncate rounded-lg text-[11.5px] font-medium px-2 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              backgroundColor: 'var(--reader-control-bg, #FAF0DA)',
+              border: '1px solid var(--reader-border, #DFCFA9)',
+              color: 'var(--reader-fg, #222222)',
+            }}
+          >
+            {voices.length === 0 ? (
+              <option value="">
+                {voicesLoading ? 'Đang tải giọng đọc...' : 'Không có giọng đọc'}
+              </option>
+            ) : (
+              voices.map((voice) => (
+                <option
+                  key={voice.voiceURI}
+                  value={voice.voiceURI}
+                  style={{
+                    backgroundColor: 'var(--reader-panel-bg, #F5E8CB)',
+                    color: 'var(--reader-fg, #222222)',
+                  }}
+                >
+                  {voice.lang.toLowerCase().startsWith('vi')
+                    ? `${voice.name} (${voice.lang})`
+                    : voice.name}
+                </option>
+              ))
+            )}
+          </select>
+
+          {showVoiceWarning && (
+            <span
+              role="status"
+              title="Không tìm thấy giọng tiếng Việt (vi-VN) — đang dùng giọng mặc định của trình duyệt."
+              className="inline-flex items-center rounded-lg px-2 py-1 text-[11px] font-semibold"
+              style={{
+                backgroundColor: 'var(--reader-warning-bg, #EAD7A1)',
+                color: 'var(--reader-warning-fg, #594108)',
+                border: '1px solid var(--reader-warning-border, #D4BC7D)',
+              }}
+            >
+              ! Thiếu vi-VN
             </span>
-          </div>
-        </div>
+          )}
 
-        {/* Animated Waveform Simulation */}
-        <div className="hidden sm:flex items-center gap-1 h-5 px-3 shrink-0" aria-hidden="true">
-          <span
-            className={`w-[2.5px] bg-primary/40 rounded-full transition-all duration-200 ${
-              isSpeaking ? 'h-3 animate-pulse' : 'h-2'
-            }`}
-          />
-          <span
-            className={`w-[2.5px] bg-primary/60 rounded-full transition-all duration-200 ${
-              isSpeaking ? 'h-5 animate-pulse' : 'h-3.5'
-            }`}
-          />
-          <span
-            className={`w-[2.5px] bg-primary rounded-full transition-all duration-200 ${
-              isSpeaking ? 'h-4 animate-pulse' : 'h-5'
-            }`}
-          />
-          <span
-            className={`w-[2.5px] bg-primary/70 rounded-full transition-all duration-200 ${
-              isSpeaking ? 'h-5 animate-pulse' : 'h-3'
-            }`}
-          />
-          <span
-            className={`w-[2.5px] bg-primary/30 rounded-full transition-all duration-200 ${
-              isSpeaking ? 'h-3.5 animate-pulse' : 'h-2'
-            }`}
-          />
-          <span
-            className={`w-[2.5px] bg-primary/50 rounded-full transition-all duration-200 ${
-              isSpeaking ? 'h-4 animate-pulse' : 'h-3'
-            }`}
-          />
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={onRateCycle}
             disabled={disabledControls}
             aria-label={`Đổi tốc độ đọc, hiện tại ${rate.toFixed(1)} lần`}
-            className="px-2.5 py-1 rounded bg-surface-container-highest/60 hover:bg-surface-container-highest text-[11px] font-label font-medium text-on-surface transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Bấm để đổi tốc độ đọc (đọc lại từ vị trí hiện tại)"
+            className="px-2.5 py-1.5 rounded-lg text-[12px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              backgroundColor: 'var(--reader-hover-bg, #EADBB9)',
+              color: 'var(--reader-fg, #222222)',
+            }}
           >
             {rate.toFixed(1)}x
           </button>
         </div>
-      </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor="speech-voice" className="text-[11px] font-label font-medium text-on-surface-variant">
-          Giọng đọc
-        </label>
-        <select
-          id="speech-voice"
-          value={selectedVoiceURI}
-          onChange={(event) => onVoiceChange(event.target.value)}
-          disabled={disabledControls || voices.length === 0}
-          className="flex-1 min-w-[180px] rounded bg-surface-container-highest/60 hover:bg-surface-container-highest text-[11px] font-label text-on-surface px-2 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {voices.length === 0 ? (
-            <option value="">
-              {voicesLoading ? 'Đang tải giọng đọc...' : 'Không có giọng đọc khả dụng'}
-            </option>
-          ) : (
-            voices.map((voice) => (
-              <option key={voice.voiceURI} value={voice.voiceURI}>
-                {voice.lang.toLowerCase().startsWith('vi')
-                  ? `${voice.name} (${voice.lang})`
-                  : voice.name}
-              </option>
-            ))
-          )}
-        </select>
-        {canPlay && (
-          <span className="text-[11px] font-label text-on-surface-variant">
-            Đổi tốc độ/giọng sẽ đọc lại từ vị trí hiện tại
-          </span>
+        {trailing && (
+          <div className="flex flex-wrap items-center gap-2">
+            {trailing}
+          </div>
         )}
       </div>
 
-      {showVoiceWarning && (
-        <p role="status" className="text-[11px] font-label text-tertiary bg-tertiary-fixed/30 px-2.5 py-1.5 rounded">
-          Không tìm thấy giọng tiếng Việt (vi-VN) — đang dùng giọng mặc định của trình duyệt.
-        </p>
-      )}
-
       {showBoundaryWarning && (
-        <p role="status" className="text-[11px] font-label text-error bg-error-container/50 px-2.5 py-1.5 rounded">
+        <p
+          role="status"
+          className="text-[11.5px] px-2.5 py-1.5 rounded-lg"
+          style={{
+            backgroundColor: 'var(--reader-error-bg, #F6D9D5)',
+            color: 'var(--reader-error-fg, #8F1D1D)',
+          }}
+        >
           Trình duyệt không hỗ trợ tô sáng theo từng từ (word boundary) đáng tin cậy — chỉ phát giọng đọc, không tô sáng theo đoạn.
         </p>
       )}
 
       {status === 'unsupported' && (
-        <p role="alert" className="text-[11px] font-label text-error bg-error-container/50 px-2.5 py-1.5 rounded">
+        <p
+          role="alert"
+          className="text-[11.5px] px-2.5 py-1.5 rounded-lg"
+          style={{
+            backgroundColor: 'var(--reader-error-bg, #F6D9D5)',
+            color: 'var(--reader-error-fg, #8F1D1D)',
+          }}
+        >
           Trình duyệt không hỗ trợ đọc thành tiếng (Web Speech API). Không thể phát giọng đọc và tô sáng theo từ.
         </p>
       )}
 
       {status === 'error' && errorMessage && (
-        <p role="alert" className="text-[11px] font-label text-error bg-error-container/50 px-2.5 py-1.5 rounded">
+        <p
+          role="alert"
+          className="text-[11.5px] px-2.5 py-1.5 rounded-lg"
+          style={{
+            backgroundColor: 'var(--reader-error-bg, #F6D9D5)',
+            color: 'var(--reader-error-fg, #8F1D1D)',
+          }}
+        >
           {errorMessage}
         </p>
       )}

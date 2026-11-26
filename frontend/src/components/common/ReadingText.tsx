@@ -90,7 +90,7 @@ function renderInline(
         <span
           key={tokenIndex}
           aria-current="true"
-          className="bg-tertiary-fixed text-on-tertiary-fixed rounded-sm outline outline-1 outline-tertiary focus-visible:outline-2"
+          className="reader-word-active px-0.5 focus-visible:outline-2"
           {...selectionProps}
         >
           {token.text}
@@ -195,7 +195,7 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
         <blockquote
           key={block.id}
           {...selectionAttributes(block)}
-          className="my-12 px-6 sm:px-8 py-5 bg-surface-container-low rounded-lg text-on-surface-variant italic text-lg sm:text-[1.3rem] leading-[1.9] whitespace-pre-line"
+          className="reader-quote my-10 px-6 sm:px-8 py-5 rounded-xl italic text-lg sm:text-[1.25rem] leading-[1.9] whitespace-pre-line"
         >
           {body}
         </blockquote>,

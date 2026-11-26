@@ -43,9 +43,27 @@ interface Props {
   lineCount: FocusSettings['lineCount'];
   background: string;
   opacity: number;
+  accent?: string;
+  accentFg?: string;
+  surfaceBg?: string;
+  controlBg?: string;
+  border?: string;
+  fg?: string;
 }
 
-export function FixedReadingRuler({ mainRef, bodyRef, lineCount, background, opacity }: Props) {
+export function FixedReadingRuler({
+  mainRef,
+  bodyRef,
+  lineCount,
+  background,
+  opacity,
+  accent = '#1556B8',
+  accentFg = '#FAF6EE',
+  surfaceBg,
+  controlBg,
+  border,
+  fg,
+}: Props) {
   const maskRef = useRef<HTMLDivElement>(null);
   const bandRef = useRef<HTMLDivElement>(null);
   const stepRef = useRef<(direction: number) => boolean>(() => false);
@@ -196,17 +214,55 @@ export function FixedReadingRuler({ mainRef, bodyRef, lineCount, background, opa
   return (
     <>
       <div ref={maskRef} aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
-        <div ref={bandRef} data-reading-ruler="" className="absolute inset-x-0 border-y border-current/30"
-          style={{ boxShadow: '0 0 0 100vmax ' + background, opacity }}
+        <div
+          ref={bandRef}
+          data-reading-ruler=""
+          className="absolute inset-x-0 border-y border-l-[3px]"
+          style={{
+            boxShadow: '0 0 0 100vmax ' + background,
+            opacity,
+            borderTopColor: accent,
+            borderBottomColor: accent,
+            borderLeftColor: accent,
+          }}
         />
       </div>
-      <div role="group" aria-label="Chuyển dòng" data-ruler-control=""
-        className="absolute bottom-3 right-3 z-20 flex gap-1 rounded-xl border border-current/20 p-1 shadow-sm"
-        style={{ backgroundColor: background }}>
-        <button type="button" disabled={limits.first} onClick={() => stepRef.current(-1)}
-          className="min-h-10 rounded-lg px-3 text-sm focus-visible:outline disabled:opacity-40">↑ Dòng trước</button>
-        <button type="button" disabled={limits.last} onClick={() => stepRef.current(1)}
-          className="min-h-10 rounded-lg px-3 text-sm focus-visible:outline disabled:opacity-40">↓ Dòng sau</button>
+      <div
+        role="group"
+        aria-label="Chuyển dòng"
+        data-ruler-control=""
+        className="absolute bottom-4 right-4 z-20 flex gap-1.5 rounded-2xl p-1.5 shadow-md font-label"
+        style={{
+          backgroundColor: surfaceBg ?? background,
+          border: `1px solid ${border ?? 'currentColor'}`,
+          color: fg,
+        }}
+      >
+        <button
+          type="button"
+          disabled={limits.first}
+          onClick={() => stepRef.current(-1)}
+          className="min-h-10 rounded-xl px-3.5 text-sm font-medium transition-opacity focus-visible:outline disabled:opacity-40"
+          style={{
+            backgroundColor: controlBg ?? background,
+            border: `1px solid ${border ?? 'transparent'}`,
+            color: fg,
+          }}
+        >
+          ↑ Dòng trước
+        </button>
+        <button
+          type="button"
+          disabled={limits.last}
+          onClick={() => stepRef.current(1)}
+          className="min-h-10 rounded-xl px-3.5 text-sm font-semibold transition-opacity focus-visible:outline disabled:opacity-40"
+          style={{
+            backgroundColor: accent,
+            color: accentFg,
+          }}
+        >
+          ↓ Dòng sau
+        </button>
       </div>
     </>
   );

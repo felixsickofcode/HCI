@@ -10,7 +10,6 @@ import {
 import { countWords, readingMinutes } from '../../lib/document';
 import type { DocumentSource } from '../../lib/document';
 import type { FontFamily, ThemeName } from '../../lib/api';
-import booksIllustration from '../../assets/book_illustration.jpg';
 import {
   getSpeechVoices,
   hasVietnameseVoice,
@@ -74,15 +73,22 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
 
 const Slider = (p: {
   label: string; value: number; min: number; max: number; step: number; unit?: string;
+  accent?: string; secondaryText?: string; fg?: string;
   onChange: (v: number) => void;
 }) => (
   <label className="block">
-    <span className="flex justify-between mb-1.5 text-xs font-label text-on-surface-variant">
+    <span className="flex justify-between mb-1.5 text-xs font-label" style={{ color: p.secondaryText }}>
       <span>{p.label}</span>
-      <span className="font-semibold text-on-surface">{p.value}{p.unit}</span>
+      <span className="font-semibold" style={{ color: p.fg }}>{p.value}{p.unit}</span>
     </span>
     <input
-      type="range" className="w-full accent-primary" min={p.min} max={p.max} step={p.step} value={p.value}
+      type="range"
+      className="w-full"
+      style={{ accentColor: p.accent }}
+      min={p.min}
+      max={p.max}
+      step={p.step}
+      value={p.value}
       onChange={(e) => p.onChange(Number(e.target.value))}
     />
   </label>
@@ -93,6 +99,7 @@ export const MinimalReadingView: React.FC = () => {
   const { user } = useAuth();
   const { settings: s, update, reset } = useDisplaySettings();
   const [panelOpen, setPanelOpen] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const narrow = useSyncExternalStore(subscribeOverlay, isOverlay);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -110,7 +117,6 @@ export const MinimalReadingView: React.FC = () => {
   const { selection: wordSelection, result: wordResult, loading: wordLoading,
     error: wordError, needsLogin: wordNeedsLogin, choose: chooseWord, explain: explainWord, clear: clearWord } = useWordExplanation(doc?.id, blocks);
   const wordSave = useSaveSelectedWord(doc, wordSelection, explainWord);
-  const toc = useMemo(() => blocks.filter((block) => block.type === 'heading'), [blocks]);
   const segments: ReadingSegment[] = useMemo(
     () =>
       blocks
@@ -273,150 +279,320 @@ export const MinimalReadingView: React.FC = () => {
   }
 
   const settingsPanel = (
-    <aside id="reader-display-settings" role={modal ? 'dialog' : undefined} aria-modal={modal || undefined}
-      aria-labelledby="reader-settings-title" className="text-on-surface flex flex-col w-[340px] max-w-[92vw] h-full rounded-3xl shadow-sm border border-black/5 bg-[#FFFDF8] overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-black/5 shrink-0">
-        <h2 id="reader-settings-title" className="flex items-center gap-2 text-[15px] font-headline font-semibold text-on-surface">
-          <span className="material-symbols-outlined text-[20px] text-on-surface-variant">tune</span>
+    <aside
+      id="reader-display-settings"
+      role={modal ? 'dialog' : undefined}
+      aria-modal={modal || undefined}
+      aria-labelledby="reader-settings-title"
+      className="flex flex-col w-[340px] max-w-[92vw] h-full rounded-3xl overflow-hidden transition-colors duration-200"
+      style={{
+        backgroundColor: theme.panelBg,
+        color: theme.fg,
+        border: `1px solid ${theme.border}`,
+        boxShadow: theme.isDark
+          ? '0 14px 38px rgba(0, 0, 0, 0.36)'
+          : '0 8px 28px rgba(45, 34, 15, 0.06)',
+      }}
+    >
+      <div
+        className="flex items-center justify-between px-5 py-4 shrink-0"
+        style={{ borderBottom: `1px solid ${theme.border}` }}
+      >
+        <h2 id="reader-settings-title" className="flex items-center gap-2 text-[15px] font-headline font-semibold">
+          <span className="material-symbols-outlined text-[20px]" style={{ color: theme.secondaryText }}>tune</span>
           Cài đặt hiển thị
         </h2>
         <button
-          type="button" ref={closeRef} onClick={togglePanel} aria-label="Đóng cài đặt"
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-black/5"
+          type="button"
+          ref={closeRef}
+          onClick={togglePanel}
+          aria-label="Đóng cài đặt"
+          className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+          style={{ backgroundColor: theme.surfaceBg, color: theme.secondaryText }}
         >
-          <span aria-hidden="true" className="text-xl">×</span>
+          <span aria-hidden="true" className="text-xl leading-none">×</span>
         </button>
       </div>
 
       <div className="flex gap-1.5 px-4 pt-4 shrink-0">
-        {TABS.map((t) => (
-          <button
-            key={t.key} type="button" onClick={() => setTab(t.key)} aria-pressed={tab === t.key}
-            className={`flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl text-[11px] font-label font-medium transition-colors ${
-              tab === t.key ? 'bg-primary text-on-primary shadow-sm' : 'bg-black/[0.03] text-on-surface-variant hover:bg-black/[0.06]'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[18px]">{t.icon}</span>
-            {t.label}
-          </button>
-        ))}
+        {TABS.map((t) => {
+          const active = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              aria-pressed={active}
+              className="flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl text-[11px] font-label font-semibold transition-colors"
+              style={
+                active
+                  ? { backgroundColor: theme.accent, color: theme.accentFg }
+                  : { backgroundColor: theme.surfaceBg, color: theme.secondaryText }
+              }
+            >
+              <span className="material-symbols-outlined text-[18px]">{t.icon}</span>
+              {t.label}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-7">
+      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
         {tab === 'Giao diện' && (
           <>
+            <section className="space-y-2.5">
+              <h3 className="text-xs font-label font-bold uppercase tracking-wide" style={{ color: theme.secondaryText }}>
+                Màu sắc (đồng bộ toàn trang)
+              </h3>
+              <div className="grid grid-cols-5 gap-1">
+                {(Object.keys(THEMES) as ThemeName[]).map((k) => {
+                  const active = s.theme === k;
+                  return (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => update({ theme: k })}
+                      aria-pressed={active}
+                      title={THEMES[k].label}
+                      aria-label={THEMES[k].label}
+                      className="rounded-xl py-2 px-0.5 flex flex-col items-center justify-center gap-0.5 transition-all"
+                      style={{
+                        backgroundColor: THEMES[k].bg,
+                        color: THEMES[k].fg,
+                        border: active ? `2px solid ${theme.accent}` : `1.5px solid ${THEMES[k].borderStrong}`,
+                        boxShadow: active ? `0 0 0 2px ${theme.accentSoft}` : undefined,
+                      }}
+                    >
+                      <span className="text-sm font-bold leading-none">Aa</span>
+                      <span className="text-[9px] font-label font-semibold tracking-tight leading-tight whitespace-nowrap">
+                        {THEMES[k].shortLabel}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] font-label" style={{ color: theme.secondaryText }}>
+                {THEMES[s.theme].label} — đang áp dụng
+              </p>
+            </section>
+
             <div role="group" aria-labelledby="reader-typography" className="space-y-5">
               <h3 id="reader-typography" className="text-sm font-semibold">Chữ và khoảng cách</h3>
               <section className="space-y-2.5">
-                <h3 className="text-xs font-label font-bold uppercase tracking-wide text-on-surface-variant">Phông & kiểu chữ</h3>
+                <h3 className="text-xs font-label font-bold uppercase tracking-wide" style={{ color: theme.secondaryText }}>
+                  Phông &amp; kiểu chữ
+                </h3>
                 <div className="grid grid-cols-2 gap-2">
-                  {(Object.keys(FONT_LABELS) as FontFamily[]).map((f) => (
-                    <button
-                      key={f} type="button" onClick={() => changeSettings({ fontFamily: f })} aria-pressed={s.fontFamily === f}
-                      className={`min-w-0 px-2.5 py-2 rounded-xl text-left border transition-colors ${
-                        s.fontFamily === f ? 'border-primary bg-primary/[0.06]' : 'border-black/10 hover:border-black/20'
-                      }`}
-                      style={{ fontFamily: FONT_STACKS[f] }}
-                    >
-                      <span className="block text-[12px] leading-tight font-semibold text-on-surface break-words">
-                        {FONT_LABELS[f]}
-                      </span>
-                      {s.fontFamily === f && (
-                        <span className="block text-[10px] font-label text-primary mt-0.5 leading-none">✓ Đang dùng</span>
-                      )}
-                    </button>
-                  ))}
+                  {(Object.keys(FONT_LABELS) as FontFamily[]).map((f) => {
+                    const active = s.fontFamily === f;
+                    return (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => changeSettings({ fontFamily: f })}
+                        aria-pressed={active}
+                        className="min-w-0 px-2.5 py-2 rounded-xl text-left transition-colors"
+                        style={{
+                          fontFamily: FONT_STACKS[f],
+                          backgroundColor: active ? theme.accentSoft : theme.controlBg,
+                          border: active ? `1.5px solid ${theme.accent}` : `1px solid ${theme.border}`,
+                          color: theme.fg,
+                        }}
+                      >
+                        <span className="block text-[12px] leading-tight font-semibold break-words">
+                          {FONT_LABELS[f]}
+                        </span>
+                        {active && (
+                          <span
+                            className="block text-[10px] font-label mt-0.5 leading-none font-semibold"
+                            style={{ color: theme.activeFg }}
+                          >
+                            ✓ Đang dùng
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </section>
 
               <section className="space-y-2.5">
-                <h3 className="text-xs font-label font-bold uppercase tracking-wide text-on-surface-variant">Kích thước chữ</h3>
+                <h3 className="text-xs font-label font-bold uppercase tracking-wide" style={{ color: theme.secondaryText }}>
+                  Kích thước chữ
+                </h3>
                 <div className="flex items-center gap-2">
                   <button
-                    type="button" aria-label="Giảm cỡ chữ" disabled={s.fontSize <= LIMITS.fontSize[0]} onClick={() => changeFontSize(-1)}
-                    className="w-8 h-8 shrink-0 rounded-lg border border-black/10 flex items-center justify-center text-sm font-bold text-on-surface-variant hover:bg-black/5"
-                  >A-</button>
+                    type="button"
+                    aria-label="Giảm cỡ chữ"
+                    disabled={s.fontSize <= LIMITS.fontSize[0]}
+                    onClick={() => changeFontSize(-1)}
+                    className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-sm font-bold disabled:opacity-45"
+                    style={{
+                      backgroundColor: theme.controlBg,
+                      border: `1px solid ${theme.border}`,
+                      color: theme.fg,
+                    }}
+                  >
+                    A-
+                  </button>
                   <input
-                    type="range" className="flex-1 accent-primary" min={LIMITS.fontSize[0]} max={LIMITS.fontSize[1]} step={1}
-                    aria-label="Cỡ chữ" aria-valuetext={s.fontSize + ' pixel'}
-                    value={s.fontSize} onChange={(e) => changeSettings({ fontSize: Number(e.target.value) })}
+                    type="range"
+                    className="flex-1"
+                    style={{ accentColor: theme.accent }}
+                    min={LIMITS.fontSize[0]}
+                    max={LIMITS.fontSize[1]}
+                    step={1}
+                    aria-label="Cỡ chữ"
+                    aria-valuetext={s.fontSize + ' pixel'}
+                    value={s.fontSize}
+                    onChange={(e) => changeSettings({ fontSize: Number(e.target.value) })}
                   />
                   <button
-                    type="button" aria-label="Tăng cỡ chữ" disabled={s.fontSize >= LIMITS.fontSize[1]} onClick={() => changeFontSize(1)}
-                    className="w-8 h-8 shrink-0 rounded-lg border border-black/10 flex items-center justify-center text-sm font-bold text-on-surface-variant hover:bg-black/5"
-                  >A+</button>
-                  <span className="text-xs font-label text-on-surface-variant w-10 text-right shrink-0">{s.fontSize}px</span>
+                    type="button"
+                    aria-label="Tăng cỡ chữ"
+                    disabled={s.fontSize >= LIMITS.fontSize[1]}
+                    onClick={() => changeFontSize(1)}
+                    className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-sm font-bold disabled:opacity-45"
+                    style={{
+                      backgroundColor: theme.controlBg,
+                      border: `1px solid ${theme.border}`,
+                      color: theme.fg,
+                    }}
+                  >
+                    A+
+                  </button>
+                  <span
+                    className="text-xs font-label font-semibold w-10 text-right shrink-0"
+                    style={{ color: theme.fg }}
+                  >
+                    {s.fontSize}px
+                  </span>
                 </div>
               </section>
 
               <section className="space-y-3">
-                <h3 className="text-xs font-label font-bold uppercase tracking-wide text-on-surface-variant">Khoảng cách</h3>
-                <Slider label="Giãn dòng" value={s.lineHeight} min={LIMITS.lineHeight[0]} max={LIMITS.lineHeight[1]} step={0.1} onChange={(v) => changeSettings({ lineHeight: v })} />
-                <Slider label="Giãn chữ" unit="em" value={s.letterSpacing} min={LIMITS.letterSpacing[0]} max={LIMITS.letterSpacing[1]} step={0.01} onChange={(v) => changeSettings({ letterSpacing: v })} />
-                <Slider label="Độ rộng cột" unit="ch" value={s.columnWidth} min={LIMITS.columnWidth[0]} max={LIMITS.columnWidth[1]} step={1} onChange={(v) => changeSettings({ columnWidth: v })} />
+                <h3 className="text-xs font-label font-bold uppercase tracking-wide" style={{ color: theme.secondaryText }}>
+                  Khoảng cách
+                </h3>
+                <Slider label="Giãn dòng" value={s.lineHeight} min={LIMITS.lineHeight[0]} max={LIMITS.lineHeight[1]} step={0.1} accent={theme.accent} secondaryText={theme.secondaryText} fg={theme.fg} onChange={(v) => changeSettings({ lineHeight: v })} />
+                <Slider label="Giãn chữ" unit="em" value={s.letterSpacing} min={LIMITS.letterSpacing[0]} max={LIMITS.letterSpacing[1]} step={0.01} accent={theme.accent} secondaryText={theme.secondaryText} fg={theme.fg} onChange={(v) => changeSettings({ letterSpacing: v })} />
+                <Slider label="Độ rộng cột" unit="ch" value={s.columnWidth} min={LIMITS.columnWidth[0]} max={LIMITS.columnWidth[1]} step={1} accent={theme.accent} secondaryText={theme.secondaryText} fg={theme.fg} onChange={(v) => changeSettings({ columnWidth: v })} />
               </section>
             </div>
-            <section className="space-y-2.5">
-              <h3 className="text-sm font-semibold">Màu sắc</h3>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                {(Object.keys(THEMES) as ThemeName[]).map((k) => (
-                  <button
-                    key={k} type="button" onClick={() => update({ theme: k })} aria-pressed={s.theme === k}
-                    title={THEMES[k].label} aria-label={THEMES[k].label}
-                    className={`w-9 h-9 rounded-full border-2 transition-all ${s.theme === k ? 'border-primary ring-2 ring-primary/30 scale-105' : 'border-black/10'}`}
-                    style={{ backgroundColor: THEMES[k].bg }}
-                  />
-                ))}
-              </div>
-              <p className="text-[11px] text-on-surface-variant">{THEMES[s.theme].label} — đang áp dụng</p>
-            </section>
           </>
         )}
 
         {tab === 'Hỗ trợ đọc' && (
-          <section className="space-y-2.5">
-            <h3 className="text-xs font-label font-bold uppercase tracking-wide text-on-surface-variant">Tính năng hỗ trợ</h3>
+          <section className="space-y-4">
+            <h3 className="text-xs font-label font-bold uppercase tracking-wide" style={{ color: theme.secondaryText }}>
+              Tính năng hỗ trợ
+            </h3>
 
             <button
-              type="button" role="switch" aria-label="Thước đọc cố định" aria-describedby="reader-ruler-help" aria-checked={s.focus.enabled} data-ruler-switch
+              type="button"
+              role="switch"
+              aria-label="Thước đọc cố định"
+              aria-describedby="reader-ruler-help"
+              aria-checked={s.focus.enabled}
+              data-ruler-switch
               onClick={() => update({ focus: { enabled: !s.focus.enabled } })}
-              className="w-full flex items-center gap-3 px-3 py-3 rounded-xl border border-black/10 hover:border-black/20 text-left"
+              className="w-full flex items-center gap-3 px-3.5 py-3.5 rounded-2xl text-left transition-colors"
+              style={{
+                backgroundColor: theme.controlBg,
+                border: `1px solid ${s.focus.enabled ? theme.accent : theme.border}`,
+              }}
             >
-              <span className="material-symbols-outlined text-[18px] text-on-surface-variant shrink-0">view_day</span>
+              <span className="material-symbols-outlined text-[18px] shrink-0" style={{ color: theme.activeFg }}>view_day</span>
               <span className="flex-1 min-w-0">
-                <span className="block text-sm font-medium text-on-surface">Thước đọc cố định</span>
-                <span id="reader-ruler-help" className="block text-[11px] text-on-surface-variant mt-0.5">Thước đứng yên. Nhấn ↓ để văn bản cuộn lên một dòng, nhấn ↑ để quay lại. Bạn cũng có thể lăn chuột trong vùng chữ.</span>
+                <span className="block text-sm font-semibold">Thước đọc cố định</span>
+                <span id="reader-ruler-help" className="block text-[11px] mt-0.5 leading-relaxed" style={{ color: theme.secondaryText }}>
+                  Thước đứng yên. Nhấn ↓ để văn bản cuộn lên một dòng, nhấn ↑ để quay lại. Bạn cũng có thể lăn chuột trong vùng chữ.
+                </span>
               </span>
-              <span className={`relative shrink-0 w-10 h-6 rounded-full transition-colors ${s.focus.enabled ? 'bg-primary' : 'bg-black/15'}`}>
-                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${s.focus.enabled ? 'left-[18px]' : 'left-0.5'}`} />
+              <span
+                className="relative shrink-0 w-10 h-6 rounded-full transition-colors"
+                style={{ backgroundColor: s.focus.enabled ? theme.accent : theme.borderStrong }}
+              >
+                <span
+                  className={`absolute top-0.5 w-5 h-5 rounded-full shadow transition-all ${s.focus.enabled ? 'left-[18px]' : 'left-0.5'}`}
+                  style={{ backgroundColor: theme.accentFg }}
+                />
               </span>
             </button>
+
             {s.focus.enabled && (
-              <fieldset className="space-y-2" data-ruler-control>
-                <legend className="text-sm font-medium">Số dòng nhìn rõ</legend>
-                <div className="flex gap-2">
-                  {([1, 2, 3] as const).map((count) => (
-                    <button key={count} type="button" aria-pressed={s.focus.lineCount === count}
-                      onClick={() => update({ focus: { lineCount: count } })}
-                      className="flex-1 rounded-lg border border-black/15 py-2 text-sm aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:font-semibold"
-                    >
-                      {count} dòng
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
+              <>
+                <fieldset className="space-y-2" data-ruler-control>
+                  <legend className="text-xs font-label font-bold uppercase tracking-wide" style={{ color: theme.secondaryText }}>
+                    Số dòng nhìn rõ
+                  </legend>
+                  <div className="flex gap-2">
+                    {([1, 2, 3] as const).map((count) => {
+                      const active = s.focus.lineCount === count;
+                      return (
+                        <button
+                          key={count}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => update({ focus: { lineCount: count } })}
+                          className="flex-1 rounded-xl py-2 text-sm font-label transition-colors"
+                          style={
+                            active
+                              ? {
+                                  backgroundColor: theme.accentSoft,
+                                  border: `1.5px solid ${theme.accent}`,
+                                  color: theme.activeFg,
+                                  fontWeight: 600,
+                                }
+                              : {
+                                  backgroundColor: theme.controlBg,
+                                  border: `1px solid ${theme.border}`,
+                                  color: theme.fg,
+                                }
+                          }
+                        >
+                          {count} dòng
+                        </button>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+
+                <Slider
+                  label="Độ mờ vùng ngoài thước"
+                  unit="%"
+                  value={Math.round(s.focus.dimOpacity * 100)}
+                  min={50}
+                  max={80}
+                  step={5}
+                  accent={theme.accent}
+                  secondaryText={theme.secondaryText}
+                  fg={theme.fg}
+                  onChange={(v) => update({ focus: { dimOpacity: v / 100 } })}
+                />
+              </>
             )}
           </section>
         )}
-
       </div>
 
-      <div className="px-5 py-4 border-t border-black/5 space-y-3 shrink-0">
-        <button type="button" onClick={() => { capture(); reset(); }} className="w-full text-xs font-label font-semibold text-on-surface-variant bg-black/[0.04] hover:bg-black/[0.07] rounded-lg py-2.5">
+      <div
+        className="px-5 py-4 space-y-3 shrink-0"
+        style={{ borderTop: `1px solid ${theme.border}` }}
+      >
+        <button
+          type="button"
+          onClick={() => { capture(); reset(); }}
+          className="w-full text-xs font-label font-semibold rounded-xl py-2.5 transition-colors"
+          style={{ backgroundColor: theme.surfaceBg, color: theme.fg, border: `1px solid ${theme.border}` }}
+        >
           Đặt lại mặc định
         </button>
-        <div className="flex items-start gap-2 text-[11px] leading-snug bg-tertiary-fixed/25 text-on-surface rounded-xl px-3 py-2.5">
-          <span className="material-symbols-outlined text-[15px] text-tertiary shrink-0 mt-0.5">lightbulb</span>
+        <div
+          className="flex items-start gap-2 text-[11px] leading-snug rounded-xl px-3 py-2.5"
+          style={{ backgroundColor: theme.surfaceBg, color: theme.secondaryText }}
+        >
+          <span className="material-symbols-outlined text-[15px] shrink-0 mt-0.5" style={{ color: theme.activeFg }}>lightbulb</span>
           Mẹo nhỏ: Hãy thử tăng khoảng cách dòng và dùng font Lexend để đọc dễ hơn nhé.
         </div>
       </div>
@@ -427,21 +603,108 @@ export const MinimalReadingView: React.FC = () => {
   if (!doc) return <Navigate to="/" replace />;
 
   const words = countWords(doc.text);
+  const shellVars = {
+    backgroundColor: theme.bg,
+    color: theme.fg,
+    fontFamily: FONT_STACKS[s.fontFamily],
+    fontSize: s.fontSize,
+    '--reader-bg': theme.bg,
+    '--reader-fg': theme.fg,
+    '--reader-secondary-text': theme.secondaryText,
+    '--reader-sidebar-bg': theme.sidebarBg,
+    '--reader-panel-bg': theme.panelBg,
+    '--reader-surface-bg': theme.surfaceBg,
+    '--reader-control-bg': theme.controlBg,
+    '--reader-hover-bg': theme.hoverBg,
+    '--reader-active-bg': theme.activeBg,
+    '--reader-active-fg': theme.activeFg,
+    '--reader-border': theme.border,
+    '--reader-border-strong': theme.borderStrong,
+    '--reader-accent': theme.accent,
+    '--reader-accent-fg': theme.accentFg,
+    '--reader-accent-soft': theme.accentSoft,
+    '--reader-highlight-bg': theme.highlightBg,
+    '--reader-highlight-fg': theme.highlightFg,
+    '--reader-highlight-outline': theme.highlightOutline,
+    '--reader-warning-bg': theme.warningBg,
+    '--reader-warning-fg': theme.warningFg,
+    '--reader-warning-border': theme.warningBorder,
+    '--reader-error-bg': theme.errorBg,
+    '--reader-error-fg': theme.errorFg,
+    '--reader-tooltip-bg': theme.tooltipBg,
+    '--reader-tooltip-fg': theme.tooltipFg,
+    '--reader-brand-badge-bg': theme.brandBadgeBg,
+    '--reader-brand-badge-fg': theme.brandBadgeFg,
+    '--reader-brand-badge-border': theme.brandBadgeBorder,
+    '--reader-brand-dot': theme.brandDot,
+  } as React.CSSProperties;
+
+  const viewModeSwitcher = hasOriginal ? (
+    <div
+      className="inline-flex rounded-xl p-1 text-xs font-label shrink-0"
+      role="group"
+      aria-label="Chế độ xem tài liệu"
+      style={{ backgroundColor: theme.surfaceBg, border: `1px solid ${theme.border}` }}
+    >
+      <button
+        type="button"
+        aria-pressed={viewMode === 'original'}
+        onClick={() => {
+          speechRef.current?.stop();
+          setActiveBoundary(null);
+          clearWord();
+          setViewSelection({ documentId: doc.id, mode: 'original' });
+        }}
+        className="rounded-lg px-2.5 py-1 font-medium transition-colors"
+        style={
+          viewMode === 'original'
+            ? { backgroundColor: theme.accent, color: theme.accentFg }
+            : { color: theme.secondaryText }
+        }
+      >
+        Bản gốc
+      </button>
+      <button
+        type="button"
+        aria-pressed={viewMode === 'reading'}
+        onClick={() => setViewSelection({ documentId: doc.id, mode: 'reading' })}
+        className="rounded-lg px-2.5 py-1 font-medium transition-colors"
+        style={
+          viewMode === 'reading'
+            ? { backgroundColor: theme.accent, color: theme.accentFg }
+            : { color: theme.secondaryText }
+        }
+      >
+        Trang đọc
+      </button>
+    </div>
+  ) : null;
 
   return (
     <div
-      className="reader-shell antialiased h-screen flex overflow-hidden relative isolate selection:bg-tertiary-fixed selection:text-on-tertiary-fixed"
-      style={{ backgroundColor: theme.bg, color: theme.fg, fontFamily: FONT_STACKS[s.fontFamily], fontSize: s.fontSize }}
+      className="reader-shell antialiased h-screen flex overflow-hidden relative isolate"
+      style={shellVars}
     >
-      <aside data-settings-open={showSettingsPanel} inert={modal}
-        className="reader-sidebar flex flex-col h-screen shrink-0 bg-[#FCF8F1] border-r border-[#EDE5DA] px-2 py-6 font-body text-base">
+      <aside
+        data-settings-open={showSettingsPanel}
+        inert={modal}
+        className="reader-sidebar flex flex-col h-screen shrink-0 px-2 py-6 font-body text-base"
+      >
         <div className="px-1">
-          <Link to="/" aria-label="LexiEase – Trang chủ" className="reader-brand mb-6 flex items-center gap-2 px-2 text-[#17294D]">
+          <Link to="/" aria-label="LexiEase – Trang chủ" className="reader-brand mb-6 flex items-center gap-2 px-2">
             <span className="reader-brand-long font-headline text-[25px] font-semibold">LexiEase</span>
-            <span className="reader-nav-short font-headline text-[22px] font-semibold" aria-hidden="true">L</span>
-            <span className="h-2 w-2 rounded-full bg-[#A18A25]" />
+            <span
+              className="reader-brand-dot-long h-2 w-2 rounded-full"
+              style={{ backgroundColor: theme.brandDot }}
+              aria-hidden="true"
+            />
+            <span className="reader-brand-badge font-headline" aria-hidden="true">
+              L
+              <span className="reader-brand-badge-dot" />
+            </span>
           </Link>
         </div>
+
         <nav className="flex flex-col gap-1 font-label text-sm" aria-label="Điều hướng chính">
           {SIDEBAR_ITEMS.map(({ to, icon, label }) => (
             <NavLink key={to} to={to} end aria-label={label} className="reader-nav-item">
@@ -453,94 +716,165 @@ export const MinimalReadingView: React.FC = () => {
             </NavLink>
           ))}
         </nav>
+
         {viewMode === 'reading' && (
-          <div className="mt-3 border-t border-[#E5DDD3] pt-3 font-label text-sm">
-            <button ref={triggerRef} type="button" className="reader-nav-item" aria-label="Cài đặt hiển thị"
-              aria-expanded={showSettingsPanel} aria-controls={showSettingsPanel ? 'reader-display-settings' : undefined}
-              onClick={togglePanel}>
+          <div
+            className="mt-3 pt-3 font-label text-sm"
+            style={{ borderTop: `1px solid ${theme.border}` }}
+          >
+            <button
+              ref={triggerRef}
+              type="button"
+              className="reader-nav-item"
+              aria-label="Cài đặt hiển thị"
+              aria-expanded={showSettingsPanel}
+              aria-controls={showSettingsPanel ? 'reader-display-settings' : undefined}
+              onClick={togglePanel}
+            >
               <SidebarIcon path="M3 7h7m4 0h7M3 17h13m4 0h1M10 4v6m6 4v6" />
               <span className="reader-nav-text">Cài đặt hiển thị</span>
             </button>
           </div>
         )}
-        <div className="reader-decoration flex-1 min-h-0 flex flex-col justify-end gap-4 px-2 pt-5 overflow-hidden">
-          <div className="flex-1 min-h-[120px] flex items-center justify-center overflow-hidden relative">
-            <div className="absolute w-40 h-40 rounded-full bg-[#F2EBDD]/80 blur-2xl" />
-            <img
-              src={booksIllustration}
-              alt="Minh họa sách và chiếc lá của LexiEase"
-              className="relative z-10 w-full max-w-[195px] h-[clamp(150px,25vh,220px)] object-contain select-none pointer-events-none"
-              draggable={false}
-            />
-          </div>
 
-          <div className="shrink-0 w-full rounded-[24px] bg-[#F0EEF3] border border-white/80 px-4 py-5 text-center shadow-[0_8px_25px_rgba(47,59,91,0.04)] select-none">
-            <span
-              className="material-symbols-outlined text-[22px] text-[#596C91]"
-              style={{ fontVariationSettings: "'FILL' 1" }}
+        <div className="reader-decoration flex-1 min-h-0 flex flex-col gap-3 px-2 pt-4 overflow-hidden">
+          <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-2 px-1 text-center select-none pointer-events-none overflow-hidden">
+            <svg
               aria-hidden="true"
+              viewBox="0 0 180 156"
+              fill="none"
+              className="w-full max-w-[158px] max-h-[clamp(96px,20vh,148px)] shrink"
             >
-              favorite
-            </span>
-            <p className="text-[13px] font-label font-medium text-[#344767] mt-2 leading-[1.8]">
-              Đọc dễ dàng hơn,
+              <path
+                d="M40 94C28 64 52 28 94 26C136 24 158 58 148 96C138 134 54 128 40 94Z"
+                fill={theme.surfaceBg}
+                opacity="0.95"
+              />
+              <path
+                d="M38 106C58 98 76 100 90 112C104 100 122 98 142 106V54C122 46 104 48 90 60C76 48 58 46 38 54V106Z"
+                stroke={theme.fg}
+                strokeWidth="2"
+                strokeLinejoin="round"
+                opacity="0.82"
+              />
+              <path d="M90 60V112" stroke={theme.fg} strokeWidth="1.8" opacity="0.65" />
+              <path
+                d="M48 68C60 64 72 66 80 71M48 80C60 76 72 78 80 83M48 92C58 89 68 90 76 94"
+                stroke={theme.secondaryText}
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                opacity="0.55"
+              />
+              <path
+                d="M100 71C108 66 120 64 132 68M100 83C108 78 120 76 132 80"
+                stroke={theme.secondaryText}
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                opacity="0.55"
+              />
+              <path d="M116 49V76L121 71L126 76V50" fill={theme.brandDot} opacity="0.92" />
+              <path
+                d="M90 124C90 112 96 100 110 92"
+                stroke={theme.accent}
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                opacity="0.8"
+              />
+              <path
+                d="M102 97C108 87 120 84 127 89C120 96 111 100 102 97Z"
+                fill={theme.accentSoft}
+                stroke={theme.accent}
+                strokeWidth="1.4"
+              />
+              <path
+                d="M95 109C84 103 77 107 75 114C84 117 91 115 95 109Z"
+                fill={theme.brandDot}
+                opacity="0.4"
+              />
+              <circle cx="52" cy="36" r="2.5" fill={theme.brandDot} />
+              <circle cx="136" cy="38" r="2" fill={theme.accent} opacity="0.65" />
+            </svg>
+            <p
+              className="text-[12.5px] font-label font-medium leading-[1.6]"
+              style={{ color: theme.secondaryText }}
+            >
+              Đọc chậm rãi,
               <br />
               tự tin hơn mỗi ngày
             </p>
-            <svg viewBox="0 0 90 12" className="w-16 h-3 mx-auto mt-3" fill="none" aria-hidden="true">
-              <path d="M2 7 Q12 1 22 7 T42 7 T62 7 T82 7" stroke="#AAB6D0" strokeWidth="2" strokeLinecap="round" />
+            <svg viewBox="0 0 70 10" className="w-14 h-2.5 shrink-0 opacity-65" fill="none" aria-hidden="true">
+              <path
+                d="M2 5 Q10 1 18 5 T34 5 T50 5 T68 5"
+                stroke={theme.brandDot}
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
             </svg>
+          </div>
+
+          <div
+            className="mt-auto shrink-0 rounded-2xl p-3 font-label"
+            style={{ backgroundColor: theme.surfaceBg, border: `1px solid ${theme.border}` }}
+          >
+            <div className="flex items-center justify-between text-[11px] font-semibold mb-2.5" style={{ color: theme.secondaryText }}>
+              <span>Nền dịu mắt</span>
+              <span style={{ color: theme.fg }}>{theme.shortLabel}</span>
+            </div>
+            <div className="grid grid-cols-5 gap-1.5" role="group" aria-label="Đổi nhanh màu nền đọc">
+              {(Object.keys(THEMES) as ThemeName[]).map((k) => {
+                const active = s.theme === k;
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => update({ theme: k })}
+                    aria-pressed={active}
+                    aria-label={`Đổi nền ${THEMES[k].label}`}
+                    title={THEMES[k].label}
+                    className="h-7 rounded-lg flex items-center justify-center text-[11px] font-bold transition-transform active:scale-95"
+                    style={{
+                      backgroundColor: THEMES[k].bg,
+                      color: THEMES[k].fg,
+                      border: active ? `2px solid ${theme.accent}` : `1px solid ${THEMES[k].borderStrong}`,
+                      boxShadow: active ? `0 0 0 2px ${theme.accentSoft}` : undefined,
+                    }}
+                  >
+                    Aa
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </aside>
 
       <div className="flex-1 min-w-0 h-screen flex overflow-hidden font-body text-base">
         {showSettingsPanel && <>
-          {modal && <div aria-hidden="true" className="fixed inset-0 z-40 bg-black/20" onClick={togglePanel} />}
-          <div className={modal ? 'fixed inset-y-0 right-0 z-50' : 'order-last shrink-0 h-full py-4 pr-4'}>
+          {modal && <div aria-hidden="true" className="fixed inset-0 z-40 bg-black/30" onClick={togglePanel} />}
+          <div className={modal ? 'fixed inset-y-0 right-0 z-50 p-2' : 'order-last shrink-0 h-full py-4 pr-4'}>
             {settingsPanel}
           </div>
         </>}
         <div className="relative min-w-0 flex-1" inert={modal}>
-          <main ref={mainRef} tabIndex={0} aria-label="Nội dung tài liệu" className="relative h-full overflow-y-auto" style={rulerEnabled ? { containerType: 'size', overflowAnchor: 'none' } : undefined}>
-            <div className="fixed inset-0 pointer-events-none -z-10 flex items-center justify-center">
-              <div className="w-[620px] h-[620px] rounded-full bg-tertiary-fixed/20 blur-[130px] opacity-70" />
-            </div>
-
-            {hasOriginal && (
-              <div className="mx-4 my-3 inline-flex text-on-surface rounded-xl border border-black/10 bg-white/75 p-1 text-xs font-label" role="group" aria-label="Chế độ xem tài liệu">
-                <button
-                  type="button"
-                  aria-pressed={viewMode === 'original'}
-                  onClick={() => {
-                    speechRef.current?.stop();
-                    setActiveBoundary(null);
-                    clearWord();
-                    setViewSelection({ documentId: doc.id, mode: 'original' });
-                  }}
-                  className={`rounded-lg px-2.5 py-1.5 transition-colors ${viewMode === 'original' ? 'bg-primary text-on-primary' : 'text-on-surface hover:bg-black/5'}`}
-                >
-                  Bản gốc
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={viewMode === 'reading'}
-                  onClick={() => setViewSelection({ documentId: doc.id, mode: 'reading' })}
-                  className={`rounded-lg px-2.5 py-1.5 transition-colors ${viewMode === 'reading' ? 'bg-primary text-on-primary' : 'text-on-surface hover:bg-black/5'}`}
-                >
-                  Trang đọc
-                </button>
-              </div>
-            )}
+          <main
+            ref={mainRef}
+            tabIndex={0}
+            aria-label="Nội dung tài liệu"
+            className="relative h-full overflow-y-auto"
+            style={rulerEnabled ? { containerType: 'size', overflowAnchor: 'none' } : undefined}
+          >
             {viewMode === 'original' && doc.originalFile ? (
-              <OriginalDocumentView
-                key={doc.id}
-                file={doc.originalFile}
-                source={doc.source === 'image' ? 'image' : 'pdf'}
-              />
+              <>
+                {viewModeSwitcher && <div className="px-4 pt-3">{viewModeSwitcher}</div>}
+                <OriginalDocumentView
+                  key={doc.id}
+                  file={doc.originalFile}
+                  source={doc.source === 'image' ? 'image' : 'pdf'}
+                />
+              </>
             ) : (
-            <div className="flex flex-col items-center px-4 sm:px-6 lg:px-8 py-6">
-              <ManuscriptCard>
+            <div className="flex flex-col items-center px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
+              <ManuscriptCard className="!py-8 sm:!py-10 md:!py-12 rounded-2xl border border-current/[0.12]">
                 <div
                   className="mx-auto"
                   style={{
@@ -551,117 +885,178 @@ export const MinimalReadingView: React.FC = () => {
                   }}
                 >
                 <div style={rulerEnabled ? { minHeight: '30cqh' } : undefined}>
-                {/* Tiêu đề và thông tin bài */}
-                <div className="mb-10 text-left">
-                  <div style={{ color: theme.badgeText, backgroundColor: theme.badgeBg }} className="inline-block font-label text-xs tracking-[0.25em] uppercase font-semibold mb-3.5 px-3 py-1 rounded-full select-none">
-                    {SOURCE_LABEL[doc.source]}
+                  {/* Tiêu đề và thông tin bài */}
+                  <div className="mb-5 text-left">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 select-none">
+                        <span
+                          style={{ color: theme.badgeText, backgroundColor: theme.badgeBg }}
+                          className="inline-block font-label text-[11px] tracking-[0.2em] uppercase font-semibold px-3 py-1 rounded-full"
+                        >
+                          {SOURCE_LABEL[doc.source]}
+                        </span>
+                        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[13px] font-label" style={{ color: theme.secondaryText }}>
+                          <span className="flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[15px]">schedule</span>
+                            Khoảng {readingMinutes(doc.text)} phút đọc
+                          </span>
+                          <span aria-hidden="true" className="opacity-50">/</span>
+                          <span>{words.toLocaleString('vi-VN')} từ</span>
+                          {doc.pageCount ? (
+                            <>
+                              <span aria-hidden="true" className="opacity-50">/</span>
+                              <span>{doc.pageCount} trang</span>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                      {viewModeSwitcher}
+                    </div>
+
+                    <h1
+                      className="text-2xl sm:text-3xl md:text-[2.2rem] font-bold tracking-tight leading-[1.3] break-words"
+                      style={{ fontFamily: FONT_STACKS[s.fontFamily] }}
+                    >
+                      {doc.title}
+                    </h1>
                   </div>
-                  <h1
-                    className="font-headline text-3xl sm:text-4xl md:text-[2.65rem] font-semibold tracking-tight leading-[1.3] mb-5 break-words"
-                    style={{ fontFamily: FONT_STACKS[s.fontFamily] }}
-                  >
-                    {doc.title}
-                  </h1>
 
-                  <div className="flex flex-wrap items-center justify-start gap-x-5 gap-y-2 text-[13.5px] font-label select-none">
-                    <span className="flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-[15px] text-tertiary">schedule</span>
-                      Khoảng {readingMinutes(doc.text)} phút đọc
-                    </span>
-                    <span className="opacity-50 font-light">/</span>
-                    <span className="opacity-80">{words.toLocaleString('vi-VN')} từ</span>
-                    {doc.pageCount ? (
-                      <>
-                        <span className="opacity-50 font-light">/</span>
-                        <span className="opacity-80">{doc.pageCount} trang</span>
-                      </>
-                    ) : null}
-                  </div>
-                </div>
+                  {/* Ghi chú OCR & Cảnh báo */}
+                  {doc.ocrUsed && (
+                    <p
+                      role="note"
+                      className="mb-4 px-3.5 py-2.5 rounded-xl text-xs font-label leading-relaxed"
+                      style={{
+                        backgroundColor: theme.surfaceBg,
+                        border: `1px solid ${theme.border}`,
+                        color: theme.secondaryText,
+                      }}
+                    >
+                      Văn bản này được nhận dạng tự động từ hình ảnh nên có thể còn sai sót về chữ hoặc dấu.
+                    </p>
+                  )}
 
-                {/* Ghi chú OCR */}
-                {doc.ocrUsed && (
-                  <p
-                    role="note"
-                    className="mb-10 px-4 py-3 rounded-lg border border-current/20 text-xs font-label leading-relaxed opacity-90"
-                  >
-                    Văn bản này được nhận dạng tự động từ hình ảnh nên có thể còn sai sót về chữ hoặc dấu.
-                  </p>
-                )}
-
-                {doc.warnings.length > 0 && (
-                  <div
-                    role="alert"
-                    className="mb-10 px-4 py-3 rounded-lg border border-error/40 text-xs font-label leading-relaxed"
-                  >
-                    {doc.warnings.map((warning) => (
-                      <p key={warning}>{warning}</p>
-                    ))}
-                  </div>
-                )}
-
-                <div className="mb-10 rounded-2xl bg-[#F3F5FA]/80 p-2 sm:p-2.5">
-                  <AudioPlayerCapsule
-                    status={speechStatus}
-                    reliability={boundaryReliability}
-                    voices={voices}
-                    selectedVoiceURI={selectedVoiceURI}
-                    hasVietnameseVoice={hasVietnameseVoice(voices)}
-                    voicesLoading={voicesLoading}
-                    rate={rate}
-                    errorMessage={speechError}
-                    progressLabel={speechStatus === 'speaking' || speechStatus === 'paused'
-                      ? readingExcerpt ? 'Phần đã chọn' : `${Math.min(currentSegmentIndex + 1, segments.length)}/${segments.length} đoạn`
-                      : undefined}
-                    onPlay={startReading}
-                    onPause={() => speechRef.current?.pause()}
-                    onResume={() => speechRef.current?.resume()}
-                    onStop={() => speechRef.current?.stop()}
-                    onRateCycle={cycleRate}
-                    onVoiceChange={(voiceURI) => {
-                      setSelectedVoiceURI(voiceURI);
-                      const voice = voices.find((item) => item.voiceURI === voiceURI) ?? null;
-                      if (speechStatus === 'speaking' || speechStatus === 'paused') {
-                        speechRef.current?.restartFromLastPosition(rate, voice);
-                      }
-                    }}
-                  />
-                </div>
-
-                {toc.length > 0 && (
-                  <nav aria-label="Mục lục tài liệu" className="mb-10 rounded-xl border border-current/15 p-5">
-                    <h2 className="mb-3 font-label text-sm font-semibold">Mục lục</h2>
-                    <ol className="space-y-2 font-label text-sm">
-                      {toc.map((heading) => (
-                        <li key={heading.id} className={heading.headingLevel === 3 ? 'pl-5' : ''}>
-                          <a href={`#reader-${heading.id}`} className="hover:underline focus-visible:underline">
-                            {heading.text}
-                          </a>
-                        </li>
+                  {doc.warnings.length > 0 && (
+                    <div
+                      role="alert"
+                      className="mb-4 px-3.5 py-2.5 rounded-xl text-xs font-label leading-relaxed"
+                      style={{ backgroundColor: theme.errorBg, color: theme.errorFg }}
+                    >
+                      {doc.warnings.map((warning) => (
+                        <p key={warning}>{warning}</p>
                       ))}
-                    </ol>
-                  </nav>
-                )}
+                    </div>
+                  )}
 
-                <div role="group" aria-label="Công cụ đọc" className="mb-4 flex flex-wrap items-center gap-2 font-label text-sm">
-                  <button type="button" aria-label="Giảm cỡ chữ" disabled={s.fontSize <= LIMITS.fontSize[0]}
-                    onClick={() => changeFontSize(-1)} className="rounded-lg border border-current/30 px-3 py-2 disabled:opacity-50">A−</button>
-                  <span>{s.fontSize} px</span>
-                  <button type="button" aria-label="Tăng cỡ chữ" disabled={s.fontSize >= LIMITS.fontSize[1]}
-                    onClick={() => changeFontSize(1)} className="rounded-lg border border-current/30 px-3 py-2 disabled:opacity-50">A+</button>
-                  <button type="button" role="switch" aria-label="Thước đọc" aria-checked={s.focus.enabled} data-ruler-switch
-                    onClick={() => update({ focus: { enabled: !s.focus.enabled } })}
-                    className="rounded-lg border border-current/30 px-3 py-2 aria-checked:font-semibold">
-                    Thước đọc · {s.focus.enabled ? 'Bật' : 'Tắt'}
-                  </button>
+                  {/* Dải công cụ hợp nhất 1 dòng: Audio + Cỡ chữ + Thước đọc + Mẹo */}
+                  <div className="mb-6">
+                    <AudioPlayerCapsule
+                      status={speechStatus}
+                      reliability={boundaryReliability}
+                      voices={voices}
+                      selectedVoiceURI={selectedVoiceURI}
+                      hasVietnameseVoice={hasVietnameseVoice(voices)}
+                      voicesLoading={voicesLoading}
+                      rate={rate}
+                      errorMessage={speechError}
+                      progressLabel={speechStatus === 'speaking' || speechStatus === 'paused'
+                        ? readingExcerpt ? 'Phần đã chọn' : `${Math.min(currentSegmentIndex + 1, segments.length)}/${segments.length} đoạn`
+                        : undefined}
+                      onPlay={startReading}
+                      onPause={() => speechRef.current?.pause()}
+                      onResume={() => speechRef.current?.resume()}
+                      onStop={() => speechRef.current?.stop()}
+                      onRateCycle={cycleRate}
+                      onVoiceChange={(voiceURI) => {
+                        setSelectedVoiceURI(voiceURI);
+                        const voice = voices.find((item) => item.voiceURI === voiceURI) ?? null;
+                        if (speechStatus === 'speaking' || speechStatus === 'paused') {
+                          speechRef.current?.restartFromLastPosition(rate, voice);
+                        }
+                      }}
+                      trailing={
+                        <div role="group" aria-label="Công cụ đọc" className="flex flex-wrap items-center gap-1.5 font-label text-xs">
+                          <div
+                            className="inline-flex items-center rounded-xl overflow-hidden"
+                            style={{ backgroundColor: theme.controlBg, border: `1px solid ${theme.border}` }}
+                          >
+                            <button
+                              type="button"
+                              aria-label="Giảm cỡ chữ"
+                              disabled={s.fontSize <= LIMITS.fontSize[0]}
+                              onClick={() => changeFontSize(-1)}
+                              className="px-2.5 py-1.5 font-semibold disabled:opacity-45"
+                              style={{ color: theme.secondaryText }}
+                            >
+                              A−
+                            </button>
+                            <span
+                              className="px-2 py-1.5 font-semibold"
+                              style={{
+                                borderLeft: `1px solid ${theme.border}`,
+                                borderRight: `1px solid ${theme.border}`,
+                                color: theme.fg,
+                              }}
+                            >
+                              {s.fontSize} px
+                            </span>
+                            <button
+                              type="button"
+                              aria-label="Tăng cỡ chữ"
+                              disabled={s.fontSize >= LIMITS.fontSize[1]}
+                              onClick={() => changeFontSize(1)}
+                              className="px-2.5 py-1.5 font-semibold disabled:opacity-45"
+                              style={{ color: theme.secondaryText }}
+                            >
+                              A+
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-label="Thước đọc"
+                            aria-checked={s.focus.enabled}
+                            data-ruler-switch
+                            onClick={() => update({ focus: { enabled: !s.focus.enabled } })}
+                            className="reader-surface-btn rounded-xl px-2.5 py-1.5 font-semibold"
+                          >
+                            Thước đọc · {s.focus.enabled ? `${s.focus.lineCount} dòng` : 'Tắt'}
+                          </button>
+
+                          <button
+                            type="button"
+                            aria-label="Hướng dẫn chọn từ và phím tắt"
+                            aria-expanded={showHelp}
+                            title="Hướng dẫn chọn từ và bàn phím"
+                            onClick={() => setShowHelp((open) => !open)}
+                            className="reader-surface-btn w-7 h-7 rounded-full flex items-center justify-center font-bold"
+                          >
+                            ?
+                          </button>
+                        </div>
+                      }
+                    />
+
+                    {showHelp && (
+                      <p
+                        className="mt-2 rounded-xl px-3.5 py-2.5 text-xs font-label leading-relaxed"
+                        style={{
+                          backgroundColor: theme.surfaceBg,
+                          border: `1px solid ${theme.border}`,
+                          color: theme.secondaryText,
+                        }}
+                      >
+                        Bôi chọn nội dung trong một đoạn để nghe phần đó. Chọn từ hoặc cụm từ để giải nghĩa hoặc lưu từ. Bàn phím: Tab tới đoạn, Enter vào từ, dùng ←/→ rồi Enter để chọn.
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <p style={{ color: theme.secondaryText }} className="mb-3 text-xs font-label">
-                  Bôi chọn nội dung trong một đoạn để nghe phần đó. Chọn từ hoặc cụm từ để giải nghĩa hoặc lưu từ. Bàn phím: Tab tới đoạn, Enter vào từ, dùng ←/→ rồi Enter để chọn.
-                </p>
-                </div>
+
                 <div
                   ref={bodyRef}
-                  onFocusCapture={e => rememberWord(e.target)} onPointerDownCapture={e => rememberWord(e.target)}
+                  onFocusCapture={e => rememberWord(e.target)}
+                  onPointerDownCapture={e => rememberWord(e.target)}
                   className="reading-body text-left relative w-full"
                   style={{
                     fontFamily: FONT_STACKS[s.fontFamily],
@@ -698,39 +1093,47 @@ export const MinimalReadingView: React.FC = () => {
                     onRead={readSelection}
                     speechSupported={isSpeechSupported()}
                     onClose={closeWord}
+                    theme={theme}
                   />}
                 </div>
 
                 <div style={rulerEnabled ? { minHeight: '70cqh' } : undefined}>
-                <div className="my-16 flex items-center justify-center gap-3 select-none opacity-60">
-                  <span className="w-8 h-[1px] bg-current" />
-                  <span className="text-xs font-serif text-tertiary">❦</span>
-                  <span className="w-8 h-[1px] bg-current" />
-                </div>
+                  <div className="my-14 flex items-center justify-center gap-3 select-none opacity-60">
+                    <span className="w-8 h-[1px] bg-current" />
+                    <span className="text-xs font-serif" style={{ color: theme.brandDot }}>❦</span>
+                    <span className="w-8 h-[1px] bg-current" />
+                  </div>
 
-                <footer className="pt-6 flex items-center justify-center border-t border-current/20">
-                  <Link
-                    to="/"
-                    onClick={clearDocument}
-                    className="px-5 py-3 rounded-lg border border-current/30 hover:bg-black/5 flex items-center gap-2.5 transition-all text-xs uppercase tracking-wider font-medium select-none"
-                  >
-                    <span className="material-symbols-outlined text-[17px]">add</span>
-                    <span>Đọc văn bản khác</span>
-                  </Link>
-                </footer>
+                  <footer className="pt-6 flex items-center justify-center" style={{ borderTop: `1px solid ${theme.border}` }}>
+                    <Link
+                      to="/"
+                      onClick={clearDocument}
+                      className="reader-surface-btn px-5 py-3 rounded-xl flex items-center gap-2.5 text-xs uppercase tracking-wider font-semibold select-none"
+                    >
+                      <span className="material-symbols-outlined text-[17px]">add</span>
+                      <span>Đọc văn bản khác</span>
+                    </Link>
+                  </footer>
                 </div>
                 </div>
               </ManuscriptCard>
-
-              <div className="mt-8 text-center text-xs font-label opacity-50 tracking-wider select-none">
-                <span>Nhấp chuột phải bất kỳ nơi nào trên văn bản để mở thực đơn hỗ trợ nếu cần</span>
-              </div>
             </div>
             )}
           </main>
           {rulerEnabled && (
-            <FixedReadingRuler key={doc.id} mainRef={mainRef} bodyRef={bodyRef}
-              lineCount={s.focus.lineCount} background={theme.bg} opacity={s.focus.dimOpacity}
+            <FixedReadingRuler
+              key={doc.id}
+              mainRef={mainRef}
+              bodyRef={bodyRef}
+              lineCount={s.focus.lineCount}
+              background={theme.bg}
+              opacity={s.focus.dimOpacity}
+              accent={theme.accent}
+              accentFg={theme.accentFg}
+              surfaceBg={theme.surfaceBg}
+              controlBg={theme.controlBg}
+              border={theme.border}
+              fg={theme.fg}
             />
           )}
         </div>
