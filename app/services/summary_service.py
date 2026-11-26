@@ -11,8 +11,8 @@ from app.core.exceptions import (
     PayloadTooLargeError,
     SummaryUnavailableError,
 )
-from app.schemas.summary import SegmentIn, SummarizeRequest, SummarizeResponse, SummaryItem
-from app.services.extractive_summary import extractive_summarize
+from app.schemas.summary import SegmentIn, SummarizeRequest, SummarizeResponse, SummaryItem, SummaryVariant
+from app.services.extractive_summary import extractive_summarize_variants
 
 
 def utf16_len(text: str) -> int:
@@ -49,13 +49,20 @@ class SummaryService:
     async def summarize(self, data: SummarizeRequest) -> SummarizeResponse:
         self._validate(data)
         method = data.method
+        variants: list[SummaryVariant] = []
 
         if method == "llm":
             items = await self._summarize_llm(data.segments)
         else:
             segments = [(s.id, s.text) for s in data.segments]
-            extracted = await run_in_threadpool(extractive_summarize, segments)
-            items = [SummaryItem(id="", text=e.text, sources=[e.segment_id]) for e in extracted]
+            extracted_variants = await run_in_threadpool(extractive_summarize_variants, segments)
+            for length, extracted in extracted_variants.items():
+                normalized = validate_sources(
+                    [SummaryItem(id="", text=e.text, sources=[e.segment_id]) for e in extracted],
+                    {s.id for s in data.segments},
+                )
+                variants.append(SummaryVariant(length=length, items=normalized))
+            items = next(v.items for v in variants if v.length == data.length)
 
         items = validate_sources(items, {s.id for s in data.segments})
         if not items:
@@ -65,6 +72,7 @@ class SummaryService:
             content_version=content_hash(data.segments),
             method=method,
             items=items,
+            variants=variants,
         )
 
     def _validate(self, data: SummarizeRequest) -> int:

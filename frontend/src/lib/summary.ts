@@ -17,6 +17,14 @@ export interface SummarizeResponse {
   contentVersion: string;
   method: 'extractive' | 'llm';
   items: SummaryItem[];
+  variants?: SummaryVariant[];
+}
+
+export type SummaryLength = 'short' | 'medium' | 'long';
+
+export interface SummaryVariant {
+  length: SummaryLength;
+  items: SummaryItem[];
 }
 
 export function toSummarySegments(
@@ -38,6 +46,7 @@ export function summarizeDocument(
   documentId: string,
   segments: SummarySegment[],
   method: 'extractive' | 'llm' = 'extractive',
+  length: SummaryLength = 'medium',
   signal?: AbortSignal,
 ): Promise<SummarizeResponse> {
   return apiFetch<SummarizeResponse>('/assist/summarize', {
@@ -46,6 +55,7 @@ export function summarizeDocument(
       documentId,
       segments,
       method,
+      length,
     }),
     signal,
   });
