@@ -626,3 +626,78 @@ def extractive_summarize(
         ExtractedSentence(candidates[i].segment_id, candidates[i].text)
         for i in chosen
     ]
+
+
+def extractive_summarize_variants(
+    segments: list[tuple[str, str]],
+) -> dict[str, list[ExtractedSentence]]:
+    """Create nested summaries using the current medium policy as baseline."""
+    prepared = _prepare(segments)
+    candidates = _drop_repeats(_collect(prepared, strict=True))
+    if len(candidates) < _MIN_SENTENCES:
+        candidates = _drop_repeats(_collect(prepared, strict=False))
+    if not candidates:
+        return {"short": [], "medium": [], "long": []}
+
+    similarities = _similarities(_build_tfidf(candidates))
+    for candidate, rank in zip(candidates, _textrank(similarities)):
+        candidate.pagerank = rank
+
+    count = len(candidates)
+    frequency = Counter()
+    for candidate in candidates:
+        frequency.update(candidate.tokens.keys())
+    idf = {word: math.log((1 + count) / (1 + occurrences)) + 1.0
+           for word, occurrences in frequency.items()}
+    total_weight = sum(frequency[word] * idf[word] for word in frequency)
+    weights = [sum(value * idf[word] for word, value in c.tokens.items()) for c in candidates]
+
+    def select(target_coverage, max_ratio, min_sentences, max_sentences):
+        limit = max(min_sentences, math.ceil(max_ratio * count))
+        if max_sentences is not None:
+            limit = min(limit, max(1, max_sentences))
+        covered = set()
+        covered_weight = 0.0
+        chosen = []
+        chosen_segments = set()
+        remaining = list(range(count))
+        max_sim = [0.0] * count
+
+        def score(index):
+            candidate = candidates[index]
+            novelty = _novelty(candidate, weights[index], covered, idf)
+            relevance = (_W_RELEVANCE * candidate.pagerank + _W_NOVELTY * novelty
+                         + _W_INFO * candidate.info)
+            if candidate.sent_index == 0:
+                relevance += _POSITION_BONUS
+            if _dependent_opener(candidate.text):
+                relevance *= _DEPENDENT_PENALTY
+            value = _MMR_LAMBDA * relevance - (1 - _MMR_LAMBDA) * max_sim[index]
+            if candidate.seg_index not in chosen_segments:
+                value += _SEGMENT_BONUS
+            return value
+
+        while remaining and len(chosen) < limit:
+            coverage = covered_weight / total_weight if total_weight else 1.0
+            if len(chosen) >= min_sentences and coverage >= target_coverage:
+                break
+            best = max(remaining, key=score)
+            chosen.append(best)
+            chosen_segments.add(candidates[best].seg_index)
+            for word in candidates[best].tokens:
+                if word not in covered:
+                    covered.add(word)
+                    covered_weight += frequency[word] * idf[word]
+            for other, similarity in similarities[best].items():
+                if similarity > max_sim[other]:
+                    max_sim[other] = similarity
+            remaining = [i for i in remaining if i != best and max_sim[i] < _REDUNDANT_THRESHOLD]
+
+        chosen.sort(key=lambda i: (candidates[i].seg_index, candidates[i].sent_index))
+        return [ExtractedSentence(candidates[i].segment_id, candidates[i].text) for i in chosen]
+
+    return {
+        "short": select(0.35, 0.08, 1, max(1, math.ceil(count * 0.08))),
+        "medium": select(_TARGET_COVERAGE, _MAX_RATIO, _MIN_SENTENCES, None),
+        "long": select(0.8, 0.65, max(_MIN_SENTENCES, 3), None),
+    }
