@@ -44,3 +44,5 @@ Thumbs.db
 /benchmarks/pdf/local/
 /benchmarks/pdf/.venv*/
 /benchmarks/pdf/model-cache/
+AGENTS.md
+/docs/
