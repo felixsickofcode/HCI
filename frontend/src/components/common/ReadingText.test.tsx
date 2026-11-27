@@ -79,4 +79,19 @@ describe('ReadingText', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByText('Văn bản để đọc và sao chép').closest('details')).toBeInTheDocument();
   });
+
+  it('tô sáng liền mạch toàn bộ câu gốc của ý chính bao gồm khoảng trắng giữa các từ', () => {
+    const sentence = 'Ánh sáng xanh lam truyền đi xa nhất trong nước biển.';
+    const { container } = render(
+      <ReadingText
+        blocks={[{ id: 'p1', type: 'paragraph', text: `Ở biển sâu. ${sentence} Câu cuối cùng.` }]}
+        activeBoundary={null}
+        staticHighlights={{ p1: [{ phrase: sentence, className: 'reader-summary-sentence' }] }}
+        highlightedBlockIds={['p1']}
+      />,
+    );
+    const marks = [...container.querySelectorAll('mark.reader-summary-sentence')];
+    expect(marks.map((el) => el.textContent).join('')).toBe(sentence);
+    expect(container.querySelector('p')).toHaveAttribute('data-summary-source', 'true');
+  });
 });

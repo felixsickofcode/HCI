@@ -33,7 +33,7 @@ for (const width of [1366, 390]) {
     await page.goto('/');
     await page.getByRole('textbox', { name: 'Văn bản cần đọc' }).fill(text);
     await page.getByRole('button', { name: /Đọc ngay/ }).click();
-    if (width === 390) await page.getByRole('button', { name: 'Mở cài đặt hiển thị' }).click();
+    await page.getByRole('button', { name: 'Cài đặt hiển thị', exact: true }).click();
     await page.getByRole('button', { name: /Hỗ trợ đọc/ }).click();
     const toggle = page.getByRole('switch', { name: 'Thước đọc cố định' });
     await toggle.click();
@@ -42,7 +42,7 @@ for (const width of [1366, 390]) {
       await page.getByRole('button', { name: count + ' dòng', exact: true }).click();
       await expect.poll(async () => (await windowLines(page)).rows).toEqual(count === 2 ? [0, 1] : [0, 1, 2]);
     }
-    if (width === 390) await page.getByRole('button', { name: 'Đóng', exact: true }).click();
+    if (width === 390) await page.getByRole('button', { name: 'Đóng cài đặt', exact: true }).click();
     const next = page.getByRole('button', { name: '↓ Dòng sau' });
     const prev = page.getByRole('button', { name: '↑ Dòng trước' });
     const first = await windowLines(page);
@@ -90,6 +90,7 @@ test('preserves the current word after reflow and leaves word selection usable',
   await page.getByRole('textbox', { name: 'Văn bản cần đọc' }).fill(text);
   await page.getByRole('button', { name: /Đọc ngay/ }).click();
   await expect.poll(async () => (await windowLines(page)).rows).toEqual([0]);
+  await page.getByRole('button', { name: 'Cài đặt hiển thị', exact: true }).click();
   const next = page.getByRole('button', { name: '↓ Dòng sau' });
   await next.click();
   await next.click();
@@ -102,7 +103,7 @@ test('preserves the current word after reflow and leaves word selection usable',
     return { segment: token.closest<HTMLElement>('[data-segment-id]')!.dataset.segmentId, start: token.dataset.tokenStart };
   });
   const word = page.locator(`[data-segment-id="${anchoredWord.segment}"] [data-token-start="${anchoredWord.start}"]`);
-  await page.getByRole('button', { name: 'A+', exact: true }).click();
+  await page.getByRole('complementary', { name: 'Cài đặt hiển thị' }).getByRole('button', { name: 'Tăng cỡ chữ' }).click();
   await page.setViewportSize({ width: 1170, height: 800 });
   await expect.poll(() => word.evaluate(token => {
     const band = document.querySelector('[data-reading-ruler]')!.getBoundingClientRect();

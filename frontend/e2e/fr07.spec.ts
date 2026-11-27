@@ -7,7 +7,7 @@ for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 
     await page.getByRole('textbox', { name: 'Văn bản cần đọc' }).fill('🌱 Em học sinh học. Sinh học thật thú vị.');
     await page.getByRole('button', { name: /Đọc ngay/ }).click();
     await expect(page).toHaveURL(/\/reading$/);
-    await page.locator('[data-segment-id="paragraph-0"]').evaluate(paragraph => {
+    await page.locator('[data-block-type="paragraph"]').filter({ hasText: 'Sinh học thật thú vị.' }).evaluate(paragraph => {
       const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
       let position = 0, node: Node | null;
       const range = document.createRange();
@@ -19,6 +19,7 @@ for (const viewport of [{ width: 1366, height: 900 }, { width: 390, height: 844 
       }
       const selection = window.getSelection()!;
       selection.removeAllRanges(); selection.addRange(range);
+      paragraph.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     });
     await expect(page.getByRole('dialog', { name: 'Giải nghĩa sinh học' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Đăng nhập để tiếp tục' })).toHaveAttribute('href', '/login');

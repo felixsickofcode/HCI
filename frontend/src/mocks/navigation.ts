@@ -8,7 +8,7 @@ export const mockHeaderNavLinks: NavLinkItem[] = [
   { label: 'Trang chủ', path: '/', isActive: true },
   { label: 'Học đa giác quan', path: '/phonics' },
   { label: 'Thư viện', path: '#thu-vien' },
-  { label: 'Từ khó của tôi', path: '/vocabulary' },
+  { label: 'Thư viện từ khó', path: '/vocabulary' },
   { label: 'Khám phá', path: '#kham-pha' },
 ];
 

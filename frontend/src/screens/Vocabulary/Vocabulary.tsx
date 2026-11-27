@@ -74,7 +74,7 @@ export function Vocabulary() {
         <div className="flex flex-wrap items-start justify-between gap-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-tertiary">Góp từng từ, hiểu thêm mỗi ngày</p>
-            <h1 className="mt-3 font-headline text-3xl sm:text-4xl">Từ khó của tôi</h1>
+            <h1 className="mt-3 font-headline text-3xl sm:text-4xl">Thư viện từ khó</h1>
             <p className="mt-3 max-w-xl text-sm leading-relaxed text-on-surface-variant">
               Những từ bạn chủ động lưu, cùng ngữ cảnh để đọc và ôn lại.
             </p>
