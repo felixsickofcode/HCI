@@ -24,6 +24,9 @@ htmlcov/
 # IDE and OS files
 .idea/
 .vscode/
+.agents/
+.claude/
+.zencoder/
 *.iml
 .DS_Store
 Thumbs.db
@@ -33,18 +36,11 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 
-# Local document samples and generated reader QA screenshots
+# Local document samples and generated QA output
 /test.pdf
-/output/reader-review/
+/output/
 /pytest-cache-files-*/
-
-# Local PDF parser evaluation artifacts and private samples
-/output/pdf-evaluation/
 /sample_pdf/
 /benchmarks/pdf/local/
 /benchmarks/pdf/.venv*/
 /benchmarks/pdf/model-cache/
-
-# Local TTS QA artifacts
-/output/tts-check.*
-
