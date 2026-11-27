@@ -1,8 +1,9 @@
 import React, { useRef } from 'react';
-import type { ReadingBlock } from '../../lib/document';
+import type { HeadingLevel, ReadingBlock } from '../../lib/document';
 import type { SpeechBoundaryEvent } from '../../lib/speech';
 import type { WordSelection } from '../../lib/assist';
 import { clickedWord, selectedRange } from '../../lib/text-selection';
+import { ReadingTable } from './ReadingTable';
 import { SnapshotFigure } from './SnapshotFigure';
 
 export interface StaticHighlight {
@@ -62,6 +63,15 @@ function isOverlapping(start: number, end: number, boundary: SpeechBoundaryEvent
   return start < boundary.charIndex + boundary.charLength && end > boundary.charIndex;
 }
 
+/** Giữ định dạng gốc của tài liệu: đậm/nghiêng/mono lồng ngoài token, highlight/TTS vẫn ở ngoài cùng. */
+function applyEmphasis(token: React.ReactNode, kinds: string[]): React.ReactNode {
+  let content = token;
+  if (kinds.includes('mono')) content = <code className="font-mono text-[0.92em]">{content}</code>;
+  if (kinds.includes('italic')) content = <em>{content}</em>;
+  if (kinds.includes('bold')) content = <strong className="font-semibold">{content}</strong>;
+  return content;
+}
+
 function renderInline(
   block: ReadingBlock,
   activeBoundary: SpeechBoundaryEvent | null,
@@ -70,6 +80,7 @@ function renderInline(
 ): React.ReactNode {
   const tokens = tokenize(block.text);
   const highlights = findHighlightRanges(block.text, staticHighlights);
+  const emphasis = block.emphasis ?? [];
   const isActiveBlock = activeBoundary?.segmentId === block.id;
 
   return tokens.map((token, tokenIndex) => {
@@ -77,6 +88,10 @@ function renderInline(
     if (!token.isWord) {
       return <span key={tokenIndex}>{token.text}</span>;
     }
+    const emphasisKinds = emphasis
+      .filter((range) => token.offset >= range.start && tokenEnd <= range.end)
+      .map((range) => range.kind);
+    const content = emphasisKinds.length ? applyEmphasis(token.text, emphasisKinds) : token.text;
     const active = Boolean(isActiveBlock && activeBoundary && isOverlapping(token.offset, tokenEnd, activeBoundary));
     const selectionProps = selectable ? {
       'data-token-start': token.offset,
@@ -93,7 +108,7 @@ function renderInline(
           className="bg-tertiary-fixed text-on-tertiary-fixed rounded-sm outline outline-1 outline-tertiary focus-visible:outline-2"
           {...selectionProps}
         >
-          {token.text}
+          {content}
         </span>
       );
     }
@@ -103,13 +118,38 @@ function renderInline(
     if (highlight) {
       return (
         <mark key={tokenIndex} className={`${highlight.className} focus-visible:outline-2 focus-visible:outline-primary`} {...selectionProps}>
-          {token.text}
+          {content}
         </mark>
       );
     }
-    return <span key={tokenIndex} className={selectable ? 'focus-visible:outline-2 focus-visible:outline-primary' : undefined} {...selectionProps}>{token.text}</span>;
+    return <span key={tokenIndex} className={selectable ? 'focus-visible:outline-2 focus-visible:outline-primary' : undefined} {...selectionProps}>{content}</span>;
   });
 }
+
+/** Căn lề và tỉ lệ cỡ chữ gốc của block; không đặt gì khi tài liệu không mang tín hiệu này. */
+function blockStyle(block: ReadingBlock): React.CSSProperties | undefined {
+  const style: React.CSSProperties = {};
+  if (block.align === 'center' || block.align === 'right') {
+    style.textAlign = block.align;
+  }
+  if (block.type === 'heading' && typeof block.fontSizeRatio === 'number') {
+    const ratio = Math.min(Math.max(block.fontSizeRatio, 1.05), 2.2);
+    style.fontSize = `${ratio}em`;
+  }
+  return Object.keys(style).length ? style : undefined;
+}
+
+/** Cấp tiêu đề 1-6 giữ đúng thứ bậc HTML; cỡ chữ theo em nên vẫn ăn theo cỡ người dùng chọn. */
+const HEADING_TAGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const;
+
+const HEADING_CLASSES: Record<HeadingLevel, string> = {
+  1: 'text-[1.8em] mt-12 mb-5',
+  2: 'text-[1.4em] mt-10 mb-4',
+  3: 'text-[1.15em] mt-8 mb-3',
+  4: 'text-[1.05em] mt-6 mb-2',
+  5: 'text-[1em] mt-6 mb-2',
+  6: 'text-[1em] mt-4 mb-2',
+};
 
 export const ReadingText: React.FC<ReadingTextProps> = ({
   blocks,
@@ -153,7 +193,7 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
           }`}
         >
           {items.map((item) => (
-            <li key={item.id} className="whitespace-pre-line" {...selectionAttributes(item)}>
+            <li key={item.id} className="whitespace-pre-line" style={blockStyle(item)} {...selectionAttributes(item)}>
               {renderInline(item, activeBoundary, staticHighlights[item.id], Boolean(onWordSelection))}
             </li>
           ))}
@@ -171,17 +211,17 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
     }
 
     if (block.type === 'heading') {
-      const HeadingTag = block.headingLevel === 3 ? 'h3' : 'h2';
+      const level: HeadingLevel = block.headingLevel ?? 2;
+      const HeadingTag = HEADING_TAGS[level - 1];
       rendered.push(
         <HeadingTag
           key={block.id}
           id={`reader-${block.id}`}
           {...selectionAttributes(block)}
+          style={blockStyle(block)}
           className={`font-semibold tracking-tight leading-snug whitespace-pre-line ${
-            block.headingLevel === 3
-              ? 'text-[1.15em] mt-8 mb-3'
-              : 'text-[1.4em] mt-10 mb-4'
-          } ${block.headingLevel === 3 ? 'last:mb-4' : ''}`}
+            HEADING_CLASSES[level]
+          } ${level >= 3 ? 'last:mb-4' : ''}`}
         >
           {body}
         </HeadingTag>,
@@ -195,6 +235,7 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
         <blockquote
           key={block.id}
           {...selectionAttributes(block)}
+          style={blockStyle(block)}
           className="my-12 px-6 sm:px-8 py-5 bg-surface-container-low rounded-lg text-on-surface-variant italic text-lg sm:text-[1.3rem] leading-[1.9] whitespace-pre-line"
         >
           {body}
@@ -205,32 +246,9 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
     }
 
     if (block.type === 'table' && block.rows?.length) {
-      const [header, ...rows] = block.rows;
       rendered.push(
-        <div
-          key={block.id}
-          role="region"
-          aria-label={block.caption || 'Bảng dữ liệu'}
-          tabIndex={0}
-          className="my-8 max-w-full overflow-x-auto rounded-lg border border-current/20"
-        >
-          <table className="w-full min-w-max border-collapse text-left text-[0.82em] leading-relaxed">
-            {block.caption && <caption className="caption-top px-4 py-3 text-left font-semibold">{block.caption}</caption>}
-            <thead>
-              <tr>{header.map((cell, cellIndex) => (
-                <th key={cellIndex} scope="col" className="border-b border-r border-current/20 px-4 py-3 align-top font-semibold last:border-r-0">{cell}</th>
-              ))}</tr>
-            </thead>
-            <tbody>
-              {rows.map((row, rowIndex) => (
-                <tr key={rowIndex}>
-                  {row.map((cell, cellIndex) => (
-                    <td key={cellIndex} className="border-b border-r border-current/15 px-4 py-3 align-top last:border-r-0">{cell}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div key={block.id} className="my-8">
+          <ReadingTable rows={block.rows} label={block.caption || 'Bảng dữ liệu'} caption={block.caption} />
         </div>,
       );
       index += 1;
@@ -238,7 +256,7 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
     }
 
     rendered.push(
-      <p key={block.id} className="mb-8 last:mb-4 whitespace-pre-line" {...selectionAttributes(block)}>
+      <p key={block.id} className="mb-8 last:mb-4 whitespace-pre-line" style={blockStyle(block)} {...selectionAttributes(block)}>
         {body}
         {figureSlot && block.id === 'third-paragraph' ? (
           <span className="block">{figureSlot}</span>

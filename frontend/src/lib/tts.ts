@@ -113,3 +113,12 @@ export async function fetchSpeech(
   remember(key, audio);
   return audio;
 }
+
+export interface VoiceListResponse {
+  voices: string[];
+  default: string;
+}
+
+/** Danh sách giọng máy chủ hỗ trợ (endpoint công khai, không cần đăng nhập). */
+export const fetchVoices = (signal?: AbortSignal) =>
+  apiFetch<VoiceListResponse>('/tts/voices', { signal });

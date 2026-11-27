@@ -13,6 +13,14 @@ export interface AudioPlayerCapsuleProps {
   progressLabel?: string;
   title?: string;
   className?: string;
+  /** Nguồn giọng đang dùng; `null` khi chưa phát lần nào. */
+  source?: 'server' | 'browser' | null;
+  /** Lý do phải lùi về giọng trình duyệt, hiện một dòng nhỏ dưới thanh điều khiển. */
+  sourceNotice?: string;
+  /** Giọng của máy chủ (`vi-VN-...`); khi có, danh sách giọng đổi sang giọng máy chủ. */
+  serverVoices?: string[];
+  serverVoice?: string;
+  onServerVoiceChange?: (voice: string) => void;
   onPlay: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -43,6 +51,11 @@ export const AudioPlayerCapsule: React.FC<AudioPlayerCapsuleProps> = ({
   progressLabel,
   title = 'Giọng đọc AI',
   className = '',
+  source = null,
+  sourceNotice,
+  serverVoices,
+  serverVoice,
+  onServerVoiceChange,
   onPlay,
   onPause,
   onResume,
@@ -54,8 +67,12 @@ export const AudioPlayerCapsule: React.FC<AudioPlayerCapsuleProps> = ({
   const isPaused = status === 'paused';
   const disabledControls = status === 'unsupported';
   const canPlay = !disabledControls && !isSpeaking && !isPaused;
-  const showVoiceWarning = !disabledControls && voices.length > 0 && !hasVietnameseVoice;
+  const useServerVoices = Boolean(serverVoices?.length) && (source === 'server' || source === null);
+  const showVoiceWarning = !disabledControls && !useServerVoices && voices.length > 0 && !hasVietnameseVoice;
   const showBoundaryWarning = reliability === 'unreliable';
+  const resolvedTitle = source === 'server'
+    ? 'Giọng đọc máy chủ'
+    : source === 'browser' ? 'Giọng đọc trình duyệt' : title;
 
   return (
     <div
@@ -87,7 +104,7 @@ export const AudioPlayerCapsule: React.FC<AudioPlayerCapsuleProps> = ({
           </button>
           <div className="flex flex-col min-w-0">
             <span className="text-[12px] font-label font-medium text-on-surface flex items-center gap-1.5 truncate">
-              {title}
+              {resolvedTitle}
               {isSpeaking && (
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
               )}
@@ -150,27 +167,41 @@ export const AudioPlayerCapsule: React.FC<AudioPlayerCapsuleProps> = ({
         <label htmlFor="speech-voice" className="text-[11px] font-label font-medium text-on-surface-variant">
           Giọng đọc
         </label>
-        <select
-          id="speech-voice"
-          value={selectedVoiceURI}
-          onChange={(event) => onVoiceChange(event.target.value)}
-          disabled={disabledControls || voices.length === 0}
-          className="flex-1 min-w-[180px] rounded bg-surface-container-highest/60 hover:bg-surface-container-highest text-[11px] font-label text-on-surface px-2 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {voices.length === 0 ? (
-            <option value="">
-              {voicesLoading ? 'Đang tải giọng đọc...' : 'Không có giọng đọc khả dụng'}
-            </option>
-          ) : (
-            voices.map((voice) => (
-              <option key={voice.voiceURI} value={voice.voiceURI}>
-                {voice.lang.toLowerCase().startsWith('vi')
-                  ? `${voice.name} (${voice.lang})`
-                  : voice.name}
+        {useServerVoices ? (
+          <select
+            id="speech-voice"
+            value={serverVoice ?? serverVoices?.[0] ?? ''}
+            onChange={(event) => onServerVoiceChange?.(event.target.value)}
+            disabled={disabledControls || !onServerVoiceChange}
+            className="flex-1 min-w-[180px] rounded bg-surface-container-highest/60 hover:bg-surface-container-highest text-[11px] font-label text-on-surface px-2 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {serverVoices?.map((voice) => (
+              <option key={voice} value={voice}>{voice}</option>
+            ))}
+          </select>
+        ) : (
+          <select
+            id="speech-voice"
+            value={selectedVoiceURI}
+            onChange={(event) => onVoiceChange(event.target.value)}
+            disabled={disabledControls || voices.length === 0}
+            className="flex-1 min-w-[180px] rounded bg-surface-container-highest/60 hover:bg-surface-container-highest text-[11px] font-label text-on-surface px-2 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {voices.length === 0 ? (
+              <option value="">
+                {voicesLoading ? 'Đang tải giọng đọc...' : 'Không có giọng đọc khả dụng'}
               </option>
-            ))
-          )}
-        </select>
+            ) : (
+              voices.map((voice) => (
+                <option key={voice.voiceURI} value={voice.voiceURI}>
+                  {voice.lang.toLowerCase().startsWith('vi')
+                    ? `${voice.name} (${voice.lang})`
+                    : voice.name}
+                </option>
+              ))
+            )}
+          </select>
+        )}
         {canPlay && (
           <span className="text-[11px] font-label text-on-surface-variant">
             Đổi tốc độ/giọng sẽ đọc lại từ vị trí hiện tại
@@ -178,6 +209,12 @@ export const AudioPlayerCapsule: React.FC<AudioPlayerCapsuleProps> = ({
         )}
       </div>
 
+      {source === 'browser' && (
+        <p role="status" className="text-[11px] font-label text-on-surface-variant bg-surface-container-highest/50 px-2.5 py-1.5 rounded">
+          Đang dùng giọng của trình duyệt{sourceNotice ? ` — ${sourceNotice}` : ''}. Kiểm tra máy chủ đã chạy bằng
+          {' '}<code>.venv</code> và đã cài <code>edge-tts</code>.
+        </p>
+      )}
       {showVoiceWarning && (
         <p role="status" className="text-[11px] font-label text-tertiary bg-tertiary-fixed/30 px-2.5 py-1.5 rounded">
           Không tìm thấy giọng tiếng Việt (vi-VN) — đang dùng giọng mặc định của trình duyệt.

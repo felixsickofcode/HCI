@@ -45,3 +45,6 @@ Thumbs.db
 /benchmarks/pdf/.venv*/
 /benchmarks/pdf/model-cache/
 
+# Local TTS QA artifacts
+/output/tts-check.*
+

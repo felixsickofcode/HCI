@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { ReadingText } from './ReadingText';
 import type { ReadingBlock } from '../../lib/document';
@@ -78,5 +78,57 @@ describe('ReadingText', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByText('Văn bản để đọc và sao chép').closest('details')).toBeInTheDocument();
+  });
+
+  it('giữ định dạng đậm, nghiêng và mono của tài liệu gốc', () => {
+    const { container } = render(
+      <ReadingText
+        blocks={[{
+          id: 'p1', type: 'paragraph', text: 'Đoạn có chữ đậm, nghiêng và mono.',
+          emphasis: [
+            { start: 12, end: 16, kind: 'bold' },
+            { start: 17, end: 24, kind: 'italic' },
+            { start: 28, end: 33, kind: 'mono' },
+          ],
+        }]}
+        activeBoundary={null}
+        onWordSelection={() => {}}
+      />,
+    );
+
+    const strong = container.querySelector('strong');
+    expect(strong).toHaveTextContent('đậm,');
+    expect(container.querySelector('em')).toHaveTextContent('nghiêng');
+    expect(container.querySelector('code')).toHaveTextContent('mono.');
+    // Token bọc ngoài vẫn giữ offset UTF-16 cho chọn từ và TTS.
+    expect(strong?.closest('[data-token-start]')?.getAttribute('data-token-start')).toBe('12');
+  });
+
+  it('giữ căn giữa và cỡ chữ gốc của heading, căn phải của đoạn', () => {
+    const { container } = render(
+      <ReadingText
+        blocks={[
+          { id: 'h1', type: 'heading', text: 'Centered Title', headingLevel: 2, align: 'center', fontSizeRatio: 1.5 },
+          { id: 'p1', type: 'paragraph', text: 'Nội dung căn phải.', align: 'right' },
+        ]}
+        activeBoundary={null}
+      />,
+    );
+
+    expect(screen.getByRole('heading')).toHaveStyle({ textAlign: 'center', fontSize: '1.5em' });
+    expect(container.querySelector('p')).toHaveStyle({ textAlign: 'right' });
+  });
+
+  it('snapshot bảng có rows hiển thị bảng ngữ nghĩa trong phần thay thế', () => {
+    render(<ReadingText blocks={[{
+      id: 's1', type: 'snapshot', text: 'Name Value TABLE_ONLY 42', pageNumber: 3,
+      imageSrc: 'data:image/png;base64,AAAA', imageWidth: 400, imageHeight: 200,
+      snapshotKind: 'table', rows: [['Name', 'Value'], ['TABLE_ONLY', '42']],
+    }]} activeBoundary={null} />);
+    const details = screen.getByText('Bảng dữ liệu để đọc và sao chép').closest('details');
+
+    expect(details).toBeInTheDocument();
+    expect(within(details as HTMLElement).getByRole('table')).toHaveTextContent('TABLE_ONLY');
+    expect(within(details as HTMLElement).getAllByRole('columnheader')).toHaveLength(2);
   });
 });

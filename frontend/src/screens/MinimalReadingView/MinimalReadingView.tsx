@@ -18,6 +18,7 @@ import {
   SPEECH_SPEEDS,
 } from '../../lib/speech';
 import { SpeechProxy } from '../../lib/speech-proxy';
+import { fetchVoices } from '../../lib/tts';
 import type { BoundaryReliability, ReadingSegment, SpeechBoundaryEvent, SpeechStatus } from '../../lib/speech';
 import { FixedReadingRuler } from './FixedReadingRuler';
 import { OriginalDocumentView } from './OriginalDocumentView';
@@ -91,6 +92,44 @@ export const MinimalReadingView: React.FC = () => {
     error: wordError, needsLogin: wordNeedsLogin, choose: chooseWord, explain: explainWord, clear: clearWord } = useWordExplanation(doc?.id, blocks);
   const wordSave = useSaveSelectedWord(doc, wordSelection, explainWord);
   const toc = useMemo(() => blocks.filter((block) => block.type === 'heading'), [blocks]);
+  const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
+  // Mục lục mặc định mở; lựa chọn được nhớ cho lần đọc sau.
+  const [tocOpen, setTocOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('reader-toc-open') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('reader-toc-open', String(tocOpen));
+    } catch {
+      // Trình duyệt chặn lưu trữ: giữ lựa chọn trong phiên hiện tại.
+    }
+  }, [tocOpen]);
+
+  // Tô sáng mục đang đọc: theo dõi tiêu đề đã render thay vì tính theo vị trí cuộn,
+  // để đúng cả khi đổi cỡ chữ hay bật thước đọc.
+  useEffect(() => {
+    if (toc.length === 0) return;
+    const nodes = toc
+      .map((heading) => document.getElementById(`reader-${heading.id}`))
+      .filter((node): node is HTMLElement => node !== null);
+    if (nodes.length === 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible[0]) setActiveHeadingId(visible[0].target.id.replace(/^reader-/, ''));
+      },
+      { rootMargin: '-8% 0px -72% 0px' },
+    );
+    nodes.forEach((node) => observer.observe(node));
+    return () => observer.disconnect();
+  }, [toc]);
   const segments: ReadingSegment[] = useMemo(
     () =>
       blocks
@@ -113,6 +152,24 @@ export const MinimalReadingView: React.FC = () => {
   const [rate, setRate] = useState<number>(1);
   const [speechError, setSpeechError] = useState('');
   const [readingExcerpt, setReadingExcerpt] = useState(false);
+  const [speechSource, setSpeechSource] = useState<'server' | 'browser' | null>(null);
+  const [sourceNotice, setSourceNotice] = useState('');
+  const [serverVoices, setServerVoices] = useState<string[]>([]);
+  const [serverVoice, setServerVoice] = useState<string>('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchVoices(controller.signal)
+      .then((list) => {
+        if (controller.signal.aborted) return;
+        setServerVoices(list.voices);
+        setServerVoice((current) => current || list.default);
+      })
+      .catch(() => {
+        // Chưa có endpoint giọng đọc: giữ danh sách rỗng và dùng đường lùi của trình duyệt.
+      });
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const controller = new SpeechProxy();
@@ -138,6 +195,10 @@ export const MinimalReadingView: React.FC = () => {
         setBoundaryReliability(nextReliability);
         if (nextReliability === 'unreliable') setActiveBoundary(null);
       },
+      onSourceChange: (nextSource, reason) => {
+        setSpeechSource(nextSource);
+        setSourceNotice(reason ?? '');
+      },
     });
     const voicesLoadingTimeout = window.setTimeout(() => setVoicesLoading(false), 5000);
     return () => {
@@ -154,7 +215,7 @@ export const MinimalReadingView: React.FC = () => {
     setReadingExcerpt(false);
     setActiveBoundary(null);
     setCurrentSegmentIndex(0);
-    speechRef.current?.speak({ segments, rate, voice: selectedVoice });
+    speechRef.current?.speak({ segments, rate, voice: selectedVoice, serverVoice });
   };
   const readSelection = () => {
     if (!wordSelection || !isSpeechSupported()) return;
@@ -169,7 +230,7 @@ export const MinimalReadingView: React.FC = () => {
         id: block.id, text: wordSelection.selectedText, sourceOffset: wordSelection.start,
         kind: block.type === 'quote' ? 'quote' : 'paragraph',
       }],
-      rate, voice: selectedVoice,
+      rate, voice: selectedVoice, serverVoice,
     });
     clearWord();
   };
@@ -573,6 +634,16 @@ export const MinimalReadingView: React.FC = () => {
                     progressLabel={speechStatus === 'speaking' || speechStatus === 'paused'
                       ? readingExcerpt ? 'Phần đã chọn' : `${Math.min(currentSegmentIndex + 1, segments.length)}/${segments.length} đoạn`
                       : undefined}
+                    source={speechSource}
+                    sourceNotice={sourceNotice}
+                    serverVoices={serverVoices}
+                    serverVoice={serverVoice}
+                    onServerVoiceChange={(voice) => {
+                      setServerVoice(voice);
+                      if (speechStatus === 'speaking' || speechStatus === 'paused') {
+                        speechRef.current?.restartFromLastPosition(rate, selectedVoice, voice);
+                      }
+                    }}
                     onPlay={startReading}
                     onPause={() => speechRef.current?.pause()}
                     onResume={() => speechRef.current?.resume()}
@@ -589,16 +660,49 @@ export const MinimalReadingView: React.FC = () => {
                 </div>
 
                 {toc.length > 0 && (
-                  <nav aria-label="Mục lục tài liệu" className="mb-10 rounded-xl border border-current/15 p-5">
-                    <h2 className="mb-3 font-label text-sm font-semibold">Mục lục</h2>
-                    <ol className="space-y-2 font-label text-sm">
-                      {toc.map((heading) => (
-                        <li key={heading.id} className={heading.headingLevel === 3 ? 'pl-5' : ''}>
-                          <a href={`#reader-${heading.id}`} className="hover:underline focus-visible:underline">
-                            {heading.text}
-                          </a>
-                        </li>
-                      ))}
+                  <nav aria-label="Mục lục tài liệu" className="mb-10 overflow-hidden rounded-xl border border-current/15">
+                    <div className="flex items-center justify-between gap-3 px-5 py-3">
+                      <h2 className="flex items-baseline gap-2 font-label text-sm font-semibold">
+                        Mục lục
+                        <span className="font-label text-xs font-normal tabular-nums opacity-60">{toc.length}</span>
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={() => setTocOpen((open) => !open)}
+                        aria-expanded={tocOpen}
+                        aria-controls="reader-toc"
+                        className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-current/15 px-2.5 font-label text-xs text-on-surface-variant transition-colors hover:bg-black/5 focus-visible:outline-2 focus-visible:outline-primary"
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${tocOpen ? '' : '-rotate-90'}`}
+                        >
+                          expand_more
+                        </span>
+                        {tocOpen ? 'Thu gọn' : 'Mở'}
+                      </button>
+                    </div>
+                    <ol id="reader-toc" hidden={!tocOpen} className="space-y-1 px-5 pb-4 font-label">
+                      {toc.map((heading) => {
+                        const level = heading.headingLevel ?? 2;
+                        const active = activeHeadingId === heading.id;
+                        return (
+                          <li
+                            key={heading.id}
+                            style={{ paddingLeft: `${Math.max(0, level - 1) * 1.1}rem` }}
+                          >
+                            <a
+                              href={`#reader-${heading.id}`}
+                              aria-current={active ? 'true' : undefined}
+                              className={`flex items-baseline gap-2 rounded-sm py-0.5 transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-primary ${
+                                level === 1 ? 'font-semibold text-[0.95rem]' : 'text-[0.86rem]'
+                              } ${active ? 'text-primary' : 'text-on-surface-variant'}`}
+                            >
+                              <span className="min-w-0">{heading.text}</span>
+                            </a>
+                          </li>
+                        );
+                      })}
                     </ol>
                   </nav>
                 )}

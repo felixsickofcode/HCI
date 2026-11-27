@@ -29,6 +29,8 @@ export interface SpeechCallbacks {
   onBoundary?: (boundary: SpeechBoundaryEvent) => void;
   onVoicesChange?: (voices: SpeechSynthesisVoice[]) => void;
   onBoundaryReliabilityChange?: (reliability: BoundaryReliability) => void;
+  /** Chỉ `SpeechProxy` phát: báo đang đọc bằng giọng máy chủ hay phải lùi về trình duyệt. */
+  onSourceChange?: (source: 'server' | 'browser', reason?: string) => void;
 }
 
 export const SPEECH_SPEEDS = [0.8, 1.0, 1.2, 1.5] as const;

@@ -3,13 +3,29 @@ import { ApiError } from './api';
 export type DocumentSource = 'paste' | 'pdf' | 'image';
 export type BlockType = 'paragraph' | 'heading' | 'listItem' | 'quote' | 'table' | 'snapshot';
 export type ListKind = 'ordered' | 'unordered';
+export type EmphasisKind = 'bold' | 'italic' | 'mono';
+export type BlockAlign = 'left' | 'center' | 'right';
+export type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
+
+export const HEADING_LEVELS: readonly HeadingLevel[] = [1, 2, 3, 4, 5, 6];
+
+export function isHeadingLevel(value: unknown): value is HeadingLevel {
+  return HEADING_LEVELS.includes(value as HeadingLevel);
+}
+
+/** Vùng ký tự trong `block.text` mang định dạng gốc (đậm/nghiêng/mono) của tài liệu. */
+export interface EmphasisRange {
+  start: number;
+  end: number;
+  kind: EmphasisKind;
+}
 
 export interface ReadingBlock {
   id: string;
   type: BlockType;
   text: string;
   pageNumber?: number;
-  headingLevel?: 2 | 3;
+  headingLevel?: HeadingLevel;
   listKind?: ListKind;
   rows?: string[][];
   caption?: string;
@@ -18,6 +34,9 @@ export interface ReadingBlock {
   imageHeight?: number;
   snapshotKind?: 'table' | 'image';
   sourceBbox?: [number, number, number, number];
+  emphasis?: EmphasisRange[];
+  align?: BlockAlign;
+  fontSizeRatio?: number;
 }
 
 export interface ReadingDocument {
@@ -125,7 +144,9 @@ export function parseTextBlocks(
     if (heading) {
       flushParagraph();
       flushQuote();
-      addBlock('heading', heading[2], { headingLevel: heading[1].length <= 2 ? 2 : 3 });
+      addBlock('heading', heading[2], {
+        headingLevel: Math.min(heading[1].length, 6) as HeadingLevel,
+      });
       continue;
     }
 
@@ -251,6 +272,20 @@ export function buildFileDocument(
   };
 }
 
+function sanitizeEmphasis(text: string, emphasis: unknown): EmphasisRange[] | undefined {
+  if (!Array.isArray(emphasis)) return undefined;
+  const clean = emphasis.flatMap((range): EmphasisRange[] => {
+    if (!range || typeof range !== 'object') return [];
+    const { start, end, kind } = range as Record<string, unknown>;
+    if (typeof start !== 'number' || typeof end !== 'number') return [];
+    if (kind !== 'bold' && kind !== 'italic' && kind !== 'mono') return [];
+    if (!Number.isInteger(start) || !Number.isInteger(end)) return [];
+    if (start < 0 || end <= start || end > text.length) return [];
+    return [{ start, end, kind }];
+  });
+  return clean.length ? clean : undefined;
+}
+
 function sanitizeBlocks(blocks: ReadingBlock[]): ReadingBlock[] {
   const seen = new Set<string>();
   const allowedTypes: BlockType[] = ['paragraph', 'heading', 'listItem', 'quote', 'table', 'snapshot'];
@@ -261,21 +296,25 @@ function sanitizeBlocks(blocks: ReadingBlock[]): ReadingBlock[] {
     let id = typeof block.id === 'string' && block.id ? block.id : `block-${index + 1}`;
     if (seen.has(id)) id = `${id}-${index + 1}`;
     seen.add(id);
+    const text = block.text.trim();
+    const emphasis = sanitizeEmphasis(text, block.emphasis);
+    const align = block.align === 'center' || block.align === 'right' ? block.align : undefined;
+    const fontSizeRatio = typeof block.fontSizeRatio === 'number'
+      && Number.isFinite(block.fontSizeRatio) && block.fontSizeRatio > 1 && block.fontSizeRatio <= 3
+      ? block.fontSizeRatio : undefined;
     clean.push({
       id,
       type,
-      text: block.text.trim(),
+      text,
       ...(typeof block.pageNumber === 'number' ? { pageNumber: block.pageNumber } : {}),
-      ...(block.headingLevel === 2 || block.headingLevel === 3
-        ? { headingLevel: block.headingLevel }
-        : {}),
+      ...(isHeadingLevel(block.headingLevel) ? { headingLevel: block.headingLevel } : {}),
       ...(block.listKind === 'ordered' || block.listKind === 'unordered'
         ? { listKind: block.listKind }
         : {}),
-      ...(type === 'table' && Array.isArray(block.rows)
+      ...((type === 'table' || type === 'snapshot') && Array.isArray(block.rows)
         ? { rows: block.rows.map((row) => row.map(String)) }
         : {}),
-      ...(type === 'table' && typeof block.caption === 'string'
+      ...((type === 'table' || type === 'snapshot') && typeof block.caption === 'string'
         ? { caption: block.caption }
         : {}),
       ...(type === 'snapshot' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(block.imageSrc ?? '')
@@ -284,6 +323,9 @@ function sanitizeBlocks(blocks: ReadingBlock[]): ReadingBlock[] {
           snapshotKind: block.snapshotKind, sourceBbox: block.sourceBbox,
         }
         : {}),
+      ...(emphasis ? { emphasis } : {}),
+      ...(align ? { align } : {}),
+      ...(fontSizeRatio ? { fontSizeRatio } : {}),
     });
   });
   return clean;

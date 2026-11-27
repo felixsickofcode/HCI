@@ -6,7 +6,7 @@ from PIL import Image
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import DictionaryObject, NameObject, NumberObject, DecodedStreamObject, RectangleObject
 
-from app.services.layout_pdf import Line, parse_layout_pdf, reading_order, reconstruct
+from app.services.layout_pdf import Line, _line_align, parse_layout_pdf, reading_order, reconstruct
 
 pytestmark = pytest.mark.no_db
 
@@ -90,7 +90,9 @@ def make_pdf(pages):
     """Small, deterministic fixtures; never depend on private sample PDFs."""
     writer = PdfWriter()
     fonts = {}
-    for index, name in enumerate(['Helvetica', 'Helvetica-Bold', 'Courier', 'Symbol'], 1):
+    for index, name in enumerate(
+        ['Helvetica', 'Helvetica-Bold', 'Courier', 'Symbol', 'Helvetica-Oblique'], 1
+    ):
         font = DictionaryObject({NameObject('/Type'): NameObject('/Font'),
                                  NameObject('/Subtype'): NameObject('/Type1'),
                                  NameObject('/BaseFont'): NameObject('/' + name)})
@@ -268,3 +270,165 @@ def test_parallel_parses_produce_complete_independent_results():
         results = list(executor.map(parse_layout_pdf, [data] * 8))
     expected = [(block.type, block.text, block.image_src) for block in results[0]]
     assert all([(block.type, block.text, block.image_src) for block in result] == expected for result in results)
+
+
+def test_inline_emphasis_keeps_original_bold_italic_and_mono():
+    blocks = parse_layout_pdf(make_pdf([[
+        'BT /F1 12 Tf 50 700 Td (Normal text with ) Tj /F2 12 Tf (bold) Tj /F1 12 Tf ( and ) Tj'
+        ' /F3 12 Tf (NaN) Tj /F5 12 Tf ( accented) Tj /F1 12 Tf ( inside one paragraph.) Tj ET',
+    ]]))
+    assert len(blocks) == 1 and blocks[0].type == 'paragraph'
+    text = blocks[0].text
+    spans = [(range_.kind, text[range_.start:range_.end]) for range_ in blocks[0].emphasis]
+    assert spans == [('bold', 'bold'), ('mono', 'NaN'), ('italic', 'accented')]
+
+
+def test_emphasis_offsets_follow_lines_when_joining_paragraphs():
+    blocks = parse_layout_pdf(make_pdf([[
+        'BT /F1 12 Tf 50 700 Td (The word ) Tj /F2 12 Tf (bold) Tj /F1 12 Tf ( wraps at the) Tj ET',
+        'BT /F2 12 Tf 50 684 Td (edge of the line.) Tj ET',
+    ]]))
+    assert len(blocks) == 1 and blocks[0].type == 'paragraph'
+    text = blocks[0].text
+    assert text == 'The word bold wraps at the edge of the line.'
+    spans = [(range_.kind, range_.start, text[range_.start:range_.end]) for range_ in blocks[0].emphasis]
+    assert spans == [('bold', 9, 'bold'), ('bold', 27, 'edge of the line.')]
+
+
+def test_centered_heading_keeps_alignment_and_size_ratio():
+    blocks = parse_layout_pdf(make_pdf([[
+        'BT /F1 18 Tf 243 740 Td (Centered Title) Tj ET',
+        'BT /F1 12 Tf 50 700 Td (Body paragraph text to establish the dominant body size of twelve points.) Tj ET',
+    ]]))
+    assert blocks[0].type == 'heading'
+    assert blocks[0].align == 'center'
+    assert blocks[0].font_size_ratio == pytest.approx(1.5)
+    assert blocks[1].type == 'paragraph' and blocks[1].align is None
+
+
+def test_left_heading_has_no_alignment_hint():
+    blocks = parse_layout_pdf(make_pdf([[
+        'BT /F1 14 Tf 50 740 Td (Section) Tj ET',
+        'BT /F1 12 Tf 50 700 Td (Body paragraph text to establish the dominant body size of twelve points.) Tj ET',
+    ]]))
+    assert blocks[0].type == 'heading'
+    assert blocks[0].align is None
+    assert blocks[1].type == 'paragraph' and blocks[1].align is None
+
+
+def test_wrapped_centered_heading_keeps_center_across_lines():
+    blocks = parse_layout_pdf(make_pdf([[
+        'BT /F1 18 Tf 243 740 Td (Centered Title) Tj ET',
+        'BT /F1 18 Tf 247 722 Td (Heading Here!) Tj ET',
+        'BT /F1 12 Tf 50 700 Td (Body paragraph text to establish the dominant body size of twelve points.) Tj ET',
+    ]]))
+    assert blocks[0].type == 'heading'
+    assert blocks[0].text == 'Centered Title Heading Here!'
+    assert blocks[0].align == 'center'
+    assert blocks[0].font_size_ratio == pytest.approx(1.5)
+
+
+def test_bordered_table_snapshot_also_carries_extracted_rows():
+    blocks = parse_layout_pdf(make_pdf([[
+        '50 660 m 550 660 l S', '50 630 m 550 630 l S', '50 600 m 550 600 l S',
+        '50 660 m 50 600 l S', '300 660 m 300 600 l S', '550 660 m 550 600 l S',
+        'BT /F1 12 Tf 60 640 Td (Name) Tj ET',
+        'BT /F1 12 Tf 310 640 Td (Value) Tj ET',
+        'BT /F1 12 Tf 60 610 Td (TABLE_ONLY) Tj ET',
+        'BT /F1 12 Tf 310 610 Td (42) Tj ET',
+        'BT /F1 12 Tf 50 560 Td (The paragraph after the table.) Tj ET',
+    ]]))
+    table = next(block for block in blocks if block.type == 'snapshot')
+    assert table.snapshot_kind == 'table'
+    assert 'TABLE_ONLY' in table.text
+    assert table.rows == [['Name', 'Value'], ['TABLE_ONLY', '42']]
+
+
+def test_rule_only_table_keeps_image_and_has_no_rows():
+    table = next(block for block in parse_layout_pdf(sample_pdf()) if block.snapshot_kind == 'table')
+    assert table.image_src.startswith('data:image/png;base64,')
+    assert table.rows is None
+
+
+def test_dong_bat_dau_o_le_than_bai_khong_bi_goi_la_can_giua():
+    # Trang A4 lề 72pt hai bên: dòng phủ hết vùng chữ có tâm trùng tâm trang.
+    page = (0.0, 0.0, 600.0, 800.0)
+    frame = (72.0, 528.0)
+    line = Line('Đoạn văn thân bài chạy hết bề ngang vùng chữ.', (72.0, 400.0, 528.0, 414.0), 12, False)
+
+    assert _line_align(line, page, frame) is None
+
+
+def test_dong_muc_luc_dot_leader_khong_bi_goi_la_can_giua():
+    page = (0.0, 0.0, 600.0, 800.0)
+    frame = (72.0, 528.0)
+    line = Line('1.1 Phát biểu bài toán . . . . . . . . . . . . 4', (88.4, 300.0, 520.0, 314.0), 12, False)
+
+    assert _line_align(line, page, frame) is None
+
+
+def test_tieu_de_can_giua_that_van_duoc_nhan():
+    page = (0.0, 0.0, 600.0, 800.0)
+    frame = (72.0, 528.0)
+    line = Line('Tiêu đề giữa trang', (250.0, 100.0, 350.0, 118.0), 18, False)
+
+    assert _line_align(line, page, frame) == 'center'
+
+
+def _lines_pdf(specs):
+    """specs: list of (size, x, y, text) -> một trang PDF một cột."""
+    commands = []
+    for size, x, y, text in specs:
+        commands.append(f'BT /F1 {size} Tf {x} {y} Td ({text}) Tj ET')
+    return parse_layout_pdf(make_pdf([commands]))
+
+
+def _paragraph_lines(size, leading, indent, count, top=700, x=50, prefix='line'):
+    specs = []
+    for index in range(count):
+        position = x + (indent if index == 0 else 0)
+        specs.append((size, position, top - index * leading, f'{prefix} number {index}'))
+    return specs
+
+
+@pytest.mark.parametrize('size', [10, 12, 14])
+@pytest.mark.parametrize('leading', [12, 18, 24, 28])
+@pytest.mark.parametrize('indent', [0, 18, 36])
+def test_mot_doan_luon_ra_dung_mot_doan(size, leading, indent):
+    """Cùng một luật phải đúng với mọi cỡ chữ, nhịp dòng và kiểu thụt lề."""
+    blocks = _lines_pdf(_paragraph_lines(size, leading, indent, 5))
+
+    paragraphs = [block for block in blocks if block.type == 'paragraph']
+    assert len(paragraphs) == 1
+    assert paragraphs[0].text.count('number') == 5
+
+
+@pytest.mark.parametrize('size', [10, 12, 14])
+@pytest.mark.parametrize('leading', [12, 18, 24, 28])
+def test_hai_doan_cach_nhau_van_tach(size, leading):
+    """Không gộp nhầm: khoảng cách lớn hơn nhịp dòng phải tách đoạn."""
+    first = _paragraph_lines(size, leading, 0, 3, top=700, prefix='first')
+    second_top = 700 - 2 * leading - round(leading * 2.2, 2)
+    second = [(size, 50, second_top - index * leading, f'second number {index}') for index in range(3)]
+
+    blocks = _lines_pdf(first + second)
+
+    paragraphs = [block for block in blocks if block.type == 'paragraph']
+    assert len(paragraphs) == 2
+    assert paragraphs[0].text.count('first') == 3
+    assert paragraphs[1].text.count('second') == 3
+
+
+def test_khong_co_thut_le_thi_khong_cat_vi_lech_nho():
+    """Tài liệu không thụt đầu dòng: lệch nhỏ không được tạo đoạn mới."""
+    specs = [
+        (12, 50, 700, 'dong mot cua doan'),
+        (12, 62, 686, 'dong hai lech nhe sang phai'),
+        (12, 50, 672, 'dong ba quay lai le'),
+        (12, 50, 658, 'dong bon ket doan.'),
+    ]
+
+    blocks = _lines_pdf(specs)
+
+    paragraphs = [block for block in blocks if block.type == 'paragraph']
+    assert len(paragraphs) == 1

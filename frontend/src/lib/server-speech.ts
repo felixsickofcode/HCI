@@ -16,6 +16,7 @@ export class ServerSpeechError extends Error {
 }
 
 interface SpeakOptions {
+  voice?: string;
   segments: ReadingSegment[];
   startIndex?: number;
   rate: number;
@@ -32,6 +33,7 @@ export class ServerSpeechController {
   private segments: ReadingSegment[] = [];
   private segmentIndex = 0;
   private rate = 1;
+  private voice: string | undefined;
   private generation = 0;
   private audio: HTMLAudioElement | null = null;
   private marks: SpeechMark[] = [];
@@ -69,6 +71,7 @@ export class ServerSpeechController {
     this.segments = segments;
     this.segmentIndex = Math.min(Math.max(options.startIndex ?? 0, 0), segments.length - 1);
     this.rate = options.rate;
+    this.voice = options.voice;
     this.setStatus('speaking');
     await this.loadAndPlay(generation);
   }
@@ -99,10 +102,11 @@ export class ServerSpeechController {
     this.callbacks = {};
   }
 
-  restartFromLastPosition(rate: number, startIndex = this.segmentIndex) {
+  restartFromLastPosition(rate: number, voice?: string, startIndex = this.segmentIndex) {
     if (!this.segments.length) return;
     this.rate = rate;
-    void this.speak({ segments: this.segments, startIndex, rate });
+    if (voice) this.voice = voice;
+    void this.speak({ segments: this.segments, startIndex, rate, voice: this.voice });
   }
 
   private async loadAndPlay(generation: number) {
@@ -113,7 +117,7 @@ export class ServerSpeechController {
     }
     let audio: SpeechAudio;
     try {
-      audio = await fetchSpeech(segment.text, this.rateToPercent(), undefined);
+      audio = await fetchSpeech(segment.text, this.rateToPercent(), undefined, this.voice);
     } catch (cause) {
       if (generation !== this.generation) return;
       throw cause instanceof ServerSpeechError ? cause : new ServerSpeechError(

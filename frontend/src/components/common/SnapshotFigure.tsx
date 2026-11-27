@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { ReadingBlock } from '../../lib/document';
+import { ReadingTable } from './ReadingTable';
 
 export function SnapshotFigure({ block, textContent }: { block: ReadingBlock; textContent: ReactNode }) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const label = `${block.snapshotKind === 'table' ? 'Bảng' : 'Hình'}${block.pageNumber ? ` · Trang ${block.pageNumber}` : ''}`;
+  const rows = block.rows?.length ? block.rows : undefined;
 
   useEffect(() => {
     if (!lightboxOpen) return;
@@ -40,7 +42,14 @@ export function SnapshotFigure({ block, textContent }: { block: ReadingBlock; te
       <div className="max-w-full overflow-auto bg-white" tabIndex={0} role="region" aria-label={label}>
         <img src={block.imageSrc} width={block.imageWidth} height={block.imageHeight} alt={`${label} giữ bố cục bản gốc`} loading="lazy" decoding="async" style={{ width: '100%', height: 'auto' }} />
       </div>
-      {block.text.trim() && (
+      {rows ? (
+        <details className="border-t border-current/15 px-4 py-3">
+          <summary className="cursor-pointer text-sm" style={{ letterSpacing: 'normal' }}>Bảng dữ liệu để đọc và sao chép</summary>
+          <div className="mt-3 text-[0.9em]">
+            <ReadingTable rows={rows} label={block.caption || label} caption={block.caption} tableClassName="text-[1em]" />
+          </div>
+        </details>
+      ) : block.text.trim() && (
         <details className="border-t border-current/15 px-4 py-3">
           <summary className="cursor-pointer text-sm" style={{ letterSpacing: 'normal' }}>Văn bản để đọc và sao chép</summary>
           <div className="mt-3 whitespace-pre-wrap break-words text-[0.9em]">{textContent}</div>

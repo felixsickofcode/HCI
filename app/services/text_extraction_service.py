@@ -23,6 +23,7 @@ from app.services.text_blocks import (
     parse_blocks,
 )
 from app.services.pdf_rendering import open_pdf, render_page
+from app.services.pdf_structure import available as structure_available
 
 if TYPE_CHECKING:
     from app.core.config import Settings
@@ -112,6 +113,13 @@ class TextExtractionService:
             logger.exception("PDF page inspection failed")
             raise TextExtractionError("Could not read the PDF file") from None
         warnings: list[str] = []
+        if not structure_available():
+            # Thiếu thư viện thì parser vẫn chạy bằng hình học, nhưng cấp tiêu đề
+            # và chú thích hình sẽ sai. Phải nói ra thay vì im lặng.
+            warnings.append(
+                "Máy chủ thiếu thư viện cấu trúc (pymupdf4llm) nên đang đọc bằng hình học; "
+                "cấp tiêu đề và chú thích hình có thể chưa đúng."
+            )
         skipped_ocr_pages: list[int] = []
         ocr_used = False
         ocr_pages: set[int] = set()

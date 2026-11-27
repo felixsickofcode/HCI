@@ -6,6 +6,7 @@ import {
   parseTextBlocks,
   toExtractErrorMessage,
 } from './document';
+import type { EmphasisRange } from './document';
 import { ApiError } from './api';
 
 const file = new File([''], 'tai-lieu.pdf', { type: 'application/pdf' });
@@ -30,7 +31,7 @@ describe('parseTextBlocks', () => {
       '# Tiêu đề lớn\n\n### Mục nhỏ\n\n- Ý một\n- Ý hai\n\n1. Bước một\n2. Bước hai\n\n> Câu trích dẫn\n> dòng thứ hai',
     );
 
-    expect(blocks[0]).toMatchObject({ type: 'heading', text: 'Tiêu đề lớn', headingLevel: 2 });
+    expect(blocks[0]).toMatchObject({ type: 'heading', text: 'Tiêu đề lớn', headingLevel: 1 });
     expect(blocks[1]).toMatchObject({ type: 'heading', text: 'Mục nhỏ', headingLevel: 3 });
     expect(blocks.slice(2, 4)).toEqual([
       expect.objectContaining({ type: 'listItem', listKind: 'unordered', text: 'Ý một' }),
@@ -108,6 +109,47 @@ describe('build documents', () => {
     });
     expect(withoutBlocks.blocks).toHaveLength(2);
     expect(withoutBlocks.warnings).toEqual([]);
+  });
+
+  it('giữ emphasis/align/fontSizeRatio hợp lệ và loại phần vô hiệu', () => {
+    const dirtyKind = { start: 1, end: 3, kind: 'weird' } as unknown as EmphasisRange;
+    const result = buildFileDocument(file, {
+      text: 'Bỏ qua', source: 'pdf', pageCount: 1, ocrUsed: false,
+      blocks: [
+        {
+          id: 'b1', type: 'paragraph', text: 'Chữ đậm và lệch.',
+          emphasis: [
+            { start: 4, end: 13, kind: 'bold' },
+            { start: -5, end: 2, kind: 'italic' },
+            { start: 10, end: 99, kind: 'mono' },
+            dirtyKind,
+          ],
+          align: 'center',
+          fontSizeRatio: 1.8,
+        },
+        { id: 'b2', type: 'paragraph', text: 'Bên trái thường.', align: 'left', fontSizeRatio: 0.9 },
+      ],
+    });
+
+    expect(result.blocks[0].emphasis).toEqual([{ start: 4, end: 13, kind: 'bold' }]);
+    expect(result.blocks[0].align).toBe('center');
+    expect(result.blocks[0].fontSizeRatio).toBe(1.8);
+    expect(result.blocks[1].align).toBeUndefined();
+    expect(result.blocks[1].fontSizeRatio).toBeUndefined();
+  });
+
+  it('snapshot bảng giữ rows để hiển thị dạng văn bản thay thế', () => {
+    const result = buildFileDocument(file, {
+      text: '', source: 'pdf', pageCount: 1, ocrUsed: false,
+      blocks: [{
+        id: 't1', type: 'snapshot', snapshotKind: 'table',
+        text: 'Name Value A', imageSrc: 'data:image/png;base64,AAAA',
+        imageWidth: 10, imageHeight: 10,
+        rows: [['Name', 'Value'], ['A', '42']],
+      }],
+    });
+
+    expect(result.blocks[0].rows).toEqual([['Name', 'Value'], ['A', '42']]);
   });
 });
 

@@ -2,8 +2,10 @@ import pytest
 
 from app.services.text_blocks import (
     blocks_to_text,
+    normalize_math_word,
     normalize_source_text,
     parse_blocks,
+    strip_math_variation_selectors,
 )
 
 pytestmark = pytest.mark.no_db
@@ -31,7 +33,7 @@ def test_tieu_de_danh_sach_va_trich_dan():
 
     assert blocks[0].type == "heading"
     assert blocks[0].text == "Tiêu đề lớn"
-    assert blocks[0].heading_level == 2
+    assert blocks[0].heading_level == 1
     assert blocks[1].type == "heading"
     assert blocks[1].heading_level == 3
     assert [(block.type, block.list_kind, block.text) for block in blocks[2:4]] == [
@@ -86,3 +88,17 @@ def test_khong_tach_tu_khi_khong_co_tin_hieu():
     assert len(blocks) == 1
     assert blocks[0].type == "paragraph"
     assert blocks[0].text == "một hai ba\nbốn năm sáu"
+
+
+def test_bo_variation_selector_sau_glyph_toan():
+    assert strip_math_variation_selectors("\u2211\ufe01 x") == "\u2211 x"
+    assert strip_math_variation_selectors("\u02c6\ufe01") == "\u02c6"
+
+
+def test_giu_variation_selector_cua_emoji():
+    assert strip_math_variation_selectors("\u2764\ufe0f") == "\u2764\ufe0f"
+
+
+def test_doi_micro_thanh_mu_hy_lap_chi_trong_font_toan():
+    assert normalize_math_word("\u00b5", math_font=True) == "\u03bc"
+    assert normalize_math_word("\u00b5g", math_font=False) == "\u00b5g"

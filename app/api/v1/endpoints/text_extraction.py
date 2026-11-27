@@ -5,7 +5,7 @@ from fastapi import APIRouter, File, UploadFile
 from app.api.deps import TextExtractionServiceDep
 from app.core.config import settings
 from app.core.exceptions import FileTooLargeError
-from app.schemas.text_extraction import ExtractedTextRead, ReadingBlockRead
+from app.schemas.text_extraction import EmphasisRangeRead, ExtractedTextRead, ReadingBlockRead
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -43,6 +43,16 @@ def extract_text(
                 image_height=block.image_height,
                 snapshot_kind=block.snapshot_kind,
                 source_bbox=block.source_bbox,
+                emphasis=(
+                    [
+                        EmphasisRangeRead(start=range_.start, end=range_.end, kind=range_.kind)
+                        for range_ in block.emphasis
+                    ]
+                    if block.emphasis
+                    else None
+                ),
+                align=block.align,
+                font_size_ratio=block.font_size_ratio,
             )
             for block in result.blocks
         ],
