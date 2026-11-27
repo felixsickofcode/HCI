@@ -19,6 +19,7 @@ export interface ReadingTextProps {
   className?: string;
   style?: React.CSSProperties;
   onWordSelection?: (selection: WordSelection) => void;
+  onSegmentClick?: (segmentId: string) => void;
 }
 
 interface Token {
@@ -159,9 +160,10 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
   className = '',
   style,
   onWordSelection,
+  onSegmentClick,
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
-  const selectionAttributes = (block: ReadingBlock) => onWordSelection &&
+  const selectionAttributes = (block: ReadingBlock) => (onWordSelection || onSegmentClick) &&
     ['paragraph', 'heading', 'listItem', 'quote'].includes(block.type)
     ? { 'data-segment-id': block.id, 'data-segment-text': block.text, 'data-block-type': block.type, tabIndex: 0 }
     : {};
@@ -277,9 +279,15 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
         if (next) onWordSelection(next);
       }}
       onClick={(event) => {
-        if (!rootRef.current || !onWordSelection) return;
-        const next = clickedWord(event.target, rootRef.current);
-        if (next) onWordSelection(next);
+        if (!rootRef.current) return;
+        if (onWordSelection) {
+          const next = clickedWord(event.target, rootRef.current);
+          if (next) onWordSelection(next);
+        }
+        if (onSegmentClick) {
+          const segment = (event.target as HTMLElement).closest<HTMLElement>('[data-segment-id]');
+          if (segment?.dataset.segmentId) onSegmentClick(segment.dataset.segmentId);
+        }
       }}
       onKeyUp={() => {
         if (!rootRef.current || !onWordSelection) return;

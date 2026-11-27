@@ -5,6 +5,10 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip("benchmarks.pdf.contracts")
+pytest.importorskip("benchmarks.pdf.fixtures")
+pytest.importorskip("benchmarks.pdf.run")
+
 from benchmarks.pdf.contracts import read_manifest, sha256_file
 from benchmarks.pdf.fixtures import build_simple_pdf
 from benchmarks.pdf.run import _run_worker

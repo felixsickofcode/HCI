@@ -10,6 +10,7 @@ from app.core.exceptions import (
     AssistUnavailableError,
 )
 from app.schemas.llm_assist import Explanation
+from app.schemas.summary import SegmentIn, SummaryItem
 
 
 class GroqProvider:
@@ -79,3 +80,115 @@ class GroqProvider:
             raise AssistUnavailableError() from exc
         except (KeyError, IndexError, TypeError, ValueError, ValidationError) as exc:
             raise AssistProviderError() from exc
+
+    def summarize(self, segments: list[SegmentIn]) -> list[SummaryItem]:
+        if not self.api_key:
+            raise AssistUnavailableError("Dịch vụ tóm tắt AI chưa được cấu hình")
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "text": {"type": "string"},
+                            "sources": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": ["text", "sources"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": ["items"],
+            "additionalProperties": False,
+        }
+        source_ids = [segment.id for segment in segments]
+        payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Bạn là trợ lý tóm tắt tài liệu tiếng Việt. "
+                        "Tạo bản tóm tắt gồm nhiều ý ngắn, rõ ràng, mỗi ý là một thông tin quan trọng riêng. "
+                        "Chia theo chủ đề riêng trong văn bản thông tin/biên bản; với truyện, chia theo các diễn biến "
+                        "hoặc chuyển biến quan trọng của câu chuyện. Không gộp toàn bộ văn bản thành một ý nếu có "
+                        "nhiều chủ đề hoặc diễn biến khác nhau. Số ý phải phù hợp độ dài và nội dung: văn bản ngắn "
+                        "có thể ít ý, văn bản dài thường cần nhiều ý; không đặt số lượng cứng và không tạo ý để đủ số. "
+                        "Mỗi ý nên tập trung vào một điểm, không lặp ý; diễn đạt lại bằng ngôn ngữ rõ ràng, không sao chép câu dài. "
+                        "Giữ lại tên riêng, mốc thời gian, quyết định và việc cần làm khi chúng quan trọng. "
+                        "Chỉ dùng thông tin có trong các đoạn đầu vào. "
+                        "Mỗi mục phải có nguồn là một hoặc nhiều mã đoạn hợp lệ trong danh sách. "
+                        "Không thêm kết luận, nhận xét, HTML hoặc Markdown ngoài JSON."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "validSources": source_ids,
+                            "segments": [
+                                {"id": segment.id, "text": segment.text}
+                                for segment in segments
+                            ],
+                        },
+                        ensure_ascii=False,
+                    ),
+                },
+            ],
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "document_summary",
+                    "strict": True,
+                    "schema": schema,
+                },
+            },
+            "reasoning_effort": "low",
+            "include_reasoning": False,
+            "max_completion_tokens": 1500,
+            "stream": False,
+        }
+
+        try:
+            response = httpx.post(
+                self.URL,
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json=payload,
+                timeout=self.timeout,
+            )
+            if response.status_code == 429:
+                raise AssistRateLimitError("Dịch vụ AI đang giới hạn lượt tóm tắt. Hãy thử lại sau")
+            if response.status_code in (401, 403):
+                raise AssistUnavailableError("Không thể xác thực dịch vụ tóm tắt AI")
+            if response.status_code >= 500:
+                raise AssistUnavailableError("Dịch vụ tóm tắt AI tạm thời không khả dụng")
+            if response.status_code >= 400:
+                raise AssistProviderError("Dịch vụ tóm tắt AI từ chối yêu cầu")
+
+            content = response.json()["choices"][0]["message"]["content"]
+            payload = json.loads(content)
+            raw_items = payload.get("items")
+            if not isinstance(raw_items, list):
+                raise AssistProviderError("Dịch vụ tóm tắt AI trả về định dạng không hợp lệ")
+
+            items: list[SummaryItem] = []
+            for index, raw in enumerate(raw_items):
+                if not isinstance(raw, dict):
+                    raise AssistProviderError("Dịch vụ tóm tắt AI trả về mục không hợp lệ")
+                text = raw.get("text")
+                sources = raw.get("sources")
+                if not isinstance(text, str) or not text.strip():
+                    raise AssistProviderError("Dịch vụ tóm tắt AI trả về nội dung trống")
+                if not isinstance(sources, list) or not sources:
+                    raise AssistProviderError("Dịch vụ tóm tắt AI thiếu nguồn đoạn")
+                items.append(SummaryItem(id=f"summary-{index + 1}", text=text, sources=sources))
+            return items
+        except httpx.TimeoutException as exc:
+            raise AssistTimeoutError("Dịch vụ tóm tắt AI phản hồi quá lâu") from exc
+        except httpx.RequestError as exc:
+            raise AssistUnavailableError("Không thể kết nối dịch vụ tóm tắt AI") from exc
+        except (KeyError, IndexError, TypeError, ValueError, ValidationError, json.JSONDecodeError) as exc:
+            raise AssistProviderError("Dịch vụ tóm tắt AI trả về kết quả không hợp lệ") from exc

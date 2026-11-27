@@ -1,5 +1,7 @@
 import pytest
 
+pytest.importorskip("benchmarks.pdf.evaluate")
+
 from benchmarks.pdf.evaluate import edit_distance, normalize_for_cer, score_page
 
 pytestmark = pytest.mark.no_db

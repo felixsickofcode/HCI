@@ -4,6 +4,10 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip("benchmarks.pdf.adapters.marker")
+pytest.importorskip("benchmarks.pdf.adapters.pymupdf")
+pytest.importorskip("benchmarks.pdf.fixtures")
+
 from benchmarks.pdf.adapters.marker import _inert_text, normalize as normalize_marker
 from benchmarks.pdf.adapters.pymupdf import normalize as normalize_pymupdf
 from benchmarks.pdf.fixtures import build_simple_pdf
