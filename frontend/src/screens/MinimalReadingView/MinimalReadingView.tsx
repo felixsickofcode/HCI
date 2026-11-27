@@ -22,10 +22,11 @@ import {
 import type { BoundaryReliability, ReadingSegment, SpeechBoundaryEvent, SpeechStatus } from '../../lib/speech';
 import { FixedReadingRuler } from './FixedReadingRuler';
 import { OriginalDocumentView } from './OriginalDocumentView';
+import { SummaryPreviewDialog, SummarySourcesDialog } from './SummaryModals';
 import { useWordExplanation } from '../../hooks/useWordExplanation';
 import { useSaveSelectedWord } from '../../hooks/useSaveSelectedWord';
 import { useDocumentSummary } from '../../hooks/useDocumentSummary';
-import type { SummaryItem } from '../../lib/assist';
+import type { SummaryItem } from '../../lib/summary';
 import { WordExplanationPopover } from '../../components/reading/WordExplanationPopover';
 import type { PopoverCloseReason } from '../../components/reading/WordExplanationPopover';
 
@@ -49,6 +50,38 @@ const SIDEBAR_ITEMS = [
   { to: '/vocabulary', icon: 'M6 3h14v14H6z M3 7v14h13 M9 7h8 M9 11h5', label: 'Thư viện từ khó' },
 ] as const;
 
+const MIRROR_CLASS: Record<string, string> = {
+  b: 'reader-mirror-b',
+  B: 'reader-mirror-b',
+  d: 'reader-mirror-d',
+  D: 'reader-mirror-d',
+  p: 'reader-mirror-p',
+  P: 'reader-mirror-p',
+  q: 'reader-mirror-q',
+  Q: 'reader-mirror-q',
+};
+
+function renderMirrorText(text: string, mirrorLetters: boolean): React.ReactNode {
+  if (!mirrorLetters || !/[bBdDpPqQ]/.test(text)) return text;
+  const nodes: React.ReactNode[] = [];
+  let plain = '';
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    const cls = MIRROR_CLASS[ch];
+    if (cls) {
+      if (plain) {
+        nodes.push(plain);
+        plain = '';
+      }
+      nodes.push(<span key={i} className={cls}>{ch}</span>);
+    } else {
+      plain += ch;
+    }
+  }
+  if (plain) nodes.push(plain);
+  return nodes;
+}
+
 function SidebarIcon({ path }: { path: string }) {
   return (
     <svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" className="shrink-0"
@@ -66,12 +99,13 @@ function subscribeOverlay(listener: () => void) {
   return () => query.removeEventListener('change', listener);
 }
 
-type Tab = 'Giao diện' | 'Hỗ trợ đọc';
+type Tab = 'Giao diện' | 'Hỗ trợ đọc' | 'Tóm tắt';
 type ViewMode = 'original' | 'reading';
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'Giao diện', label: 'Giao diện', icon: 'desktop_windows' },
   { key: 'Hỗ trợ đọc', label: 'Hỗ trợ đọc', icon: 'volume_up' },
+  { key: 'Tóm tắt', label: 'Tóm tắt', icon: 'summarize' },
 ];
 
 const Slider = (p: {
@@ -120,7 +154,34 @@ export const MinimalReadingView: React.FC = () => {
   const { selection: wordSelection, result: wordResult, loading: wordLoading,
     error: wordError, needsLogin: wordNeedsLogin, choose: chooseWord, explain: explainWord, clear: clearWord } = useWordExplanation(doc?.id, blocks);
   const wordSave = useSaveSelectedWord(doc, wordSelection, explainWord);
+
+  // FR-08 Tóm tắt hợp nhất: hỗ trợ cả extractive/llm, độ dài ngắn/vừa/dài,
+  // chế độ xem tóm tắt riêng, bookmark/copy/nguồn/xuất, tô sáng câu gốc & Nghe ý chính.
   const summary = useDocumentSummary(doc?.id, blocks, user?.id);
+  const [summaryView, setSummaryView] = useState(false);
+  const [summaryNavigationRevision, setSummaryNavigationRevision] = useState(0);
+  const [sourcesItemId, setSourcesItemId] = useState<string | null>(null);
+  const [pendingSummarySourceId, setPendingSummarySourceId] = useState<string | null>(null);
+  const [openSummaryMenuId, setOpenSummaryMenuId] = useState<string | null>(null);
+  const [bookmarkedSummaryIds, setBookmarkedSummaryIds] = useState<string[]>([]);
+  const [copiedSummaryId, setCopiedSummaryId] = useState<string | null>(null);
+  const [summaryCopyError, setSummaryCopyError] = useState('');
+  const [summaryPreviewOpen, setSummaryPreviewOpen] = useState(false);
+  const summaryMenuRef = useRef<HTMLDivElement>(null);
+
+  const resetSummaryUi = useCallback(() => {
+    setSummaryView(false);
+    setSourcesItemId(null);
+    setPendingSummarySourceId(null);
+    setOpenSummaryMenuId(null);
+    setBookmarkedSummaryIds([]);
+    setCopiedSummaryId(null);
+    setSummaryCopyError('');
+    setSummaryPreviewOpen(false);
+  }, []);
+
+  useEffect(() => resetSummaryUi, [doc?.id, user?.id, resetSummaryUi]);
+
   const activeSummaryItem = useMemo(
     () => summary.result?.items.find((item) => item.id === summary.activeItemId) ?? null,
     [summary.activeItemId, summary.result],
@@ -149,6 +210,18 @@ export const MinimalReadingView: React.FC = () => {
         })),
     [blocks],
   );
+  const summaryReadingSegments: ReadingSegment[] = useMemo(
+    () => (summary.result?.items ?? []).map((item) => ({
+      id: `summary-${item.id}`,
+      text: item.text,
+      kind: 'paragraph',
+    })),
+    [summary.result],
+  );
+  const sourcePreview = doc?.blocks.find((block) => block.text.trim())?.text ?? doc?.text ?? '';
+  const showingSummaryView = summaryView && Boolean(summary.result);
+  const activeReadingSegments = showingSummaryView ? summaryReadingSegments : segments;
+
   const speechRef = useRef<SpeechController | null>(null);
   const [speechStatus, setSpeechStatus] = useState<SpeechStatus>(() => isSpeechSupported() ? 'idle' : 'unsupported');
   const [boundaryReliability, setBoundaryReliability] = useState<BoundaryReliability>('unknown');
@@ -198,10 +271,10 @@ export const MinimalReadingView: React.FC = () => {
   const selectedVoice = voices.find((voice) => voice.voiceURI === selectedVoiceURI) ?? pickPreferredVoice(voices);
   const startReading = () => {
     setSpeechError('');
-    setReadingMode('full');
+    setReadingMode(showingSummaryView ? 'summary' : 'full');
     setActiveBoundary(null);
     setCurrentSegmentIndex(0);
-    speechRef.current?.speak({ segments, rate, voice: selectedVoice });
+    speechRef.current?.speak({ segments: activeReadingSegments, rate, voice: selectedVoice });
   };
   const readSelection = () => {
     if (!wordSelection || !isSpeechSupported()) return;
@@ -222,22 +295,46 @@ export const MinimalReadingView: React.FC = () => {
   };
   const readSummary = () => {
     if (!summary.result?.items.length || !isSpeechSupported()) return;
-    const summarySegments: ReadingSegment[] = summary.result.items.map((item) => {
-      const sourceId = item.sources[0];
-      const block = blocks.find((b) => b.id === sourceId);
-      const offset = block ? block.text.indexOf(item.text) : -1;
-      return {
-        id: block ? block.id : item.id,
-        text: item.text,
-        sourceOffset: offset >= 0 ? offset : undefined,
-        kind: block?.type === 'quote' ? 'quote' : 'paragraph',
-      };
-    });
+    const targets: ReadingSegment[] = showingSummaryView
+      ? summaryReadingSegments
+      : summary.result.items.map((item) => {
+          const sourceId = item.sources[0];
+          const block = blocks.find((b) => b.id === sourceId);
+          const offset = block ? block.text.indexOf(item.text) : -1;
+          return {
+            id: block ? block.id : item.id,
+            text: item.text,
+            sourceOffset: offset >= 0 ? offset : undefined,
+            kind: block?.type === 'quote' ? 'quote' : 'paragraph',
+          };
+        });
     setSpeechError('');
     setReadingMode('summary');
     setActiveBoundary(null);
     setCurrentSegmentIndex(0);
-    speechRef.current?.speak({ segments: summarySegments, rate, voice: selectedVoice });
+    speechRef.current?.speak({ segments: targets, rate, voice: selectedVoice });
+  };
+  const readSummaryItem = (itemId: string) => {
+    const segment = summaryReadingSegments.find((item) => item.id === `summary-${itemId}`);
+    if (!segment || !isSpeechSupported()) return;
+    setOpenSummaryMenuId(null);
+    setSpeechError('');
+    setReadingMode('excerpt');
+    setActiveBoundary(null);
+    setCurrentSegmentIndex(0);
+    speechRef.current?.speak({ segments: [segment], rate, voice: selectedVoice });
+  };
+  const copySummaryItem = async (itemId: string, text: string) => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+      await navigator.clipboard.writeText(text);
+      setCopiedSummaryId(itemId);
+      setSummaryCopyError('');
+    } catch {
+      setSummaryCopyError('Không thể sao chép nội dung trong trình duyệt này.');
+      setCopiedSummaryId(null);
+    }
+    setOpenSummaryMenuId(null);
   };
   const cycleRate = () => {
     const nextRate = SPEECH_SPEEDS[(SPEECH_SPEEDS.indexOf(rate as typeof SPEECH_SPEEDS[number]) + 1) % SPEECH_SPEEDS.length];
@@ -266,8 +363,11 @@ export const MinimalReadingView: React.FC = () => {
     main?.addEventListener('scroll', clearWord);
     return () => main?.removeEventListener('scroll', clearWord);
   }, [clearWord]);
+
   const rulerEnabled = s.focus.enabled && viewMode === 'reading'
-    && blocks.some((block) => ['paragraph', 'heading', 'quote', 'listItem'].includes(block.type) && block.text.trim());
+    && (showingSummaryView
+      ? Boolean(summary.result?.items.length)
+      : blocks.some((block) => ['paragraph', 'heading', 'quote', 'listItem'].includes(block.type) && block.text.trim()));
 
   const { capture, rememberWord } = useReadingAnchor(mainRef, bodyRef, rulerEnabled);
   const modal = narrow && showSettingsPanel;
@@ -309,23 +409,131 @@ export const MinimalReadingView: React.FC = () => {
     return () => window.removeEventListener('keydown', onKey);
   }, [showSettingsPanel, modal, wordSelection, capture]);
 
-  function focusSummaryItem(item: SummaryItem) {
+  useEffect(() => {
+    if (!openSummaryMenuId) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !summaryMenuRef.current?.contains(event.target)) {
+        setOpenSummaryMenuId(null);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setOpenSummaryMenuId(null);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [openSummaryMenuId]);
+
+  const scrollToSourceSegment = useCallback((sourceId: string) => {
+    const main = mainRef.current;
+    if (!main) return;
+    const segmentEl = [...main.querySelectorAll<HTMLElement>('[data-segment-id]')]
+      .find((el) => el.dataset.segmentId === sourceId);
+    const markEl = segmentEl?.querySelector<HTMLElement>('mark.reader-summary-sentence') ?? segmentEl;
+    if (!markEl) return;
+    if (rulerEnabled) {
+      const anchor = Math.round(main.clientHeight * 0.3);
+      const targetTop = markEl.getBoundingClientRect().top - main.getBoundingClientRect().top;
+      main.scrollTop += targetTop - anchor;
+    } else {
+      markEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [rulerEnabled]);
+
+  useEffect(() => {
+    if (showingSummaryView || !pendingSummarySourceId) return;
+    speechRef.current?.stop();
+    const frame = window.requestAnimationFrame(() => {
+      scrollToSourceSegment(pendingSummarySourceId);
+      setPendingSummarySourceId(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [doc?.id, pendingSummarySourceId, scrollToSourceSegment, showingSummaryView]);
+
+  useEffect(() => {
+    if (!showingSummaryView || !summary.activeItemId) return;
+    const frame = window.requestAnimationFrame(() => {
+      const targetId = `summary-${summary.activeItemId}`;
+      const target = [...(mainRef.current?.querySelectorAll<HTMLElement>('[data-segment-id]') ?? [])]
+        .find((element) => element.dataset.segmentId === targetId);
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [summary.activeItemId, summaryNavigationRevision, showingSummaryView, summary.result]);
+
+  function focusSummaryItem(item: SummaryItem, openDedicatedView?: boolean) {
     summary.setActiveItemId(item.id);
+    setSummaryNavigationRevision((rev) => rev + 1);
+    if (openDedicatedView) {
+      setSummaryView(true);
+      setSourcesItemId(null);
+    }
     if (modal) setPanelOpen(false);
-    window.requestAnimationFrame(() => {
-      const main = mainRef.current;
-      if (!main) return;
-      const sourceId = item.sources[0];
-      const segmentEl = [...main.querySelectorAll<HTMLElement>('[data-segment-id]')]
-        .find((el) => el.dataset.segmentId === sourceId);
-      const markEl = segmentEl?.querySelector<HTMLElement>('mark.reader-summary-sentence') ?? segmentEl;
-      if (!markEl) return;
-      if (rulerEnabled) {
-        const anchor = Math.round(main.clientHeight * 0.3);
-        const targetTop = markEl.getBoundingClientRect().top - main.getBoundingClientRect().top;
-        main.scrollTop += targetTop - anchor;
-      } else {
-        markEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const willBeInSummaryView = openDedicatedView ?? showingSummaryView;
+    if (!willBeInSummaryView && item.sources[0]) {
+      window.requestAnimationFrame(() => scrollToSourceSegment(item.sources[0]));
+    }
+  }
+
+  function selectSummaryForSourceBlock(segmentId: string) {
+    if (!summary.result) return;
+    const item = summary.result.items.find((candidate) => candidate.sources.includes(segmentId));
+    if (!item) return;
+    summary.setActiveItemId(item.id);
+    setSummaryNavigationRevision((rev) => rev + 1);
+    setPanelOpen(true);
+    setTab('Tóm tắt');
+  }
+
+  function showSummarySource(segmentId: string, itemId?: string) {
+    if (!doc) return;
+    if (itemId) summary.setActiveItemId(itemId);
+    setSourcesItemId(null);
+    setSummaryView(false);
+    setActiveBoundary(null);
+    setViewSelection({ documentId: doc.id, mode: 'reading' });
+    setPendingSummarySourceId(segmentId);
+  }
+
+  function enterSummaryView() {
+    speechRef.current?.stop();
+    setActiveBoundary(null);
+    clearWord();
+    setSummaryView(true);
+    setSourcesItemId(null);
+    mainRef.current?.scrollTo({ top: 0 });
+  }
+
+  function exitSummaryView(scrollTop = false) {
+    speechRef.current?.stop();
+    setActiveBoundary(null);
+    setSummaryView(false);
+    setSourcesItemId(null);
+    setOpenSummaryMenuId(null);
+    if (scrollTop) mainRef.current?.scrollTo({ top: 0 });
+  }
+
+  function handleGenerateSummary(force = false) {
+    speechRef.current?.stop();
+    setActiveBoundary(null);
+    setSourcesItemId(null);
+    setOpenSummaryMenuId(null);
+    setBookmarkedSummaryIds([]);
+    setCopiedSummaryId(null);
+    setSummaryCopyError('');
+    void summary.summarize({ force }).then((res) => {
+      if (res?.items[0]) {
+        if (showingSummaryView) {
+          mainRef.current?.scrollTo({ top: 0 });
+        } else {
+          focusSummaryItem(res.items[0], false);
+        }
       }
     });
   }
@@ -338,6 +546,69 @@ export const MinimalReadingView: React.FC = () => {
     const [min, max] = LIMITS.fontSize;
     changeSettings({ fontSize: Math.max(min, Math.min(max, s.fontSize + delta)) });
   }
+
+  const readerToolbarTrailing = (
+    <div role="group" aria-label="Công cụ đọc" className="flex flex-wrap items-center gap-1.5 font-label text-xs">
+      <div
+        className="inline-flex items-center rounded-xl overflow-hidden"
+        style={{ backgroundColor: theme.controlBg, border: `1px solid ${theme.border}` }}
+      >
+        <button
+          type="button"
+          aria-label="Giảm cỡ chữ"
+          disabled={s.fontSize <= LIMITS.fontSize[0]}
+          onClick={() => changeFontSize(-1)}
+          className="px-2.5 py-1.5 font-semibold disabled:opacity-45"
+          style={{ color: theme.secondaryText }}
+        >
+          A−
+        </button>
+        <span
+          className="px-2 py-1.5 font-semibold"
+          style={{
+            borderLeft: `1px solid ${theme.border}`,
+            borderRight: `1px solid ${theme.border}`,
+            color: theme.fg,
+          }}
+        >
+          {s.fontSize} px
+        </span>
+        <button
+          type="button"
+          aria-label="Tăng cỡ chữ"
+          disabled={s.fontSize >= LIMITS.fontSize[1]}
+          onClick={() => changeFontSize(1)}
+          className="px-2.5 py-1.5 font-semibold disabled:opacity-45"
+          style={{ color: theme.secondaryText }}
+        >
+          A+
+        </button>
+      </div>
+
+      <button
+        type="button"
+        role="switch"
+        aria-label="Thước đọc"
+        aria-checked={s.focus.enabled}
+        data-ruler-switch
+        onClick={() => update({ focus: { enabled: !s.focus.enabled } })}
+        className="reader-surface-btn rounded-xl px-2.5 py-1.5 font-semibold"
+      >
+        Thước đọc · {s.focus.enabled ? `${s.focus.lineCount} dòng` : 'Tắt'}
+      </button>
+
+      <button
+        type="button"
+        aria-label="Hướng dẫn chọn từ và phím tắt"
+        aria-expanded={showHelp}
+        title="Hướng dẫn chọn từ và bàn phím"
+        onClick={() => setShowHelp((open) => !open)}
+        className="reader-surface-btn w-7 h-7 rounded-full flex items-center justify-center font-bold"
+      >
+        ?
+      </button>
+    </div>
+  );
 
   const settingsPanel = (
     <aside
@@ -708,91 +979,191 @@ export const MinimalReadingView: React.FC = () => {
                 </span>
               </button>
             </section>
+          </div>
+        )}
 
-            <section role="region" aria-labelledby="reader-summary-heading" className="space-y-3">
-              <div className="flex items-center justify-between gap-2">
+        {tab === 'Tóm tắt' && (
+          <section role="region" aria-labelledby="reader-summary-heading" aria-live="polite" className="space-y-3.5">
+            <div className="flex items-center justify-between gap-2">
+              <div>
                 <h3
                   id="reader-summary-heading"
                   className="text-xs font-label font-bold uppercase tracking-wide"
                   style={{ color: theme.secondaryText }}
                 >
-                  Tóm tắt ý chính
+                  Tóm tắt tài liệu
                 </h3>
-                {summary.result && summary.activeItemId && (
-                  <button
-                    type="button"
-                    onClick={() => summary.setActiveItemId(null)}
-                    className="text-[11px] font-label font-semibold underline-offset-2 hover:underline"
-                    style={{ color: theme.activeFg }}
-                  >
-                    Bỏ tô sáng
-                  </button>
-                )}
+                <p className="mt-0.5 text-[11px] leading-relaxed" style={{ color: theme.secondaryText }}>
+                  Chọn cách rút ý chính, đối chiếu câu nguồn hoặc mở chế độ đọc tóm tắt riêng.
+                </p>
               </div>
+              {summary.result && summary.activeItemId && !showingSummaryView && (
+                <button
+                  type="button"
+                  onClick={() => summary.setActiveItemId(null)}
+                  className="shrink-0 text-[11px] font-label font-semibold underline-offset-2 hover:underline"
+                  style={{ color: theme.activeFg }}
+                >
+                  Bỏ tô sáng
+                </button>
+              )}
+            </div>
 
-              {!user || summary.needsLogin ? (
-                <div
-                  className="rounded-2xl p-3.5 space-y-2.5"
-                  style={{ backgroundColor: theme.controlBg, border: `1px solid ${theme.border}` }}
-                >
-                  <p className="text-xs leading-relaxed" style={{ color: theme.secondaryText }}>
-                    Trích xuất nguyên văn các câu cốt lõi trong bài đọc và tô sáng khớp từng chữ ngay trên đoạn gốc.
-                  </p>
-                  <Link
-                    to="/login"
-                    state={{ from: '/reading' }}
-                    className="inline-flex items-center justify-center w-full rounded-xl px-3.5 py-2 text-xs font-label font-semibold transition-opacity hover:opacity-95"
-                    style={{ backgroundColor: theme.accent, color: theme.accentFg }}
-                  >
-                    Đăng nhập để rút ý chính
-                  </Link>
-                </div>
-              ) : !summary.result ? (
-                <div
-                  className="rounded-2xl p-3.5 space-y-2.5"
-                  style={{ backgroundColor: theme.controlBg, border: `1px solid ${theme.border}` }}
-                >
-                  <p className="text-xs leading-relaxed" style={{ color: theme.secondaryText }}>
-                    Trích xuất các câu cốt lõi rải đều toàn bài (yêu cầu bài từ 300 ký tự trở lên). Chạm từng ý để cuộn tới và tô sáng câu gốc.
-                  </p>
-                  {summary.error && (
-                    <p
-                      role="alert"
-                      className="rounded-xl px-3 py-2 text-xs font-label font-medium leading-snug"
-                      style={{ backgroundColor: theme.errorBg, color: theme.errorFg }}
-                    >
-                      {summary.error}
-                    </p>
-                  )}
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Phương pháp tóm tắt">
+              {([
+                { value: 'extractive', title: 'Đọc ý chính', desc: 'Rút gọn câu cốt lõi' },
+                { value: 'llm', title: 'AI tóm tắt', desc: 'Diễn đạt mạch lạc' },
+              ] as const).map((option) => {
+                const active = summary.method === option.value;
+                return (
                   <button
+                    key={option.value}
                     type="button"
+                    role="radio"
+                    aria-checked={active}
                     disabled={summary.loading}
                     onClick={() => {
-                      void summary.summarize().then((res) => {
-                        if (res?.items[0]) focusSummaryItem(res.items[0]);
-                      });
+                      speechRef.current?.stop();
+                      setActiveBoundary(null);
+                      resetSummaryUi();
+                      summary.setMethod(option.value);
                     }}
-                    className="w-full rounded-xl px-3.5 py-2.5 text-xs font-label font-semibold flex items-center justify-center gap-1.5 transition-opacity disabled:opacity-60"
-                    style={{ backgroundColor: theme.accent, color: theme.accentFg }}
+                    className="rounded-xl px-3 py-2.5 text-left text-xs transition-colors disabled:opacity-60"
+                    style={
+                      active
+                        ? {
+                            backgroundColor: theme.accentSoft,
+                            border: `1.5px solid ${theme.accent}`,
+                            color: theme.activeFg,
+                          }
+                        : {
+                            backgroundColor: theme.controlBg,
+                            border: `1px solid ${theme.border}`,
+                            color: theme.fg,
+                          }
+                    }
                   >
-                    <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
-                    <span>{summary.loading ? 'Đang rút ý chính…' : summary.error ? 'Thử lại · Rút ý chính' : 'Rút ý chính bài đọc'}</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  <div
-                    className="rounded-2xl px-3 py-2.5 flex items-center justify-between gap-2 font-label"
-                    style={{ backgroundColor: theme.surfaceBg, border: `1px solid ${theme.border}` }}
-                  >
-                    <span className="text-xs font-semibold" style={{ color: theme.fg }}>
-                      {summary.result.items.length} câu cốt lõi
+                    <span className="block font-semibold">{option.title}</span>
+                    <span className="mt-0.5 block text-[11px]" style={{ color: active ? theme.activeFg : theme.secondaryText }}>
+                      {option.desc}
                     </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {!user || summary.needsLogin ? (
+              <div
+                className="rounded-2xl p-3.5 space-y-2.5"
+                style={{ backgroundColor: theme.controlBg, border: `1px solid ${theme.border}` }}
+              >
+                <p className="text-xs leading-relaxed" style={{ color: theme.secondaryText }}>
+                  Tính năng tóm tắt tài liệu yêu cầu đăng nhập.
+                </p>
+                <Link
+                  to="/login"
+                  state={{ from: '/reading' }}
+                  className="inline-flex items-center justify-center w-full rounded-xl px-3.5 py-2.5 text-xs font-label font-semibold transition-opacity hover:opacity-95"
+                  style={{ backgroundColor: theme.accent, color: theme.accentFg }}
+                >
+                  Đăng nhập
+                </Link>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={summary.loading}
+                onClick={() => handleGenerateSummary(Boolean(summary.result))}
+                className="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-label font-semibold transition-opacity disabled:opacity-60"
+                style={{ backgroundColor: theme.accent, color: theme.accentFg }}
+              >
+                <span className="material-symbols-outlined text-[17px]">
+                  {summary.loading ? 'progress_activity' : 'auto_awesome'}
+                </span>
+                <span>
+                  {summary.loading
+                    ? 'Đang tóm tắt…'
+                    : summary.result
+                      ? 'Tạo lại tóm tắt'
+                      : 'Tạo tóm tắt'}
+                </span>
+              </button>
+            )}
+
+            {summary.error && !summary.needsLogin && (
+              <div
+                role="alert"
+                className="rounded-xl px-3 py-2.5 text-xs font-label font-medium leading-snug"
+                style={{ backgroundColor: theme.errorBg, color: theme.errorFg }}
+              >
+                {summary.error}
+              </div>
+            )}
+
+            {summary.result?.method === 'extractive' && summary.result.variants?.length ? (
+              <fieldset
+                className="space-y-2 rounded-2xl p-3"
+                style={{ backgroundColor: theme.controlBg, border: `1px solid ${theme.border}` }}
+              >
+                <legend className="px-1 text-xs font-label font-semibold" style={{ color: theme.fg }}>
+                  Độ dài tóm tắt
+                </legend>
+                <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Độ dài tóm tắt">
+                  {([
+                    ['short', 'Ngắn'],
+                    ['medium', 'Vừa'],
+                    ['long', 'Dài'],
+                  ] as const).map(([len, label]) => {
+                    const active = summary.length === len;
+                    return (
+                      <button
+                        key={len}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => {
+                          summary.selectLength(len);
+                          setSummaryNavigationRevision((rev) => rev + 1);
+                        }}
+                        className="rounded-lg px-2 py-2 text-xs font-label transition-colors"
+                        style={
+                          active
+                            ? {
+                                backgroundColor: theme.accentSoft,
+                                border: `1.5px solid ${theme.accent}`,
+                                color: theme.activeFg,
+                                fontWeight: 700,
+                              }
+                            : {
+                                backgroundColor: theme.surfaceBg,
+                                border: `1px solid ${theme.border}`,
+                                color: theme.fg,
+                              }
+                        }
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            ) : null}
+
+            {summary.result && (
+              <div className="space-y-3">
+                <div
+                  className="rounded-2xl px-3 py-2.5 flex flex-wrap items-center justify-between gap-2 font-label"
+                  style={{ backgroundColor: theme.surfaceBg, border: `1px solid ${theme.border}` }}
+                >
+                  <span className="text-xs font-semibold" style={{ color: theme.fg }}>
+                    {summary.result.items.length} ý chính
+                  </span>
+                  <div className="flex items-center gap-1.5">
                     {isSpeechSupported() && (
                       <button
                         type="button"
                         onClick={readSummary}
-                        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold transition-opacity hover:opacity-95"
+                        className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-opacity hover:opacity-95"
                         style={{ backgroundColor: theme.accent, color: theme.accentFg }}
                       >
                         <span className="material-symbols-outlined text-[14px]">play_arrow</span>
@@ -800,44 +1171,137 @@ export const MinimalReadingView: React.FC = () => {
                       </button>
                     )}
                   </div>
+                </div>
 
-                  <ol className="space-y-2" aria-label="Danh sách câu cốt lõi">
-                    {summary.result.items.map((item, idx) => {
-                      const active = summary.activeItemId === item.id;
-                      const segNum = segmentOrder.get(item.sources[0]);
+                <div className="grid grid-cols-1 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => (showingSummaryView ? exitSummaryView(false) : enterSummaryView())}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-label font-semibold transition-colors"
+                    style={{
+                      backgroundColor: showingSummaryView ? theme.surfaceBg : theme.accentSoft,
+                      border: `1px solid ${showingSummaryView ? theme.border : theme.accent}`,
+                      color: showingSummaryView ? theme.fg : theme.activeFg,
+                    }}
+                  >
+                    <span className="material-symbols-outlined text-[17px]">
+                      {showingSummaryView ? 'menu_book' : 'article'}
+                    </span>
+                    <span>{showingSummaryView ? 'Quay lại tài liệu gốc' : 'Mở bản tóm tắt tập trung'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSummaryPreviewOpen(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-label font-semibold transition-colors"
+                    style={{
+                      backgroundColor: theme.controlBg,
+                      border: `1px solid ${theme.border}`,
+                      color: theme.fg,
+                    }}
+                  >
+                    <span className="material-symbols-outlined text-[17px]" style={{ color: theme.activeFg }}>preview</span>
+                    <span>Xem &amp; xuất bản hoàn chỉnh</span>
+                  </button>
+                </div>
+
+                <div
+                  className="space-y-2 rounded-2xl p-3"
+                  style={{ backgroundColor: theme.controlBg, border: `1px solid ${theme.border}` }}
+                >
+                  <p className="text-xs font-label font-semibold" style={{ color: theme.fg }}>
+                    Đi nhanh tới ý tóm tắt
+                  </p>
+                  <div className="grid max-h-32 grid-cols-5 gap-1.5 overflow-y-auto" role="group" aria-label="Chọn block tóm tắt">
+                    {summary.result.items.map((item, index) => {
+                      const selected = summary.activeItemId === item.id;
+                      const bookmarked = bookmarkedSummaryIds.includes(item.id);
                       return (
-                        <li key={item.id}>
-                          <button
-                            type="button"
-                            aria-pressed={active}
-                            onClick={() => focusSummaryItem(item)}
-                            className="w-full text-left rounded-2xl p-3 space-y-1.5 transition-colors"
-                            style={{
-                              backgroundColor: active ? theme.accentSoft : theme.controlBg,
-                              border: active ? `1.5px solid ${theme.accent}` : `1px solid ${theme.border}`,
-                              color: theme.fg,
-                            }}
-                          >
-                            <span className="flex items-center justify-between gap-2 font-label text-[11px] font-bold">
-                              <span style={{ color: theme.activeFg }}>
-                                Ý chính {String(idx + 1).padStart(2, '0')}
-                              </span>
-                              <span style={{ color: active ? theme.activeFg : theme.secondaryText }}>
-                                {segNum ? `Đoạn ${segNum}` : 'Nguồn'}{active ? ' ✓' : ' →'}
-                              </span>
-                            </span>
-                            <span className="block text-xs leading-relaxed font-body">
-                              {item.text}
-                            </span>
-                          </button>
-                        </li>
+                        <button
+                          key={item.id}
+                          type="button"
+                          aria-label={`Đi tới ý ${index + 1}`}
+                          aria-pressed={selected}
+                          onClick={() => focusSummaryItem(item)}
+                          className="flex h-8 items-center justify-center gap-1 rounded-lg text-xs font-label font-semibold transition-colors"
+                          style={
+                            selected
+                              ? {
+                                  backgroundColor: theme.accent,
+                                  border: `1.5px solid ${theme.accent}`,
+                                  color: theme.accentFg,
+                                }
+                              : bookmarked
+                                ? {
+                                    backgroundColor: theme.warningBg,
+                                    border: `1.5px solid ${theme.warningBorder}`,
+                                    color: theme.warningFg,
+                                  }
+                                : {
+                                    backgroundColor: theme.surfaceBg,
+                                    border: `1px solid ${theme.border}`,
+                                    color: theme.fg,
+                                  }
+                          }
+                        >
+                          {bookmarked && <span className="material-symbols-outlined text-[13px]" aria-hidden="true">flag</span>}
+                          {index + 1}
+                        </button>
                       );
                     })}
-                  </ol>
+                  </div>
                 </div>
-              )}
-            </section>
-          </div>
+
+                <ol className="space-y-2" aria-label="Danh sách câu cốt lõi">
+                  {summary.result.items.map((item, idx) => {
+                    const active = summary.activeItemId === item.id;
+                    const bookmarked = bookmarkedSummaryIds.includes(item.id);
+                    const segNum = segmentOrder.get(item.sources[0]);
+                    return (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => focusSummaryItem(item)}
+                          className="w-full text-left rounded-2xl p-3 space-y-1.5 transition-colors"
+                          style={{
+                            backgroundColor: active ? theme.accentSoft : theme.controlBg,
+                            border: active
+                              ? `1.5px solid ${theme.accent}`
+                              : bookmarked
+                                ? `1.5px solid ${theme.warningBorder}`
+                                : `1px solid ${theme.border}`,
+                            color: theme.fg,
+                          }}
+                        >
+                          <span className="flex items-center justify-between gap-2 font-label text-[11px] font-bold">
+                            <span className="inline-flex items-center gap-1" style={{ color: theme.activeFg }}>
+                              {bookmarked && (
+                                <span
+                                  className="material-symbols-outlined text-[13px]"
+                                  style={{ color: theme.warningFg }}
+                                  aria-label="Đã đánh dấu"
+                                >
+                                  flag
+                                </span>
+                              )}
+                              Ý chính {String(idx + 1).padStart(2, '0')}
+                            </span>
+                            <span style={{ color: active ? theme.activeFg : theme.secondaryText }}>
+                              {segNum ? `Đoạn ${segNum}` : 'Nguồn'}{active ? ' ✓' : ' →'}
+                            </span>
+                          </span>
+                          <span className="block text-xs leading-relaxed font-body">
+                            {item.text}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            )}
+          </section>
         )}
       </div>
 
@@ -926,6 +1390,7 @@ export const MinimalReadingView: React.FC = () => {
           speechRef.current?.stop();
           setActiveBoundary(null);
           clearWord();
+          setSummaryView(false);
           setViewSelection({ documentId: doc.id, mode: 'original' });
         }}
         className="rounded-lg px-2.5 py-1 font-medium transition-colors"
@@ -952,6 +1417,10 @@ export const MinimalReadingView: React.FC = () => {
       </button>
     </div>
   ) : null;
+
+  const activeSourcesItem = sourcesItemId
+    ? summary.result?.items.find((candidate) => candidate.id === sourcesItemId) ?? null
+    : null;
 
   return (
     <div
@@ -1157,6 +1626,322 @@ export const MinimalReadingView: React.FC = () => {
                     fontSize: `${s.fontSize}px`,
                   }}
                 >
+                {showingSummaryView && summary.result ? (
+                  <section aria-label="Tóm tắt tài liệu" className="relative">
+                    <div style={rulerEnabled ? { minHeight: '30cqh' } : undefined}>
+                      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => exitSummaryView(false)}
+                            className="reader-surface-btn mb-4 inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-label font-semibold"
+                          >
+                            <span className="material-symbols-outlined text-base">arrow_back</span>
+                            Quay lại tài liệu
+                          </button>
+                          <div
+                            className="font-label text-[11px] tracking-[0.2em] uppercase font-semibold px-3 py-1 rounded-full w-fit"
+                            style={{ color: theme.badgeText, backgroundColor: theme.badgeBg }}
+                          >
+                            {summary.result.method === 'llm' ? 'Tóm tắt bằng AI' : 'Đọc ý chính'}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => exitSummaryView(true)}
+                          className="flex max-w-[min(100%,16rem)] items-center gap-3 rounded-xl p-2 text-left transition-colors"
+                          style={{
+                            backgroundColor: theme.surfaceBg,
+                            border: `1px solid ${theme.border}`,
+                            color: theme.fg,
+                          }}
+                          aria-label="Thu nhỏ tài liệu gốc; bấm để quay lại"
+                        >
+                          <span
+                            aria-hidden="true"
+                            className="h-14 w-11 shrink-0 overflow-hidden rounded-md p-1.5 text-[4px] leading-[1.45] opacity-80"
+                            style={{
+                              backgroundColor: theme.controlBg,
+                              border: `1px solid ${theme.border}`,
+                              color: theme.secondaryText,
+                            }}
+                          >
+                            <span
+                              className="mb-1 block h-1 w-6 rounded"
+                              style={{ backgroundColor: theme.accent }}
+                            />
+                            {sourcePreview.slice(0, 220)}
+                          </span>
+                          <span className="min-w-0 font-label">
+                            <span className="block text-[10px] uppercase tracking-wider" style={{ color: theme.secondaryText }}>
+                              Tài liệu gốc
+                            </span>
+                            <span className="block truncate text-xs font-semibold">{doc.title}</span>
+                            <span className="block text-[10px] font-semibold" style={{ color: theme.activeFg }}>
+                              Bấm để quay lại
+                            </span>
+                          </span>
+                        </button>
+                      </div>
+
+                      <h1
+                        className="mb-2 text-2xl sm:text-3xl md:text-[2.2rem] font-bold tracking-tight leading-[1.3] break-words"
+                        style={{ fontFamily: FONT_STACKS[s.fontFamily] }}
+                      >
+                        {doc.title}
+                      </h1>
+                      <p className="mb-6 text-xs sm:text-sm font-label" style={{ color: theme.secondaryText }}>
+                        {summary.result.items.length} ý chính ·{' '}
+                        {countWords(summary.result.items.map((item) => item.text).join(' ')).toLocaleString('vi-VN')} từ
+                      </p>
+
+                      <div className="mb-6">
+                        <AudioPlayerCapsule
+                          status={speechStatus}
+                          reliability={boundaryReliability}
+                          voices={voices}
+                          selectedVoiceURI={selectedVoiceURI}
+                          hasVietnameseVoice={hasVietnameseVoice(voices)}
+                          voicesLoading={voicesLoading}
+                          rate={rate}
+                          errorMessage={speechError}
+                          progressLabel={speechStatus === 'speaking' || speechStatus === 'paused'
+                            ? readingMode === 'excerpt'
+                              ? 'Ý riêng'
+                              : `${Math.min(currentSegmentIndex + 1, summaryReadingSegments.length)}/${summaryReadingSegments.length} ý`
+                            : undefined}
+                          onPlay={startReading}
+                          onPause={() => speechRef.current?.pause()}
+                          onResume={() => speechRef.current?.resume()}
+                          onStop={() => speechRef.current?.stop()}
+                          onRateCycle={cycleRate}
+                          onVoiceChange={(voiceURI) => {
+                            setSelectedVoiceURI(voiceURI);
+                            const voice = voices.find((entry) => entry.voiceURI === voiceURI) ?? null;
+                            if (speechStatus === 'speaking' || speechStatus === 'paused') {
+                              speechRef.current?.restartFromLastPosition(rate, voice);
+                            }
+                          }}
+                          trailing={readerToolbarTrailing}
+                        />
+
+                        {showHelp && (
+                          <p
+                            className="mt-2 rounded-xl px-3.5 py-2.5 text-xs font-label leading-relaxed"
+                            style={{
+                              backgroundColor: theme.surfaceBg,
+                              border: `1px solid ${theme.border}`,
+                              color: theme.secondaryText,
+                            }}
+                          >
+                            Bấm vào từng ý tóm tắt để chọn hoặc mở nút ⋯ để nghe riêng ý đó, sao chép, đánh dấu xem lại hoặc nhảy về đoạn nguồn trong tài liệu gốc.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div
+                      ref={bodyRef}
+                      onFocusCapture={e => rememberWord(e.target)}
+                      onPointerDownCapture={e => rememberWord(e.target)}
+                      className="reading-body relative w-full text-left"
+                      style={{
+                        fontFamily: FONT_STACKS[s.fontFamily],
+                        fontSize: `${s.fontSize}px`,
+                        lineHeight: s.lineHeight,
+                        letterSpacing: `${s.letterSpacing}em`,
+                        wordSpacing: `${assist.wordSpacing}em`,
+                        backgroundColor: theme.bg,
+                        color: theme.fg,
+                      }}
+                    >
+                      <div className="space-y-4 font-body break-words" role="list" aria-label="Các ý tóm tắt">
+                        {summary.result.items.map((item, idx) => {
+                          let offset = 0;
+                          const segmentId = `summary-${item.id}`;
+                          const isBookmarked = bookmarkedSummaryIds.includes(item.id);
+                          const isSelected = summary.activeItemId === item.id;
+                          const tokens = item.text.split(/(\s+)/).filter(Boolean).map((token, tokenIndex) => {
+                            const start = offset;
+                            offset += token.length;
+                            if (/^\s+$/.test(token)) return <span key={tokenIndex}>{token}</span>;
+                            const active = activeBoundary?.segmentId === segmentId
+                              && start < activeBoundary.charIndex + activeBoundary.charLength
+                              && offset > activeBoundary.charIndex;
+                            return (
+                              <span
+                                key={tokenIndex}
+                                data-token-start={start}
+                                data-token-end={offset}
+                                aria-current={active ? 'true' : undefined}
+                                className={active ? 'reader-word-active px-0.5' : undefined}
+                              >
+                                {active ? token : renderMirrorText(token, assist.mirrorLetters)}
+                              </span>
+                            );
+                          });
+                          return (
+                            <article
+                              key={item.id}
+                              role="listitem"
+                              data-segment-id={segmentId}
+                              data-segment-text={item.text}
+                              data-block-type="paragraph"
+                              aria-current={isSelected ? 'location' : undefined}
+                              tabIndex={0}
+                              onClick={() => focusSummaryItem(item, true)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  focusSummaryItem(item, true);
+                                }
+                              }}
+                              className="relative cursor-pointer rounded-2xl p-4 sm:p-5 pr-14 transition-colors"
+                              style={{
+                                backgroundColor: isSelected
+                                  ? theme.accentSoft
+                                  : isBookmarked
+                                    ? theme.warningBg
+                                    : theme.surfaceBg,
+                                border: isSelected
+                                  ? `1.5px solid ${theme.accent}`
+                                  : isBookmarked
+                                    ? `1.5px solid ${theme.warningBorder}`
+                                    : `1px solid ${theme.border}`,
+                                color: isBookmarked && !isSelected ? theme.warningFg : theme.fg,
+                              }}
+                            >
+                              <div className="mb-2 flex flex-wrap items-center gap-2 font-label text-xs">
+                                <span
+                                  className="rounded-md px-2 py-0.5 font-bold"
+                                  style={{ backgroundColor: theme.controlBg, color: theme.activeFg }}
+                                >
+                                  {String(idx + 1).padStart(2, '0')}
+                                </span>
+                                {isBookmarked && (
+                                  <span
+                                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                                    style={{
+                                      backgroundColor: theme.warningBg,
+                                      border: `1px solid ${theme.warningBorder}`,
+                                      color: theme.warningFg,
+                                    }}
+                                  >
+                                    <span className="material-symbols-outlined text-[14px]" aria-hidden="true">flag</span>
+                                    Đã đánh dấu để xem lại
+                                  </span>
+                                )}
+                              </div>
+                              <p className="whitespace-pre-line">{tokens}</p>
+                              {copiedSummaryId === item.id && (
+                                <span role="status" className="mt-2.5 block text-xs font-label font-semibold" style={{ color: theme.activeFg }}>
+                                  Đã sao chép ý này.
+                                </span>
+                              )}
+
+                              <div
+                                ref={openSummaryMenuId === item.id ? summaryMenuRef : undefined}
+                                className="absolute right-2.5 top-2.5"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  aria-label="Tùy chọn ý tóm tắt"
+                                  aria-haspopup="menu"
+                                  aria-expanded={openSummaryMenuId === item.id}
+                                  onClick={() => setOpenSummaryMenuId((current) => current === item.id ? null : item.id)}
+                                  className="flex h-9 w-9 items-center justify-center rounded-lg transition-colors"
+                                  style={{ backgroundColor: theme.controlBg, color: theme.secondaryText }}
+                                >
+                                  <span className="material-symbols-outlined">more_horiz</span>
+                                </button>
+                                {openSummaryMenuId === item.id && (
+                                  <div
+                                    role="menu"
+                                    aria-label="Tùy chọn ý tóm tắt"
+                                    className="absolute right-0 top-10 z-30 w-56 rounded-xl p-1.5 text-sm font-label shadow-xl"
+                                    style={{
+                                      backgroundColor: theme.panelBg,
+                                      border: `1px solid ${theme.border}`,
+                                      color: theme.fg,
+                                    }}
+                                  >
+                                    <button
+                                      role="menuitem"
+                                      type="button"
+                                      disabled={!isSpeechSupported()}
+                                      onClick={() => readSummaryItem(item.id)}
+                                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors disabled:opacity-50"
+                                      style={{ color: theme.fg }}
+                                    >
+                                      <span className="material-symbols-outlined text-base" style={{ color: theme.activeFg }}>volume_up</span>
+                                      Đọc ý này
+                                    </button>
+                                    <button
+                                      role="menuitem"
+                                      type="button"
+                                      onClick={() => void copySummaryItem(item.id, item.text)}
+                                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors"
+                                      style={{ color: theme.fg }}
+                                    >
+                                      <span className="material-symbols-outlined text-base" style={{ color: theme.activeFg }}>content_copy</span>
+                                      Sao chép ý
+                                    </button>
+                                    <button
+                                      role="menuitem"
+                                      type="button"
+                                      onClick={() => {
+                                        setBookmarkedSummaryIds((current) => (
+                                          isBookmarked
+                                            ? current.filter((id) => id !== item.id)
+                                            : [...current, item.id]
+                                        ));
+                                        setOpenSummaryMenuId(null);
+                                      }}
+                                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors"
+                                      style={{ color: theme.fg }}
+                                    >
+                                      <span className="material-symbols-outlined text-base" style={{ color: theme.activeFg }}>
+                                        {isBookmarked ? 'bookmark_remove' : 'bookmark_add'}
+                                      </span>
+                                      {isBookmarked ? 'Bỏ đánh dấu' : 'Đánh dấu để xem lại'}
+                                    </button>
+                                    <button
+                                      role="menuitem"
+                                      type="button"
+                                      onClick={() => {
+                                        setSourcesItemId(item.id);
+                                        setOpenSummaryMenuId(null);
+                                      }}
+                                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors"
+                                      style={{ color: theme.fg }}
+                                    >
+                                      <span className="material-symbols-outlined text-base" style={{ color: theme.activeFg }}>format_list_bulleted</span>
+                                      Xem nguồn ({item.sources.length})
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
+                      {summaryCopyError && (
+                        <p
+                          role="alert"
+                          className="mt-3 rounded-xl px-3 py-2 text-sm font-label"
+                          style={{ backgroundColor: theme.errorBg, color: theme.errorFg }}
+                        >
+                          {summaryCopyError}
+                        </p>
+                      )}
+                    </div>
+
+                    <div style={rulerEnabled ? { minHeight: '70cqh' } : undefined} />
+                  </section>
+                ) : (
+                <>
                 <div style={rulerEnabled ? { minHeight: '30cqh' } : undefined}>
                   {/* Tiêu đề và thông tin bài */}
                   <div className="mb-5 text-left">
@@ -1183,7 +1968,24 @@ export const MinimalReadingView: React.FC = () => {
                           ) : null}
                         </div>
                       </div>
-                      {viewModeSwitcher}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {summary.result && (
+                          <button
+                            type="button"
+                            onClick={enterSummaryView}
+                            className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-label font-semibold transition-colors"
+                            style={{
+                              backgroundColor: theme.accentSoft,
+                              border: `1px solid ${theme.accent}`,
+                              color: theme.activeFg,
+                            }}
+                          >
+                            <span className="material-symbols-outlined text-[16px]">summarize</span>
+                            <span>Quay lại tóm tắt</span>
+                          </button>
+                        )}
+                        {viewModeSwitcher}
+                      </div>
                     </div>
 
                     <h1
@@ -1251,68 +2053,7 @@ export const MinimalReadingView: React.FC = () => {
                           speechRef.current?.restartFromLastPosition(rate, voice);
                         }
                       }}
-                      trailing={
-                        <div role="group" aria-label="Công cụ đọc" className="flex flex-wrap items-center gap-1.5 font-label text-xs">
-                          <div
-                            className="inline-flex items-center rounded-xl overflow-hidden"
-                            style={{ backgroundColor: theme.controlBg, border: `1px solid ${theme.border}` }}
-                          >
-                            <button
-                              type="button"
-                              aria-label="Giảm cỡ chữ"
-                              disabled={s.fontSize <= LIMITS.fontSize[0]}
-                              onClick={() => changeFontSize(-1)}
-                              className="px-2.5 py-1.5 font-semibold disabled:opacity-45"
-                              style={{ color: theme.secondaryText }}
-                            >
-                              A−
-                            </button>
-                            <span
-                              className="px-2 py-1.5 font-semibold"
-                              style={{
-                                borderLeft: `1px solid ${theme.border}`,
-                                borderRight: `1px solid ${theme.border}`,
-                                color: theme.fg,
-                              }}
-                            >
-                              {s.fontSize} px
-                            </span>
-                            <button
-                              type="button"
-                              aria-label="Tăng cỡ chữ"
-                              disabled={s.fontSize >= LIMITS.fontSize[1]}
-                              onClick={() => changeFontSize(1)}
-                              className="px-2.5 py-1.5 font-semibold disabled:opacity-45"
-                              style={{ color: theme.secondaryText }}
-                            >
-                              A+
-                            </button>
-                          </div>
-
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-label="Thước đọc"
-                            aria-checked={s.focus.enabled}
-                            data-ruler-switch
-                            onClick={() => update({ focus: { enabled: !s.focus.enabled } })}
-                            className="reader-surface-btn rounded-xl px-2.5 py-1.5 font-semibold"
-                          >
-                            Thước đọc · {s.focus.enabled ? `${s.focus.lineCount} dòng` : 'Tắt'}
-                          </button>
-
-                          <button
-                            type="button"
-                            aria-label="Hướng dẫn chọn từ và phím tắt"
-                            aria-expanded={showHelp}
-                            title="Hướng dẫn chọn từ và bàn phím"
-                            onClick={() => setShowHelp((open) => !open)}
-                            className="reader-surface-btn w-7 h-7 rounded-full flex items-center justify-center font-bold"
-                          >
-                            ?
-                          </button>
-                        </div>
-                      }
+                      trailing={readerToolbarTrailing}
                     />
 
                     {showHelp && (
@@ -1351,6 +2092,7 @@ export const MinimalReadingView: React.FC = () => {
                     staticHighlights={summaryHighlights}
                     highlightedBlockIds={activeSummaryItem?.sources}
                     onWordSelection={chooseWord}
+                    onSegmentClick={selectSummaryForSourceBlock}
                     mirrorLetters={assist.mirrorLetters}
                     paragraphCards={assist.paragraphCards}
                     className="font-body break-words"
@@ -1398,6 +2140,8 @@ export const MinimalReadingView: React.FC = () => {
                     </Link>
                   </footer>
                 </div>
+                </>
+                )}
                 </div>
               </ManuscriptCard>
             </div>
@@ -1405,7 +2149,7 @@ export const MinimalReadingView: React.FC = () => {
           </main>
           {rulerEnabled && (
             <FixedReadingRuler
-              key={doc.id}
+              key={`${doc.id}-${showingSummaryView ? 'summary' : 'document'}`}
               mainRef={mainRef}
               bodyRef={bodyRef}
               lineCount={s.focus.lineCount}
@@ -1421,6 +2165,25 @@ export const MinimalReadingView: React.FC = () => {
           )}
         </div>
       </div>
+
+      {activeSourcesItem && (
+        <SummarySourcesDialog
+          item={activeSourcesItem}
+          blocks={blocks}
+          theme={theme}
+          onClose={() => setSourcesItemId(null)}
+          onGoToSource={(sourceId) => showSummarySource(sourceId, activeSourcesItem.id)}
+        />
+      )}
+
+      {summaryPreviewOpen && summary.result && (
+        <SummaryPreviewDialog
+          items={summary.result.items}
+          documentTitle={doc.title}
+          theme={theme}
+          onClose={() => setSummaryPreviewOpen(false)}
+        />
+      )}
     </div>
   );
 };

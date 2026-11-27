@@ -20,6 +20,8 @@ class SegmentIn(CamelModel):
 class SummarizeRequest(CamelModel):
     document_id: str = Field(min_length=1, max_length=200)
     segments: list[SegmentIn] = Field(min_length=1)
+    method: Literal["extractive", "llm"] = "extractive"
+    length: Literal["short", "medium", "long"] = "medium"
 
 
 class SummaryItem(CamelModel):
@@ -28,8 +30,14 @@ class SummaryItem(CamelModel):
     sources: list[str]
 
 
+class SummaryVariant(CamelModel):
+    length: Literal["short", "medium", "long"]
+    items: list[SummaryItem]
+
+
 class SummarizeResponse(CamelModel):
     document_id: str
     content_version: str
     method: Literal["extractive", "llm"]
     items: list[SummaryItem]
+    variants: list[SummaryVariant] = Field(default_factory=list)

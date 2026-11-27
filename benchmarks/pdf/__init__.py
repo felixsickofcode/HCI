@@ -1,1 +1,0 @@
-"""PDF parser comparison harness."""

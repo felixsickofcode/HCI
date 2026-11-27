@@ -39,30 +39,3 @@ export const explainWord = (
   body: JSON.stringify(data),
   signal,
 });
-
-export interface SummarySegmentInput {
-  id: string;
-  text: string;
-}
-
-export interface SummaryItem {
-  id: string;
-  text: string;
-  sources: string[];
-}
-
-export interface SummarizeResponse {
-  documentId: string;
-  contentVersion: string;
-  method: 'extractive' | 'llm';
-  items: SummaryItem[];
-}
-
-export const summarizeDocument = (
-  data: { documentId: string; segments: SummarySegmentInput[] },
-  signal: AbortSignal,
-) => apiFetch<SummarizeResponse>('/assist/summarize', {
-  method: 'POST',
-  body: JSON.stringify(data),
-  signal,
-});

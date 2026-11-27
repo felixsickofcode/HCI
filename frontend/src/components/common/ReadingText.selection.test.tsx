@@ -75,6 +75,21 @@ describe('FR06 word selection', () => {
     window.getSelection()?.removeAllRanges();
   });
 
+  it('reports the clicked block segment through onSegmentClick', () => {
+    const onSegmentClick = vi.fn();
+    render(<ReadingText
+      blocks={[{ id: 'block-1', type: 'paragraph', text: 'Nội dung nguồn' }]}
+      activeBoundary={null}
+      onSegmentClick={onSegmentClick}
+    />);
+
+    const paragraph = document.querySelector('p');
+    expect(paragraph).not.toBeNull();
+    fireEvent.click(paragraph!);
+
+    expect(onSegmentClick).toHaveBeenCalledWith('block-1');
+  });
+
   it('keeps a trailing combining accent when clicking a word', () => {
     const choose = vi.fn();
     render(<ReadingText

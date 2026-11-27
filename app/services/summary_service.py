@@ -2,6 +2,7 @@ import hashlib
 import json
 
 from fastapi.concurrency import run_in_threadpool
+from typing import Protocol
 
 from app.core.config import Settings
 from app.core.exceptions import (
@@ -10,8 +11,8 @@ from app.core.exceptions import (
     PayloadTooLargeError,
     SummaryUnavailableError,
 )
-from app.schemas.summary import SegmentIn, SummarizeRequest, SummarizeResponse, SummaryItem
-from app.services.extractive_summary import extractive_summarize
+from app.schemas.summary import SegmentIn, SummarizeRequest, SummarizeResponse, SummaryItem, SummaryVariant
+from app.services.extractive_summary import extractive_summarize_variants
 
 
 def utf16_len(text: str) -> int:
@@ -23,6 +24,10 @@ def content_hash(segments: list[SegmentIn]) -> str:
         [[s.id, s.text] for s in segments], ensure_ascii=False, separators=(",", ":")
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+class SummaryProvider(Protocol):
+    def summarize(self, segments: list[SegmentIn]) -> list[SummaryItem]: ...
 
 
 def validate_sources(items: list[SummaryItem], valid_ids: set[str]) -> list[SummaryItem]:
@@ -37,19 +42,27 @@ def validate_sources(items: list[SummaryItem], valid_ids: set[str]) -> list[Summ
 
 
 class SummaryService:
-    def __init__(self, cfg: Settings):
+    def __init__(self, cfg: Settings, llm_provider: SummaryProvider | None = None):
         self._cfg = cfg
+        self._llm_provider = llm_provider
 
     async def summarize(self, data: SummarizeRequest) -> SummarizeResponse:
         self._validate(data)
-        if self._cfg.SUMMARY_USE_LLM:
+        method = data.method
+        variants: list[SummaryVariant] = []
+
+        if method == "llm":
             items = await self._summarize_llm(data.segments)
-            method = "llm"
         else:
             segments = [(s.id, s.text) for s in data.segments]
-            extracted = await run_in_threadpool(extractive_summarize, segments)
-            items = [SummaryItem(id="", text=e.text, sources=[e.segment_id]) for e in extracted]
-            method = "extractive"
+            extracted_variants = await run_in_threadpool(extractive_summarize_variants, segments)
+            for length, extracted in extracted_variants.items():
+                normalized = validate_sources(
+                    [SummaryItem(id="", text=e.text, sources=[e.segment_id]) for e in extracted],
+                    {s.id for s in data.segments},
+                )
+                variants.append(SummaryVariant(length=length, items=normalized))
+            items = next(v.items for v in variants if v.length == data.length)
 
         items = validate_sources(items, {s.id for s in data.segments})
         if not items:
@@ -59,6 +72,7 @@ class SummaryService:
             content_version=content_hash(data.segments),
             method=method,
             items=items,
+            variants=variants,
         )
 
     def _validate(self, data: SummarizeRequest) -> int:
@@ -78,4 +92,6 @@ class SummaryService:
         return total
 
     async def _summarize_llm(self, segments: list[SegmentIn]) -> list[SummaryItem]:
-        raise LLMUnavailableError("Tóm tắt bằng AI chưa được cài đặt trên máy chủ")
+        if self._llm_provider is None:
+            raise LLMUnavailableError("Tóm tắt bằng AI chưa được cấu hình trên máy chủ")
+        return await run_in_threadpool(self._llm_provider.summarize, segments)
