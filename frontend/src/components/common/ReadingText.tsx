@@ -14,9 +14,12 @@ export interface ReadingTextProps {
   blocks: ReadingBlock[];
   activeBoundary: SpeechBoundaryEvent | null;
   staticHighlights?: Record<string, StaticHighlight[]>;
+  highlightedBlockIds?: string[];
   figureSlot?: React.ReactNode;
   className?: string;
   style?: React.CSSProperties;
+  mirrorLetters?: boolean;
+  paragraphCards?: boolean;
   onWordSelection?: (selection: WordSelection) => void;
 }
 
@@ -62,11 +65,44 @@ function isOverlapping(start: number, end: number, boundary: SpeechBoundaryEvent
   return start < boundary.charIndex + boundary.charLength && end > boundary.charIndex;
 }
 
+const MIRROR_CLASS: Record<string, string> = {
+  b: 'reader-mirror-b',
+  B: 'reader-mirror-b',
+  d: 'reader-mirror-d',
+  D: 'reader-mirror-d',
+  p: 'reader-mirror-p',
+  P: 'reader-mirror-p',
+  q: 'reader-mirror-q',
+  Q: 'reader-mirror-q',
+};
+
+function renderTokenText(text: string, mirrorLetters: boolean): React.ReactNode {
+  if (!mirrorLetters || !/[bBdDpPqQ]/.test(text)) return text;
+  const nodes: React.ReactNode[] = [];
+  let plain = '';
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    const cls = MIRROR_CLASS[ch];
+    if (cls) {
+      if (plain) {
+        nodes.push(plain);
+        plain = '';
+      }
+      nodes.push(<span key={i} className={cls}>{ch}</span>);
+    } else {
+      plain += ch;
+    }
+  }
+  if (plain) nodes.push(plain);
+  return nodes;
+}
+
 function renderInline(
   block: ReadingBlock,
   activeBoundary: SpeechBoundaryEvent | null,
   staticHighlights: StaticHighlight[] | undefined,
   selectable: boolean,
+  mirrorLetters: boolean,
 ): React.ReactNode {
   const tokens = tokenize(block.text);
   const highlights = findHighlightRanges(block.text, staticHighlights);
@@ -75,6 +111,12 @@ function renderInline(
   return tokens.map((token, tokenIndex) => {
     const tokenEnd = token.offset + token.text.length;
     if (!token.isWord) {
+      const wsHighlight = highlights.find(
+        (range) => token.offset >= range.start && tokenEnd <= range.end,
+      );
+      if (wsHighlight) {
+        return <mark key={tokenIndex} className={wsHighlight.className}>{token.text}</mark>;
+      }
       return <span key={tokenIndex}>{token.text}</span>;
     }
     const active = Boolean(isActiveBlock && activeBoundary && isOverlapping(token.offset, tokenEnd, activeBoundary));
@@ -97,17 +139,18 @@ function renderInline(
         </span>
       );
     }
+    const content = renderTokenText(token.text, mirrorLetters);
     const highlight = highlights.find(
       (range) => token.offset >= range.start && tokenEnd <= range.end,
     );
     if (highlight) {
       return (
         <mark key={tokenIndex} className={`${highlight.className} focus-visible:outline-2 focus-visible:outline-primary`} {...selectionProps}>
-          {token.text}
+          {content}
         </mark>
       );
     }
-    return <span key={tokenIndex} className={selectable ? 'focus-visible:outline-2 focus-visible:outline-primary' : undefined} {...selectionProps}>{token.text}</span>;
+    return <span key={tokenIndex} className={selectable ? 'focus-visible:outline-2 focus-visible:outline-primary' : undefined} {...selectionProps}>{content}</span>;
   });
 }
 
@@ -115,19 +158,47 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
   blocks,
   activeBoundary,
   staticHighlights = {},
+  highlightedBlockIds = [],
   figureSlot,
   className = '',
   style,
+  mirrorLetters = false,
+  paragraphCards = false,
   onWordSelection,
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
+  const highlightedSet = new Set(highlightedBlockIds);
   const selectionAttributes = (block: ReadingBlock) => onWordSelection &&
     ['paragraph', 'heading', 'listItem', 'quote'].includes(block.type)
-    ? { 'data-segment-id': block.id, 'data-segment-text': block.text, 'data-block-type': block.type, tabIndex: 0 }
-    : {};
+    ? {
+        'data-segment-id': block.id,
+        'data-segment-text': block.text,
+        'data-block-type': block.type,
+        ...(highlightedSet.has(block.id) ? { 'data-summary-source': 'true' } : {}),
+        tabIndex: 0,
+      }
+    : highlightedSet.has(block.id)
+      ? { 'data-summary-source': 'true' }
+      : {};
   const rendered: React.ReactNode[] = [];
   const visibleBlocks = blocks.filter((block) => block.text.trim().length > 0 || (block.type === 'snapshot' && block.imageSrc));
   let index = 0;
+  let chunkCounter = 0;
+  const wrapChunk = (key: string, emphasized: boolean, child: React.ReactNode) => {
+    if (!paragraphCards) return child;
+    chunkCounter += 1;
+    const label = String(chunkCounter).padStart(2, '0');
+    return (
+      <div
+        key={`chunk-${key}`}
+        data-reading-chunk=""
+        className={`reader-chunk ${emphasized ? 'reader-chunk-speaking' : ''}`}
+      >
+        <span aria-hidden="true" className="reader-chunk-num">{label}</span>
+        {child}
+      </div>
+    );
+  };
 
   while (index < visibleBlocks.length) {
     const block = visibleBlocks[index];
@@ -145,24 +216,35 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
       }
       const ListTag = listKind === 'ordered' ? 'ol' : 'ul';
       const hasMarkers = items.every((item) => /^(?:[-•▪]|\d+[.)]|\([a-zA-Z\d]+\))\s*/.test(item.text));
+      const listSpeaking = items.some((item) => activeBoundary?.segmentId === item.id || highlightedSet.has(item.id));
       rendered.push(
-        <ListTag
-          key={block.id}
-          className={`mb-8 space-y-3 last:mb-4 ${
-            hasMarkers ? 'list-none pl-0' : listKind === 'ordered' ? 'list-decimal pl-6' : 'list-disc pl-6'
-          }`}
-        >
-          {items.map((item) => (
-            <li key={item.id} className="whitespace-pre-line" {...selectionAttributes(item)}>
-              {renderInline(item, activeBoundary, staticHighlights[item.id], Boolean(onWordSelection))}
-            </li>
-          ))}
-        </ListTag>,
+        wrapChunk(
+          block.id,
+          listSpeaking,
+          <ListTag
+            key={block.id}
+            className={`${paragraphCards ? 'space-y-2.5' : 'mb-8 space-y-3 last:mb-4'} ${
+              hasMarkers ? 'list-none pl-0' : listKind === 'ordered' ? 'list-decimal pl-6' : 'list-disc pl-6'
+            }`}
+          >
+            {items.map((item) => (
+              <li key={item.id} className="whitespace-pre-line" {...selectionAttributes(item)}>
+                {renderInline(item, activeBoundary, staticHighlights[item.id], Boolean(onWordSelection), mirrorLetters)}
+              </li>
+            ))}
+          </ListTag>,
+        ),
       );
       continue;
     }
 
-    const body = renderInline(block, activeBoundary, staticHighlights[block.id], Boolean(onWordSelection && ['paragraph', 'heading', 'listItem', 'quote'].includes(block.type)));
+    const body = renderInline(
+      block,
+      activeBoundary,
+      staticHighlights[block.id],
+      Boolean(onWordSelection && ['paragraph', 'heading', 'listItem', 'quote'].includes(block.type)),
+      mirrorLetters,
+    );
 
     if (block.type === 'snapshot' && block.imageSrc) {
       rendered.push(<SnapshotFigure key={block.id} block={block} textContent={body} />);
@@ -192,13 +274,21 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
 
     if (block.type === 'quote') {
       rendered.push(
-        <blockquote
-          key={block.id}
-          {...selectionAttributes(block)}
-          className="reader-quote my-10 px-6 sm:px-8 py-5 rounded-xl italic text-lg sm:text-[1.25rem] leading-[1.9] whitespace-pre-line"
-        >
-          {body}
-        </blockquote>,
+        wrapChunk(
+          block.id,
+          activeBoundary?.segmentId === block.id || highlightedSet.has(block.id),
+          <blockquote
+            key={block.id}
+            {...selectionAttributes(block)}
+            className={
+              paragraphCards
+                ? 'italic text-lg sm:text-[1.2rem] leading-[1.9] whitespace-pre-line'
+                : 'reader-quote my-10 px-6 sm:px-8 py-5 rounded-xl italic text-lg sm:text-[1.25rem] leading-[1.9] whitespace-pre-line'
+            }
+          >
+            {body}
+          </blockquote>,
+        ),
       );
       index += 1;
       continue;
@@ -238,12 +328,20 @@ export const ReadingText: React.FC<ReadingTextProps> = ({
     }
 
     rendered.push(
-      <p key={block.id} className="mb-8 last:mb-4 whitespace-pre-line" {...selectionAttributes(block)}>
-        {body}
-        {figureSlot && block.id === 'third-paragraph' ? (
-          <span className="block">{figureSlot}</span>
-        ) : null}
-      </p>,
+      wrapChunk(
+        block.id,
+        activeBoundary?.segmentId === block.id || highlightedSet.has(block.id),
+        <p
+          key={block.id}
+          className={`${paragraphCards ? 'mb-0' : 'mb-8 last:mb-4'} ${!paragraphCards && highlightedSet.has(block.id) ? 'reader-summary-block' : ''} whitespace-pre-line`}
+          {...selectionAttributes(block)}
+        >
+          {body}
+          {figureSlot && block.id === 'third-paragraph' ? (
+            <span className="block">{figureSlot}</span>
+          ) : null}
+        </p>,
+      ),
     );
     index += 1;
   }

@@ -87,4 +87,42 @@ describe('FR06 word selection', () => {
       selectedText: 'họ', start: 0, end: 3,
     }));
   });
+
+  it('tints b/d/p/q mirror letters (excluding đ) while keeping word clicks and offsets intact', () => {
+    const choose = vi.fn();
+    const { container } = render(<ReadingText
+      blocks={[{ id: 'block-1', type: 'paragraph', text: 'bạn đọc qua phố dịu' }]}
+      activeBoundary={null}
+      mirrorLetters
+      paragraphCards
+      onWordSelection={choose}
+    />);
+    expect(container.querySelectorAll('.reader-mirror-b')).toHaveLength(1);
+    expect(container.querySelectorAll('.reader-mirror-d')).toHaveLength(1); // 'dịu', not 'đọc'
+    expect(container.querySelectorAll('.reader-mirror-p')).toHaveLength(1);
+    expect(container.querySelectorAll('.reader-mirror-q')).toHaveLength(1);
+    expect(container.querySelector('.reader-chunk-num')?.textContent).toBe('01');
+
+    // Clicking inside the tinted 'b' span still selects the full word 'bạn'
+    fireEvent.click(container.querySelector('.reader-mirror-b')!);
+    expect(choose).toHaveBeenCalledWith(expect.objectContaining({
+      segmentId: 'block-1', selectedText: 'bạn', start: 0, end: 3,
+    }));
+
+    // Drag selection inside a chunk card keeps exact UTF-16 offset without '01' prefix drift
+    const tokens = container.querySelectorAll<HTMLElement>('[data-token-start]');
+    const range = document.createRange();
+    range.setStart(tokens[2].firstChild!.firstChild!, 0); // 'q' inside 'qua'
+    range.setEnd(tokens[3].lastChild!, 2); // 'hố' inside 'phố'
+    Object.defineProperty(range, 'getBoundingClientRect', {
+      value: () => ({ left: 10, top: 20, bottom: 30 }),
+    });
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent.mouseUp(container.querySelector('p')!);
+    expect(choose).toHaveBeenCalledWith(expect.objectContaining({
+      selectedText: 'qua phố', start: 8, end: 15,
+    }));
+    window.getSelection()?.removeAllRanges();
+  });
 });

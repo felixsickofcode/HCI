@@ -10,14 +10,28 @@ import {
 import { useAuth } from './auth-context';
 
 const STORAGE_KEY = 'display-settings';
+const ASSIST_STORAGE_KEY = 'display-assist-settings';
 
 // Dải giá trị = giao của yêu cầu FR-03 và schema backend (tránh 422).
 export const LIMITS = {
   fontSize: [16, 32],
   lineHeight: [1.5, 2.5],
   letterSpacing: [0, 0.2],
+  wordSpacing: [0, 0.4],
   columnWidth: [45, 75],
 } as const;
+
+export interface ReadingAssistSettings {
+  wordSpacing: number;
+  mirrorLetters: boolean;
+  paragraphCards: boolean;
+}
+
+export const ASSIST_DEFAULTS: ReadingAssistSettings = {
+  wordSpacing: 0,
+  mirrorLetters: false,
+  paragraphCards: false,
+};
 
 export const DEFAULTS: DisplaySettings = {
   fontFamily: 'lexend',
@@ -289,11 +303,31 @@ function loadLocal(): DisplaySettings {
   }
 }
 
+function sanitizeAssist(raw?: Partial<ReadingAssistSettings> | null): ReadingAssistSettings {
+  const r = { ...ASSIST_DEFAULTS, ...raw };
+  return {
+    wordSpacing: round2(clamp(r.wordSpacing, LIMITS.wordSpacing)),
+    mirrorLetters: Boolean(r.mirrorLetters),
+    paragraphCards: Boolean(r.paragraphCards),
+  };
+}
+
+function loadLocalAssist(): ReadingAssistSettings {
+  try {
+    const raw = localStorage.getItem(ASSIST_STORAGE_KEY);
+    return sanitizeAssist(raw ? JSON.parse(raw) : null);
+  } catch {
+    return sanitizeAssist(null);
+  }
+}
+
 type Patch = Partial<Omit<DisplaySettings, 'focus'>> & { focus?: Partial<FocusSettings> };
 
 interface Ctx {
   settings: DisplaySettings;
+  assist: ReadingAssistSettings;
   update: (patch: Patch) => void;
+  updateAssist: (patch: Partial<ReadingAssistSettings>) => void;
   reset: () => void;
 }
 
@@ -308,6 +342,7 @@ export const useDisplaySettings = (): Ctx => {
 export const DisplaySettingsProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
   const [settings, setSettings] = useState<DisplaySettings>(loadLocal);
+  const [assist, setAssist] = useState<ReadingAssistSettings>(loadLocalAssist);
   const latest = useRef(settings);
   const syncReady = useRef(false);
   const skipNext = useRef(false);
@@ -354,11 +389,28 @@ export const DisplaySettingsProvider = ({ children }: { children: ReactNode }) =
     return () => clearTimeout(t);
   }, [settings, user]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(ASSIST_STORAGE_KEY, JSON.stringify(assist));
+    } catch {
+      /* localStorage đầy hoặc bị chặn: bỏ qua */
+    }
+  }, [assist]);
+
   const update = useCallback((patch: Patch) => {
     setSettings((s) => sanitize({ ...s, ...patch, focus: { ...s.focus, ...patch.focus } }));
   }, []);
-  const reset = useCallback(() => setSettings(sanitize(null)), []);
+  const updateAssist = useCallback((patch: Partial<ReadingAssistSettings>) => {
+    setAssist((current) => sanitizeAssist({ ...current, ...patch }));
+  }, []);
+  const reset = useCallback(() => {
+    setSettings(sanitize(null));
+    setAssist(sanitizeAssist(null));
+  }, []);
 
-  const value = useMemo(() => ({ settings, update, reset }), [settings, update, reset]);
+  const value = useMemo(
+    () => ({ settings, assist, update, updateAssist, reset }),
+    [settings, assist, update, updateAssist, reset],
+  );
   return <DisplaySettingsContext.Provider value={value}>{children}</DisplaySettingsContext.Provider>;
 };

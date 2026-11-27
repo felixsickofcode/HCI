@@ -3,6 +3,7 @@ import { useReadingAnchor } from './useReadingAnchor';
 import './reader-layout.css';
 import { Link, Navigate, NavLink } from 'react-router-dom';
 import { AudioPlayerCapsule, ManuscriptCard, ReadingText } from '../../components/common';
+import type { StaticHighlight } from '../../components/common';
 import { useAuth, useDocument } from '../../context';
 import {
   useDisplaySettings, THEMES, FONT_STACKS, LIMITS,
@@ -23,6 +24,8 @@ import { FixedReadingRuler } from './FixedReadingRuler';
 import { OriginalDocumentView } from './OriginalDocumentView';
 import { useWordExplanation } from '../../hooks/useWordExplanation';
 import { useSaveSelectedWord } from '../../hooks/useSaveSelectedWord';
+import { useDocumentSummary } from '../../hooks/useDocumentSummary';
+import type { SummaryItem } from '../../lib/assist';
 import { WordExplanationPopover } from '../../components/reading/WordExplanationPopover';
 import type { PopoverCloseReason } from '../../components/reading/WordExplanationPopover';
 
@@ -97,7 +100,7 @@ const Slider = (p: {
 export const MinimalReadingView: React.FC = () => {
   const { document: doc, clearDocument } = useDocument();
   const { user } = useAuth();
-  const { settings: s, update, reset } = useDisplaySettings();
+  const { settings: s, assist, update, updateAssist, reset } = useDisplaySettings();
   const [panelOpen, setPanelOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const narrow = useSyncExternalStore(subscribeOverlay, isOverlay);
@@ -117,6 +120,24 @@ export const MinimalReadingView: React.FC = () => {
   const { selection: wordSelection, result: wordResult, loading: wordLoading,
     error: wordError, needsLogin: wordNeedsLogin, choose: chooseWord, explain: explainWord, clear: clearWord } = useWordExplanation(doc?.id, blocks);
   const wordSave = useSaveSelectedWord(doc, wordSelection, explainWord);
+  const summary = useDocumentSummary(doc?.id, blocks, user?.id);
+  const activeSummaryItem = useMemo(
+    () => summary.result?.items.find((item) => item.id === summary.activeItemId) ?? null,
+    [summary.activeItemId, summary.result],
+  );
+  const summaryHighlights = useMemo<Record<string, StaticHighlight[]>>(() => {
+    if (!activeSummaryItem) return {};
+    const map: Record<string, StaticHighlight[]> = {};
+    for (const sourceId of activeSummaryItem.sources) {
+      map[sourceId] = [{ phrase: activeSummaryItem.text, className: 'reader-summary-sentence' }];
+    }
+    return map;
+  }, [activeSummaryItem]);
+  const segmentOrder = useMemo(() => {
+    const order = new Map<string, number>();
+    summary.segments.forEach((seg, idx) => order.set(seg.id, idx + 1));
+    return order;
+  }, [summary.segments]);
   const segments: ReadingSegment[] = useMemo(
     () =>
       blocks
@@ -138,7 +159,7 @@ export const MinimalReadingView: React.FC = () => {
   const [selectedVoiceURI, setSelectedVoiceURI] = useState(() => pickPreferredVoice(getSpeechVoices())?.voiceURI || '');
   const [rate, setRate] = useState<number>(1);
   const [speechError, setSpeechError] = useState('');
-  const [readingExcerpt, setReadingExcerpt] = useState(false);
+  const [readingMode, setReadingMode] = useState<'full' | 'excerpt' | 'summary'>('full');
 
   useEffect(() => {
     const controller = new SpeechController();
@@ -177,7 +198,7 @@ export const MinimalReadingView: React.FC = () => {
   const selectedVoice = voices.find((voice) => voice.voiceURI === selectedVoiceURI) ?? pickPreferredVoice(voices);
   const startReading = () => {
     setSpeechError('');
-    setReadingExcerpt(false);
+    setReadingMode('full');
     setActiveBoundary(null);
     setCurrentSegmentIndex(0);
     speechRef.current?.speak({ segments, rate, voice: selectedVoice });
@@ -187,7 +208,7 @@ export const MinimalReadingView: React.FC = () => {
     const block = blocks.find((item) => item.id === wordSelection.segmentId);
     if (!block || block.text.slice(wordSelection.start, wordSelection.end) !== wordSelection.selectedText) return;
     setSpeechError('');
-    setReadingExcerpt(true);
+    setReadingMode('excerpt');
     setActiveBoundary(null);
     setCurrentSegmentIndex(0);
     speechRef.current?.speak({
@@ -198,6 +219,25 @@ export const MinimalReadingView: React.FC = () => {
       rate, voice: selectedVoice,
     });
     clearWord();
+  };
+  const readSummary = () => {
+    if (!summary.result?.items.length || !isSpeechSupported()) return;
+    const summarySegments: ReadingSegment[] = summary.result.items.map((item) => {
+      const sourceId = item.sources[0];
+      const block = blocks.find((b) => b.id === sourceId);
+      const offset = block ? block.text.indexOf(item.text) : -1;
+      return {
+        id: block ? block.id : item.id,
+        text: item.text,
+        sourceOffset: offset >= 0 ? offset : undefined,
+        kind: block?.type === 'quote' ? 'quote' : 'paragraph',
+      };
+    });
+    setSpeechError('');
+    setReadingMode('summary');
+    setActiveBoundary(null);
+    setCurrentSegmentIndex(0);
+    speechRef.current?.speak({ segments: summarySegments, rate, voice: selectedVoice });
   };
   const cycleRate = () => {
     const nextRate = SPEECH_SPEEDS[(SPEECH_SPEEDS.indexOf(rate as typeof SPEECH_SPEEDS[number]) + 1) % SPEECH_SPEEDS.length];
@@ -256,7 +296,7 @@ export const MinimalReadingView: React.FC = () => {
         setPanelOpen(false);
       }
       if (event.key === 'Tab' && modal) {
-        const controls = closeRef.current?.closest('aside')?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)');
+        const controls = closeRef.current?.closest('aside')?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), a[href]');
         if (!controls?.length) return;
         const edge = event.shiftKey ? controls[0] : controls[controls.length - 1];
         if (document.activeElement === edge) {
@@ -268,6 +308,27 @@ export const MinimalReadingView: React.FC = () => {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [showSettingsPanel, modal, wordSelection, capture]);
+
+  function focusSummaryItem(item: SummaryItem) {
+    summary.setActiveItemId(item.id);
+    if (modal) setPanelOpen(false);
+    window.requestAnimationFrame(() => {
+      const main = mainRef.current;
+      if (!main) return;
+      const sourceId = item.sources[0];
+      const segmentEl = [...main.querySelectorAll<HTMLElement>('[data-segment-id]')]
+        .find((el) => el.dataset.segmentId === sourceId);
+      const markEl = segmentEl?.querySelector<HTMLElement>('mark.reader-summary-sentence') ?? segmentEl;
+      if (!markEl) return;
+      if (rulerEnabled) {
+        const anchor = Math.round(main.clientHeight * 0.3);
+        const targetTop = markEl.getBoundingClientRect().top - main.getBoundingClientRect().top;
+        main.scrollTop += targetTop - anchor;
+      } else {
+        markEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
+  }
 
   function changeSettings(patch: Parameters<typeof update>[0]) {
     capture();
@@ -476,6 +537,7 @@ export const MinimalReadingView: React.FC = () => {
                 </h3>
                 <Slider label="Giãn dòng" value={s.lineHeight} min={LIMITS.lineHeight[0]} max={LIMITS.lineHeight[1]} step={0.1} accent={theme.accent} secondaryText={theme.secondaryText} fg={theme.fg} onChange={(v) => changeSettings({ lineHeight: v })} />
                 <Slider label="Giãn chữ" unit="em" value={s.letterSpacing} min={LIMITS.letterSpacing[0]} max={LIMITS.letterSpacing[1]} step={0.01} accent={theme.accent} secondaryText={theme.secondaryText} fg={theme.fg} onChange={(v) => changeSettings({ letterSpacing: v })} />
+                <Slider label="Giãn khoảng cách từ" unit="em" value={assist.wordSpacing} min={LIMITS.wordSpacing[0]} max={LIMITS.wordSpacing[1]} step={0.02} accent={theme.accent} secondaryText={theme.secondaryText} fg={theme.fg} onChange={(v) => { capture(); updateAssist({ wordSpacing: v }); }} />
                 <Slider label="Độ rộng cột" unit="ch" value={s.columnWidth} min={LIMITS.columnWidth[0]} max={LIMITS.columnWidth[1]} step={1} accent={theme.accent} secondaryText={theme.secondaryText} fg={theme.fg} onChange={(v) => changeSettings({ columnWidth: v })} />
               </section>
             </div>
@@ -483,96 +545,299 @@ export const MinimalReadingView: React.FC = () => {
         )}
 
         {tab === 'Hỗ trợ đọc' && (
-          <section className="space-y-4">
-            <h3 className="text-xs font-label font-bold uppercase tracking-wide" style={{ color: theme.secondaryText }}>
-              Tính năng hỗ trợ
-            </h3>
+          <div className="space-y-5">
+            <section className="space-y-3">
+              <h3 className="text-xs font-label font-bold uppercase tracking-wide" style={{ color: theme.secondaryText }}>
+                Dẫn hướng dòng đọc
+              </h3>
 
-            <button
-              type="button"
-              role="switch"
-              aria-label="Thước đọc cố định"
-              aria-describedby="reader-ruler-help"
-              aria-checked={s.focus.enabled}
-              data-ruler-switch
-              onClick={() => update({ focus: { enabled: !s.focus.enabled } })}
-              className="w-full flex items-center gap-3 px-3.5 py-3.5 rounded-2xl text-left transition-colors"
-              style={{
-                backgroundColor: theme.controlBg,
-                border: `1px solid ${s.focus.enabled ? theme.accent : theme.border}`,
-              }}
-            >
-              <span className="material-symbols-outlined text-[18px] shrink-0" style={{ color: theme.activeFg }}>view_day</span>
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-semibold">Thước đọc cố định</span>
-                <span id="reader-ruler-help" className="block text-[11px] mt-0.5 leading-relaxed" style={{ color: theme.secondaryText }}>
-                  Thước đứng yên. Nhấn ↓ để văn bản cuộn lên một dòng, nhấn ↑ để quay lại. Bạn cũng có thể lăn chuột trong vùng chữ.
-                </span>
-              </span>
-              <span
-                className="relative shrink-0 w-10 h-6 rounded-full transition-colors"
-                style={{ backgroundColor: s.focus.enabled ? theme.accent : theme.borderStrong }}
+              <button
+                type="button"
+                role="switch"
+                aria-label="Thước đọc cố định"
+                aria-describedby="reader-ruler-help"
+                aria-checked={s.focus.enabled}
+                data-ruler-switch
+                onClick={() => update({ focus: { enabled: !s.focus.enabled } })}
+                className="w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-left transition-colors"
+                style={{
+                  backgroundColor: theme.controlBg,
+                  border: `1px solid ${s.focus.enabled ? theme.accent : theme.border}`,
+                }}
               >
+                <span className="material-symbols-outlined text-[18px] shrink-0" style={{ color: theme.activeFg }}>view_day</span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-semibold">Thước đọc cố định</span>
+                  <span id="reader-ruler-help" className="block text-[11px] mt-0.5 leading-relaxed" style={{ color: theme.secondaryText }}>
+                    Thước đứng yên. Nhấn ↓ để văn bản cuộn lên một dòng, nhấn ↑ để quay lại hoặc lăn chuột trong vùng chữ.
+                  </span>
+                </span>
                 <span
-                  className={`absolute top-0.5 w-5 h-5 rounded-full shadow transition-all ${s.focus.enabled ? 'left-[18px]' : 'left-0.5'}`}
-                  style={{ backgroundColor: theme.accentFg }}
-                />
-              </span>
-            </button>
+                  className="relative shrink-0 w-10 h-6 rounded-full transition-colors"
+                  style={{ backgroundColor: s.focus.enabled ? theme.accent : theme.borderStrong }}
+                >
+                  <span
+                    className={`absolute top-0.5 w-5 h-5 rounded-full shadow transition-all ${s.focus.enabled ? 'left-[18px]' : 'left-0.5'}`}
+                    style={{ backgroundColor: theme.accentFg }}
+                  />
+                </span>
+              </button>
 
-            {s.focus.enabled && (
-              <>
-                <fieldset className="space-y-2" data-ruler-control>
-                  <legend className="text-xs font-label font-bold uppercase tracking-wide" style={{ color: theme.secondaryText }}>
-                    Số dòng nhìn rõ
-                  </legend>
-                  <div className="flex gap-2">
-                    {([1, 2, 3] as const).map((count) => {
-                      const active = s.focus.lineCount === count;
+              {s.focus.enabled && (
+                <>
+                  <fieldset className="space-y-2" data-ruler-control>
+                    <legend className="text-xs font-label font-bold uppercase tracking-wide" style={{ color: theme.secondaryText }}>
+                      Số dòng nhìn rõ
+                    </legend>
+                    <div className="flex gap-2">
+                      {([1, 2, 3] as const).map((count) => {
+                        const active = s.focus.lineCount === count;
+                        return (
+                          <button
+                            key={count}
+                            type="button"
+                            aria-pressed={active}
+                            onClick={() => update({ focus: { lineCount: count } })}
+                            className="flex-1 rounded-xl py-2 text-sm font-label transition-colors"
+                            style={
+                              active
+                                ? {
+                                    backgroundColor: theme.accentSoft,
+                                    border: `1.5px solid ${theme.accent}`,
+                                    color: theme.activeFg,
+                                    fontWeight: 600,
+                                  }
+                                : {
+                                    backgroundColor: theme.controlBg,
+                                    border: `1px solid ${theme.border}`,
+                                    color: theme.fg,
+                                  }
+                            }
+                          >
+                            {count} dòng
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </fieldset>
+
+                  <Slider
+                    label="Độ mờ vùng ngoài thước"
+                    unit="%"
+                    value={Math.round(s.focus.dimOpacity * 100)}
+                    min={50}
+                    max={80}
+                    step={5}
+                    accent={theme.accent}
+                    secondaryText={theme.secondaryText}
+                    fg={theme.fg}
+                    onChange={(v) => update({ focus: { dimOpacity: v / 100 } })}
+                  />
+                </>
+              )}
+            </section>
+
+            <section className="space-y-3">
+              <h3 className="text-xs font-label font-bold uppercase tracking-wide" style={{ color: theme.secondaryText }}>
+                Hỗ trợ nhận diện &amp; nhịp đọc
+              </h3>
+
+              <button
+                type="button"
+                role="switch"
+                aria-label="Phân biệt chữ dễ nhầm b, d, p, q"
+                aria-checked={assist.mirrorLetters}
+                onClick={() => updateAssist({ mirrorLetters: !assist.mirrorLetters })}
+                className="w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-left transition-colors"
+                style={{
+                  backgroundColor: theme.controlBg,
+                  border: `1px solid ${assist.mirrorLetters ? theme.accent : theme.border}`,
+                }}
+              >
+                <span className="material-symbols-outlined text-[18px] shrink-0" style={{ color: theme.activeFg }}>spellcheck</span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-semibold">Phân biệt chữ dễ nhầm</span>
+                  <span className="block text-[11px] mt-0.5 leading-relaxed" style={{ color: theme.secondaryText }}>
+                    Tô màu dịu tách biệt 4 ký tự đảo gương kinh điển:
+                  </span>
+                  <span className="mt-1.5 inline-flex items-center gap-1.5" aria-hidden="true">
+                    <span className="reader-mirror-b px-1.5 py-0.5 text-xs">b</span>
+                    <span className="reader-mirror-d px-1.5 py-0.5 text-xs">d</span>
+                    <span className="reader-mirror-p px-1.5 py-0.5 text-xs">p</span>
+                    <span className="reader-mirror-q px-1.5 py-0.5 text-xs">q</span>
+                  </span>
+                </span>
+                <span
+                  className="relative shrink-0 w-10 h-6 rounded-full transition-colors"
+                  style={{ backgroundColor: assist.mirrorLetters ? theme.accent : theme.borderStrong }}
+                >
+                  <span
+                    className={`absolute top-0.5 w-5 h-5 rounded-full shadow transition-all ${assist.mirrorLetters ? 'left-[18px]' : 'left-0.5'}`}
+                    style={{ backgroundColor: theme.accentFg }}
+                  />
+                </span>
+              </button>
+
+              <button
+                type="button"
+                role="switch"
+                aria-label="Thẻ chia đoạn và đánh số"
+                aria-checked={assist.paragraphCards}
+                onClick={() => { capture(); updateAssist({ paragraphCards: !assist.paragraphCards }); }}
+                className="w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-left transition-colors"
+                style={{
+                  backgroundColor: theme.controlBg,
+                  border: `1px solid ${assist.paragraphCards ? theme.accent : theme.border}`,
+                }}
+              >
+                <span className="material-symbols-outlined text-[18px] shrink-0" style={{ color: theme.activeFg }}>view_agenda</span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-semibold">Thẻ chia đoạn &amp; đánh số</span>
+                  <span className="block text-[11px] mt-0.5 leading-relaxed" style={{ color: theme.secondaryText }}>
+                    Tách khung nhẹ từng đoạn kèm số 01, 02 chống ngợp chữ khi đọc bài dài.
+                  </span>
+                </span>
+                <span
+                  className="relative shrink-0 w-10 h-6 rounded-full transition-colors"
+                  style={{ backgroundColor: assist.paragraphCards ? theme.accent : theme.borderStrong }}
+                >
+                  <span
+                    className={`absolute top-0.5 w-5 h-5 rounded-full shadow transition-all ${assist.paragraphCards ? 'left-[18px]' : 'left-0.5'}`}
+                    style={{ backgroundColor: theme.accentFg }}
+                  />
+                </span>
+              </button>
+            </section>
+
+            <section role="region" aria-labelledby="reader-summary-heading" className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3
+                  id="reader-summary-heading"
+                  className="text-xs font-label font-bold uppercase tracking-wide"
+                  style={{ color: theme.secondaryText }}
+                >
+                  Tóm tắt ý chính
+                </h3>
+                {summary.result && summary.activeItemId && (
+                  <button
+                    type="button"
+                    onClick={() => summary.setActiveItemId(null)}
+                    className="text-[11px] font-label font-semibold underline-offset-2 hover:underline"
+                    style={{ color: theme.activeFg }}
+                  >
+                    Bỏ tô sáng
+                  </button>
+                )}
+              </div>
+
+              {!user || summary.needsLogin ? (
+                <div
+                  className="rounded-2xl p-3.5 space-y-2.5"
+                  style={{ backgroundColor: theme.controlBg, border: `1px solid ${theme.border}` }}
+                >
+                  <p className="text-xs leading-relaxed" style={{ color: theme.secondaryText }}>
+                    Trích xuất nguyên văn các câu cốt lõi trong bài đọc và tô sáng khớp từng chữ ngay trên đoạn gốc.
+                  </p>
+                  <Link
+                    to="/login"
+                    state={{ from: '/reading' }}
+                    className="inline-flex items-center justify-center w-full rounded-xl px-3.5 py-2 text-xs font-label font-semibold transition-opacity hover:opacity-95"
+                    style={{ backgroundColor: theme.accent, color: theme.accentFg }}
+                  >
+                    Đăng nhập để rút ý chính
+                  </Link>
+                </div>
+              ) : !summary.result ? (
+                <div
+                  className="rounded-2xl p-3.5 space-y-2.5"
+                  style={{ backgroundColor: theme.controlBg, border: `1px solid ${theme.border}` }}
+                >
+                  <p className="text-xs leading-relaxed" style={{ color: theme.secondaryText }}>
+                    Trích xuất các câu cốt lõi rải đều toàn bài (yêu cầu bài từ 300 ký tự trở lên). Chạm từng ý để cuộn tới và tô sáng câu gốc.
+                  </p>
+                  {summary.error && (
+                    <p
+                      role="alert"
+                      className="rounded-xl px-3 py-2 text-xs font-label font-medium leading-snug"
+                      style={{ backgroundColor: theme.errorBg, color: theme.errorFg }}
+                    >
+                      {summary.error}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    disabled={summary.loading}
+                    onClick={() => {
+                      void summary.summarize().then((res) => {
+                        if (res?.items[0]) focusSummaryItem(res.items[0]);
+                      });
+                    }}
+                    className="w-full rounded-xl px-3.5 py-2.5 text-xs font-label font-semibold flex items-center justify-center gap-1.5 transition-opacity disabled:opacity-60"
+                    style={{ backgroundColor: theme.accent, color: theme.accentFg }}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
+                    <span>{summary.loading ? 'Đang rút ý chính…' : summary.error ? 'Thử lại · Rút ý chính' : 'Rút ý chính bài đọc'}</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  <div
+                    className="rounded-2xl px-3 py-2.5 flex items-center justify-between gap-2 font-label"
+                    style={{ backgroundColor: theme.surfaceBg, border: `1px solid ${theme.border}` }}
+                  >
+                    <span className="text-xs font-semibold" style={{ color: theme.fg }}>
+                      {summary.result.items.length} câu cốt lõi
+                    </span>
+                    {isSpeechSupported() && (
+                      <button
+                        type="button"
+                        onClick={readSummary}
+                        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold transition-opacity hover:opacity-95"
+                        style={{ backgroundColor: theme.accent, color: theme.accentFg }}
+                      >
+                        <span className="material-symbols-outlined text-[14px]">play_arrow</span>
+                        <span>Nghe ý chính</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <ol className="space-y-2" aria-label="Danh sách câu cốt lõi">
+                    {summary.result.items.map((item, idx) => {
+                      const active = summary.activeItemId === item.id;
+                      const segNum = segmentOrder.get(item.sources[0]);
                       return (
-                        <button
-                          key={count}
-                          type="button"
-                          aria-pressed={active}
-                          onClick={() => update({ focus: { lineCount: count } })}
-                          className="flex-1 rounded-xl py-2 text-sm font-label transition-colors"
-                          style={
-                            active
-                              ? {
-                                  backgroundColor: theme.accentSoft,
-                                  border: `1.5px solid ${theme.accent}`,
-                                  color: theme.activeFg,
-                                  fontWeight: 600,
-                                }
-                              : {
-                                  backgroundColor: theme.controlBg,
-                                  border: `1px solid ${theme.border}`,
-                                  color: theme.fg,
-                                }
-                          }
-                        >
-                          {count} dòng
-                        </button>
+                        <li key={item.id}>
+                          <button
+                            type="button"
+                            aria-pressed={active}
+                            onClick={() => focusSummaryItem(item)}
+                            className="w-full text-left rounded-2xl p-3 space-y-1.5 transition-colors"
+                            style={{
+                              backgroundColor: active ? theme.accentSoft : theme.controlBg,
+                              border: active ? `1.5px solid ${theme.accent}` : `1px solid ${theme.border}`,
+                              color: theme.fg,
+                            }}
+                          >
+                            <span className="flex items-center justify-between gap-2 font-label text-[11px] font-bold">
+                              <span style={{ color: theme.activeFg }}>
+                                Ý chính {String(idx + 1).padStart(2, '0')}
+                              </span>
+                              <span style={{ color: active ? theme.activeFg : theme.secondaryText }}>
+                                {segNum ? `Đoạn ${segNum}` : 'Nguồn'}{active ? ' ✓' : ' →'}
+                              </span>
+                            </span>
+                            <span className="block text-xs leading-relaxed font-body">
+                              {item.text}
+                            </span>
+                          </button>
+                        </li>
                       );
                     })}
-                  </div>
-                </fieldset>
-
-                <Slider
-                  label="Độ mờ vùng ngoài thước"
-                  unit="%"
-                  value={Math.round(s.focus.dimOpacity * 100)}
-                  min={50}
-                  max={80}
-                  step={5}
-                  accent={theme.accent}
-                  secondaryText={theme.secondaryText}
-                  fg={theme.fg}
-                  onChange={(v) => update({ focus: { dimOpacity: v / 100 } })}
-                />
-              </>
-            )}
-          </section>
+                  </ol>
+                </div>
+              )}
+            </section>
+          </div>
         )}
       </div>
 
@@ -637,6 +902,14 @@ export const MinimalReadingView: React.FC = () => {
     '--reader-brand-badge-fg': theme.brandBadgeFg,
     '--reader-brand-badge-border': theme.brandBadgeBorder,
     '--reader-brand-dot': theme.brandDot,
+    '--reader-mirror-b-fg': theme.isDark ? '#8CC2FF' : '#0E4C96',
+    '--reader-mirror-b-bg': theme.isDark ? 'rgba(140, 194, 255, 0.16)' : 'rgba(21, 86, 184, 0.12)',
+    '--reader-mirror-d-fg': theme.isDark ? '#7CE3AE' : '#175E38',
+    '--reader-mirror-d-bg': theme.isDark ? 'rgba(124, 227, 174, 0.16)' : 'rgba(23, 94, 56, 0.12)',
+    '--reader-mirror-p-fg': theme.isDark ? '#D9B3FF' : '#632B94',
+    '--reader-mirror-p-bg': theme.isDark ? 'rgba(217, 179, 255, 0.16)' : 'rgba(99, 43, 148, 0.12)',
+    '--reader-mirror-q-fg': theme.isDark ? '#FFC085' : '#96450B',
+    '--reader-mirror-q-bg': theme.isDark ? 'rgba(255, 192, 133, 0.16)' : 'rgba(150, 69, 11, 0.13)',
   } as React.CSSProperties;
 
   const viewModeSwitcher = hasOriginal ? (
@@ -960,7 +1233,11 @@ export const MinimalReadingView: React.FC = () => {
                       rate={rate}
                       errorMessage={speechError}
                       progressLabel={speechStatus === 'speaking' || speechStatus === 'paused'
-                        ? readingExcerpt ? 'Phần đã chọn' : `${Math.min(currentSegmentIndex + 1, segments.length)}/${segments.length} đoạn`
+                        ? readingMode === 'excerpt'
+                          ? 'Phần đã chọn'
+                          : readingMode === 'summary' && summary.result
+                            ? `Ý chính ${Math.min(currentSegmentIndex + 1, summary.result.items.length)}/${summary.result.items.length}`
+                            : `${Math.min(currentSegmentIndex + 1, segments.length)}/${segments.length} đoạn`
                         : undefined}
                       onPlay={startReading}
                       onPause={() => speechRef.current?.pause()}
@@ -1063,6 +1340,7 @@ export const MinimalReadingView: React.FC = () => {
                     fontSize: `${s.fontSize}px`,
                     lineHeight: s.lineHeight,
                     letterSpacing: `${s.letterSpacing}em`,
+                    wordSpacing: `${assist.wordSpacing}em`,
                     backgroundColor: theme.bg,
                     color: theme.fg,
                   }}
@@ -1070,13 +1348,18 @@ export const MinimalReadingView: React.FC = () => {
                   <ReadingText
                     blocks={blocks}
                     activeBoundary={activeBoundary}
+                    staticHighlights={summaryHighlights}
+                    highlightedBlockIds={activeSummaryItem?.sources}
                     onWordSelection={chooseWord}
+                    mirrorLetters={assist.mirrorLetters}
+                    paragraphCards={assist.paragraphCards}
                     className="font-body break-words"
                     style={{
                       fontFamily: FONT_STACKS[s.fontFamily],
                       fontSize: `${s.fontSize}px`,
                       lineHeight: s.lineHeight,
                       letterSpacing: `${s.letterSpacing}em`,
+                      wordSpacing: `${assist.wordSpacing}em`,
                     }}
                   />
                   {wordSelection && <WordExplanationPopover

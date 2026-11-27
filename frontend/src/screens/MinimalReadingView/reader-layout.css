@@ -101,10 +101,86 @@
   border-radius: 0.25rem;
 }
 
+.reader-summary-sentence {
+  background-color: var(--reader-accent-soft, #E3ECFA);
+  color: var(--reader-fg, #222222);
+  border-bottom: 2px solid var(--reader-accent, #1556B8);
+  padding-block: 0.08em;
+  border-radius: 0.18rem;
+}
+
+.reader-summary-block {
+  border-left: 3.5px solid var(--reader-accent, #1556B8);
+  padding-left: 0.85rem;
+  border-radius: 0.25rem;
+}
+
 .reader-quote {
   background-color: var(--reader-surface-bg, rgba(0, 0, 0, 0.04));
   border-left: 3px solid var(--reader-accent, #1556B8);
   color: var(--reader-secondary-text, inherit);
+}
+
+/* Mirror-letter subtle tinting (b / d / p / q) — adapts for light & dark themes */
+.reader-mirror-b {
+  color: var(--reader-mirror-b-fg, #0E4C96);
+  background-color: var(--reader-mirror-b-bg, rgba(21, 86, 184, 0.12));
+  border-radius: 0.22rem;
+  font-weight: 600;
+}
+.reader-mirror-d {
+  color: var(--reader-mirror-d-fg, #175E38);
+  background-color: var(--reader-mirror-d-bg, rgba(23, 94, 56, 0.12));
+  border-radius: 0.22rem;
+  font-weight: 600;
+}
+.reader-mirror-p {
+  color: var(--reader-mirror-p-fg, #632B94);
+  background-color: var(--reader-mirror-p-bg, rgba(99, 43, 148, 0.12));
+  border-radius: 0.22rem;
+  font-weight: 600;
+}
+.reader-mirror-q {
+  color: var(--reader-mirror-q-fg, #96450B);
+  background-color: var(--reader-mirror-q-bg, rgba(150, 69, 11, 0.13));
+  border-radius: 0.22rem;
+  font-weight: 600;
+}
+
+/* Chunked Paragraph Cards with left index anchor (anti-wall-of-text for dyslexia) */
+.reader-chunk {
+  position: relative;
+  border-radius: 1rem;
+  padding: 0.95rem 1.25rem 0.95rem 2.75rem;
+  margin-bottom: 1.15rem;
+  background-color: var(--reader-surface-bg, #F2E3C2);
+  border: 1px solid var(--reader-border, #DFCFA9);
+  border-left: 3.5px solid var(--reader-border-strong, #BFA97E);
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+.reader-chunk-speaking {
+  border-color: var(--reader-accent, #1556B8);
+  border-left-width: 4px;
+  box-shadow: 0 6px 20px rgba(21, 86, 184, 0.10);
+}
+.reader-chunk-num {
+  position: absolute;
+  left: 0.85rem;
+  top: 1.1rem;
+  font-family: var(--font-label, 'Lexend', sans-serif);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  word-spacing: normal;
+  color: var(--reader-secondary-text, #50452E);
+  opacity: 0.78;
+  user-select: none;
+  pointer-events: none;
+}
+.reader-chunk-speaking .reader-chunk-num {
+  color: var(--reader-active-fg, #1556B8);
+  opacity: 1;
 }
 
 /* The query uses the reading font for ch. Reserve 15rem for full navigation,
